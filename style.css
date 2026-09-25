@@ -394,3 +394,6 @@ details.ranks summary{cursor:pointer; color:var(--primary-dark);}
 .tool + .tool{margin-top:18px; padding-top:14px; border-top:1px dashed var(--border);}
 .filter-row.five{grid-template-columns:repeat(5, minmax(0,1fr));}
 @media (max-width:900px){ .filter-row.five{grid-template-columns:1fr 1fr;} }
+.join-add{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;}
+.join-add input{flex:1; min-width:220px; max-width:360px;}
+#wMode{margin-bottom:12px;}

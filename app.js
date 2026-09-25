@@ -1569,10 +1569,59 @@ function calibrate(list){
   return {n: list.length, wins: wins0, best: best.k, shift: best.shift};
 }
 
+let watchMode = LS.get('watchMode', 'watch');   // 'watch' 관심공고 | 'joined' 참여한 공고
+const isJoined = (w) => !!(w.joined || w.myBid || w.res?.mine);
+
+/** 수집된 개찰 상세(전체 순위)에서 우리 사업자번호가 있는 공고를 찾는다 (regions.json 지역만) */
+async function findMyBidsInOpening(skipIds){
+  const biz = String(Company.get().biz || '').replace(/\D/g, '');
+  if(!biz) return [];
+  const out = [];
+  for(const sido of (Data.meta.detail?.regions || []).filter(s => Data.hasDetail(s))){
+    let op, sc = null;
+    try{ op = await Data.loadOpening(sido); if(Data.hasScsbid(sido)) sc = await Data.loadScsbid(sido); }catch(e){ continue; }
+    for(const [id, b] of op.bids){
+      if(skipIds.has(id) || !b.r?.length) continue;
+      const ci = (b.corps || []).findIndex(c => c[1] === biz);
+      if(ci < 0) continue;
+      const row = b.r.find(x => x[1] === ci);
+      if(!row) continue;
+      const rec = sc?.byId.get(id) || {};
+      const cut = id.lastIndexOf('-');
+      const top = b.r.slice(0, 10).map(x => ({rank: x[0], name: b.corps[x[1]]?.[0] || '', biz: b.corps[x[1]]?.[1] || '', amt: x[2], rate: x[3], note: x[4] || ''}));
+      out.push({id, no: id.slice(0, cut), ord: id.slice(cut + 1), nm: rec.nm || id, org: rec.org, dmd: rec.dmd, sido, sgg: rec.sgg,
+        lic: rec.lic, base: b.base || rec.base, a: rec.a, floor: rec.floor, rng: rec.rng, open: b.date, close: b.date,
+        joined: true, auto: true, myBid: row[2],
+        res: {n: b.r.length, plan: b.plan || rec.plan, base: b.base || rec.base, win: top[0] || null,
+              mine: {rank: row[0], amt: row[2], biz, name: b.corps[ci][0]}, top, xs: b.r.map(x => x[2])}});
+    }
+  }
+  return out.sort((x, y) => (y.open || '').localeCompare(x.open || '')).slice(0, 200);
+}
+
+/** 공고번호로 참여 공고 추가: 진행중·실시간·수집 데이터에서 정보를 찾고, 개찰됐으면 결과까지 조회 */
+async function addJoinedByNo(text){
+  const m = String(text).trim().toUpperCase().match(/^([A-Z0-9]+?)(?:-(\d{1,3}))?$/);
+  if(!m) throw new Error('공고번호 형식을 확인하세요 (예: R26BK01735101-000)');
+  const no = m[1], ord = (m[2] || '000').padStart(3, '0'), id = `${no}-${ord}`;
+  let info = Data.bids?.find(b => b.no === no) || Live.items.find(b => b.no === no);
+  if(!info) for(const s of Object.values(Data.scsbid)){ const r = s.byId.get(id) || s.recs.find(r => r.no === no); if(r){ info = r; break; } }
+  const w = {...(info ? pickNotice(info) : {}), id, no, ord, nm: info?.nm || id, joined: true, savedAt: new Date().toISOString()};
+  if(info?.date && !w.open) w.open = info.date;
+  if(apiKey()){
+    try{
+      const res = await fetchOpeningResult(w);
+      if(res){ w.res = res; w.myBid = res.mine?.amt || null; if(!w.open) w.open = new Date().toISOString().slice(0, 10); }
+      w.resTried = new Date().toISOString();
+    }catch(e){ console.warn(e); }
+  }
+  await WatchStore.save(w);
+  return w;
+}
+
 async function renderWatch(){
   const el = $('watchList');
   let items = await WatchStore.list();
-  if(!items.length){ el.innerHTML = '<div class="empty">아직 저장한 관심공고가 없습니다. 입찰공고 탭에서 ☆를 눌러 보세요.</div>'; return; }
   el.innerHTML = loadingHtml();
   const sidos = [...new Set(items.map(i => i.sido).filter(s => s && Data.hasScsbid(s)))];
   try{
@@ -1593,15 +1642,35 @@ async function renderWatch(){
       items = await WatchStore.list();
     }
   }
+  const joinedMode = watchMode === 'joined';
+  const auto = joinedMode ? await findMyBidsInOpening(new Set(items.map(w => w.id))) : [];
+  const pseudo = new Map(auto.map(w => [w.id, w]));
+  const list = joinedMode ? [...items.filter(isJoined), ...auto] : items;
+  const modeSeg = `<div class="seg mode-seg" id="wMode">
+      <button data-v="watch" class="${joinedMode ? '' : 'on'}" type="button">⭐ 관심공고 (${fmtNum(items.length)})</button>
+      <button data-v="joined" class="${joinedMode ? 'on' : ''}" type="button">📝 참여한 공고 (${fmtNum(items.filter(isJoined).length + auto.length)})</button>
+    </div>`;
+  const hasBiz = !!Company.get().biz;
+  const joinForm = joinedMode ? `<div class="join-add">
+      <input type="text" id="joinNo" placeholder="공고번호로 추가 (예: R26BK01735101-000)" autocomplete="off">
+      <button class="btn sm" id="joinAdd" type="button">참여 공고 추가</button>
+      <span class="meta-line" id="joinMsg" style="margin:0;"></span>
+    </div>
+    <div class="meta-line" style="margin:0 0 12px;">${hasBiz ? `사업자번호로 <b>강원 개찰 상세</b>에서 우리가 넣은 공고를 자동으로 찾고(${fmtNum(auto.length)}건), 개찰되면 조달청에서 순위·금액을 바로 가져옵니다.` : '설정 → 우리 업체에 <b>사업자번호</b>를 넣으면 우리 순위·금액을 자동으로 찾고, 수집된 개찰 상세에서 참여 공고도 자동으로 모읍니다.'} 조달청 API에 "사업자번호로 찾기"가 없어서, 다른 지역 공고는 공고번호로 추가하거나 ☆ 저장 뒤 "참여 표시"를 눌러 주세요.</div>` : '';
+  if(!list.length){
+    el.innerHTML = modeSeg + joinForm + `<div class="empty">${joinedMode ? '아직 참여한 공고가 없습니다. 공고번호로 추가하거나, 관심공고에서 "참여 표시"를 누르세요.' : '아직 저장한 관심공고가 없습니다. 입찰공고 탭에서 ☆를 눌러 보세요.'}</div>`;
+    bindWatch(el, pseudo);
+    return;
+  }
   const findRec = (w) => {
     const s = Data.scsbid[w.sido];
     if(!s) return null;
     return s.byId.get(w.id) || s.recs.find(r => r.no === w.no) || null;
   };
   const judged = [];
-  let nBid = 0, nOpen = 0, nFirst = 0;
-  const cards = items.map(w => {
-    // 판정 재료: 조달청 실시간 결과(res) 우선, 없으면 수집된 낙찰 기록
+  let nBid = 0, nOpen = 0, nFirst = 0; const ranks = [];
+  const cards = list.map(w => {
+    // 판정 재료: 조달청 실시간/개찰 상세 결과(res) 우선, 없으면 수집된 낙찰 기록
     const r0 = findRec(w);
     const res = w.res?.plan ? w.res : null;
     const r = res ? {base: res.base || r0?.base || w.base, plan: res.plan, amt: res.win?.amt || r0?.amt, a: w.a ?? r0?.a, floor: w.floor || r0?.floor,
@@ -1612,40 +1681,45 @@ async function renderWatch(){
     const dd = ddayLabel(w.close);
     const mine = r ? judgeBid(w.myBid, r, op) : null;
     const rec = r ? judgeBid(w.pred?.bid, r, op) : null;
-    if(w.myBid || w.res?.mine) nBid++;
+    if(isJoined(w)) nBid++;
     if(r) nOpen++;
-    if(w.res?.mine?.rank === 1) nFirst++;
+    const rank = w.res?.mine?.rank || mine?.rank;
+    if(rank) ranks.push(rank);
+    if(rank === 1) nFirst++;
     if(mine) judged.push(mine);
     let body;
     if(r && r.sr != null){
-      const rank = w.res?.mine?.rank || mine?.rank;
       body = `<div class="stat-grid" style="margin-top:8px;">
-          <div class="stat"><div class="t">실제 사정율</div><div class="v">${pct(r.sr)}</div></div>
+          <div class="stat ${rank === 1 ? 'hl' : ''}"><div class="t">우리 순위</div><div class="v">${rank ? fmtNum(rank) + '위' + (r.cnt ? ` <small class="faint">/ ${fmtNum(r.cnt)}곳</small>` : '') : w.myBid ? '-' : '기록 없음'}</div></div>
           <div class="stat"><div class="t">1위</div><div class="v" style="font-size:14px;">${esc(r.win || '-')}<br>${won(r.amt)}</div></div>
-          <div class="stat"><div class="t">참가</div><div class="v">${r.cnt ? fmtNum(r.cnt) + '곳' : '-'}</div></div>
-          <div class="stat ${rank === 1 ? 'hl' : ''}"><div class="t">우리 순위</div><div class="v">${rank ? fmtNum(rank) + '위' : w.myBid ? '-' : '기록 없음'}</div></div>
+          <div class="stat"><div class="t">실제 사정율</div><div class="v">${pct(r.sr)}</div></div>
+          <div class="stat"><div class="t">예정가격</div><div class="v" style="font-size:14px;">${won(r.plan)}</div></div>
         </div>
-        <div class="meta-line">개찰 ${esc(r.date || '')} · 예정가격 ${won(r.plan)}${res ? ' · 조달청 실시간 조회' : ' · 수집 데이터'}</div>
-        ${mine ? `<div class="verdict ${mine.cls}"><b>내 투찰 ${won(w.myBid)}</b> → ${mine.label}${rank ? ` · ${fmtNum(rank)}순위` : ''} · ${mine.gapText} <span class="faint">(투찰 사정률 ${mine.x.toFixed(3)}%)</span></div>` : ''}
+        <div class="meta-line">개찰 ${esc(r.date || '')}${res ? (w.auto ? ' · 수집된 개찰 상세' : ' · 조달청 실시간 조회') : ' · 수집 데이터'}</div>
+        ${mine ? `<div class="verdict ${mine.cls}"><b>내 투찰 ${won(w.myBid)}</b> → ${rank === 1 ? '🏆 1순위' : mine.label}${rank && rank !== 1 ? ` · ${fmtNum(rank)}순위` : ''} · ${mine.gapText} <span class="faint">(투찰 사정률 ${mine.x.toFixed(3)}%)</span></div>` : ''}
         ${rec ? `<div class="verdict ${rec.cls} soft">앱 추천 ${won(w.pred.bid)} → ${rec.label} · ${rec.gapText}</div>` : ''}
         ${res?.top?.length ? `<details class="ranks"><summary>개찰 순위 상위 ${res.top.length}곳 보기</summary><div class="table-wrap" style="max-height:none;margin-top:6px;"><table>
           <thead><tr><th>순위</th><th>업체</th><th class="num">투찰금액</th><th class="num">투찰률</th><th>비고</th></tr></thead>
           <tbody>${res.top.map(x => `<tr${res.mine && x.biz === res.mine.biz ? ' class="hl-row"' : ''}><td>${x.rank || '-'}</td><td>${esc(x.name)}</td><td class="num">${won(x.amt)}</td><td class="num">${x.rate != null ? pct(x.rate) : '-'}</td><td>${esc(x.note)}</td></tr>`).join('')}</tbody></table></div></details>` : ''}`;
     }else{
-      const st = opened(w) ? (apiKey() ? '개찰 시각이 지났지만 아직 결과가 올라오지 않았습니다' : '개찰됨 · 설정에서 서비스키를 넣으면 결과를 바로 조회합니다') : `개찰 전 · ${w.open ? '개찰 ' + esc(w.open.slice(5, 16).replace('-', '/')) : ''}`;
+      const st = opened(w) ? (apiKey() ? '개찰 시각이 지났지만 아직 결과가 올라오지 않았습니다' : '개찰됨 · 설정에서 서비스키를 넣으면 결과를 바로 조회합니다') : `개찰 전${w.open ? ' · 개찰 ' + esc(w.open.slice(5, 16).replace('-', '/')) : ''}`;
       body = `<div class="meta-line">${st} · 앱 추천 ${w.pred?.bid ? won(w.pred.bid) : '없음'}</div>`;
     }
+    const star = w.auto
+      ? `<button class="btn sm ghost" data-join-save="${esc(w.id)}" type="button">＋ 저장</button>`
+      : `<button class="star on" data-unwatch="${esc(w.id)}" title="관심 해제" type="button">★</button>`;
     return `<div class="bid">
       <div class="bid-top"><div>
-        <div class="bid-title">${w.myBid || w.res?.mine ? '<span class="badge blue" style="margin-right:4px;">입찰함</span>' : ''}${esc(w.nm)}</div>
-        <div class="bid-sub">${esc(w.org || '')} · ${esc([w.sido, w.sgg].filter(Boolean).join(' '))} · <span class="dday ${dd.urgent ? 'urgent' : ''}">${esc(dd.text)}</span></div>
-      </div><button class="star on" data-unwatch="${esc(w.id)}" title="관심 해제" type="button">★</button></div>
+        <div class="bid-title">${isJoined(w) ? '<span class="badge blue" style="margin-right:4px;">참여</span>' : ''}${esc(w.nm)}</div>
+        <div class="bid-sub">${esc(w.org || '')}${w.sido ? ' · ' + esc([w.sido, w.sgg].filter(Boolean).join(' ')) : ''} · ${esc(w.no ? `${w.no}-${w.ord}` : '')}${w.close ? ` · <span class="dday ${dd.urgent ? 'urgent' : ''}">${esc(dd.text)}</span>` : ''}</div>
+      </div>${star}</div>
       ${body}
       <div class="mybid-row">
         <label>내가 넣은 투찰금액</label>
         <input type="text" class="money" inputmode="numeric" autocomplete="off" data-mybid-in="${esc(w.id)}" value="${moneyText(w.myBid)}" placeholder="${w.pred?.bid ? '예: ' + moneyText(w.pred.bid) : '원 단위'}">
         <button class="btn sm ghost" data-mybid-save="${esc(w.id)}" type="button">기록</button>
         ${opened(w) && apiKey() ? `<button class="btn sm line" data-res-fetch="${esc(w.id)}" type="button">개찰 결과 조회</button>` : ''}
+        ${!w.auto ? `<button class="btn sm line" data-join-toggle="${esc(w.id)}" type="button">${w.joined ? '참여 표시 해제' : '참여 표시'}</button>` : ''}
       </div>
       <div class="bid-actions">${findNotice(w.id) ? `<button class="btn sm" data-predict="${esc(w.id)}" type="button">이 공고로 예측</button>` : ''}
         ${w.url ? `<a class="btn line sm" href="${esc(w.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}</div>
@@ -1654,11 +1728,15 @@ async function renderWatch(){
   const cal = calibrate(judged);
   LS.set('myCal', cal);
   const cnt = (c) => judged.filter(j => j.cls === c).length;
-  const head = `<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));">
-      <div class="kpi" style="cursor:default;"><span class="t">관심공고</span><span class="v">${fmtNum(items.length)}</span></div>
-      <div class="kpi" style="cursor:default;"><span class="t">입찰함</span><span class="v">${fmtNum(nBid)}</span></div>
+  const head = joinedMode ? `<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));">
+      <div class="kpi" style="cursor:default;"><span class="t">참여</span><span class="v">${fmtNum(list.length)}</span></div>
       <div class="kpi" style="cursor:default;"><span class="t">개찰됨</span><span class="v">${fmtNum(nOpen)}</span></div>
-      <div class="kpi ${nFirst ? 'on' : ''}" style="cursor:default;"><span class="t">1순위</span><span class="v">${fmtNum(nFirst || cnt('win'))}</span></div>
+      <div class="kpi ${nFirst ? 'on' : ''}" style="cursor:default;"><span class="t">🏆 1순위</span><span class="v">${fmtNum(nFirst)}</span></div>
+      <div class="kpi" style="cursor:default;"><span class="t">평균 순위</span><span class="v">${ranks.length ? fmtNum(stats(ranks).mean, 1) + '위' : '-'}</span></div>
+    </div>` : `<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));">
+      <div class="kpi" style="cursor:default;"><span class="t">관심공고</span><span class="v">${fmtNum(items.length)}</span></div>
+      <div class="kpi" style="cursor:default;"><span class="t">참여</span><span class="v">${fmtNum(nBid)}</span></div>
+      <div class="kpi" style="cursor:default;"><span class="t">개찰됨</span><span class="v">${fmtNum(nOpen)}</span></div>
     </div>`;
   const summary = cal ? `<div class="card-inner my-score">
       <h3 style="margin-top:0;">내 투찰 성적 (개찰된 ${fmtNum(cal.n)}건)${sampleBadge(cal.n)}</h3>
@@ -1669,23 +1747,54 @@ async function renderWatch(){
         <div class="stat hl"><div class="t">다음 투찰 보정</div><div class="v">${cal.shift >= 0 ? '+' : ''}${cal.shift.toFixed(3)}%p</div></div>
       </div>
       <div class="meta-line">내 투찰 사정률을 ${cal.shift >= 0 ? '+' : ''}${cal.shift.toFixed(3)}%p 옮겼다면 낙찰권이 ${cal.wins}건 → ${cal.best}건이었습니다. ${cnt('high') > cnt('below') ? '대체로 1위보다 높게 쓰는 편입니다.' : cnt('below') > cnt('high') ? '대체로 하한 미달이 많은 편입니다.' : ''} 표본이 적을수록 우연일 수 있습니다.</div>
-    </div>` : `<div class="meta-line" style="margin-bottom:10px;">입찰한 공고에 넣은 금액을 기록하세요. ${Company.get().biz ? '사업자번호가 설정돼 있어 개찰되면 우리 순위와 금액을 자동으로 찾습니다.' : '설정 → 우리 업체에 사업자번호를 넣으면 개찰 뒤 우리 순위와 금액을 자동으로 찾습니다.'}</div>`;
-  el.innerHTML = head + summary + `<div class="bid-list" style="margin-top:0;">${cards.join('')}</div>`;
+    </div>` : '';
+  el.innerHTML = modeSeg + joinForm + head + summary + `<div class="bid-list" style="margin-top:0;">${cards.join('')}</div>`;
+  bindWatch(el, pseudo);
+}
+
+function bindWatch(el, pseudo){
+  const getW = async (id) => (await WatchStore.list()).find(x => x.id === id) || pseudo.get(id);
+  $('wMode')?.addEventListener('click', (e) => {
+    const v = e.target.closest('[data-v]')?.dataset.v; if(!v) return;
+    watchMode = v; LS.set('watchMode', v); renderWatch();
+  });
+  $('joinAdd')?.addEventListener('click', async () => {
+    const msg = $('joinMsg');
+    msg.innerHTML = loadingHtml('추가하고 결과 조회 중…');
+    try{
+      const w = await addJoinedByNo($('joinNo').value);
+      msg.textContent = w.res ? '추가됨 · 개찰 결과를 가져왔습니다' : `추가됨${apiKey() ? ' · 아직 개찰 결과가 없습니다' : ' · 서비스키를 넣으면 결과를 조회합니다'}`;
+      setTimeout(renderWatch, 600);
+    }catch(e){ msg.textContent = e.message; }
+  });
   el.querySelectorAll('[data-mybid-save]').forEach(btn => btn.addEventListener('click', async () => {
     const id = btn.dataset.mybidSave;
     const inp = el.querySelector(`[data-mybid-in="${CSS.escape(id)}"]`);
-    const w = (await WatchStore.list()).find(x => x.id === id);
+    const w = await getW(id);
     if(!w) return;
-    await WatchStore.save({...w, myBid: numOf(inp) || null});
+    const {auto, ...rest} = w;
+    await WatchStore.save({...rest, myBid: numOf(inp) || null});
+    renderWatch();
+  }));
+  el.querySelectorAll('[data-join-save]').forEach(btn => btn.addEventListener('click', async () => {
+    const w = pseudo.get(btn.dataset.joinSave); if(!w) return;
+    const {auto, ...rest} = w;
+    await WatchStore.save({...rest, savedAt: new Date().toISOString()});
+    renderWatch();
+  }));
+  el.querySelectorAll('[data-join-toggle]').forEach(btn => btn.addEventListener('click', async () => {
+    const w = await getW(btn.dataset.joinToggle); if(!w) return;
+    await WatchStore.save({...w, joined: !w.joined});
     renderWatch();
   }));
   el.querySelectorAll('[data-res-fetch]').forEach(btn => btn.addEventListener('click', async () => {
-    const w = (await WatchStore.list()).find(x => x.id === btn.dataset.resFetch);
+    const w = await getW(btn.dataset.resFetch);
     if(!w) return;
     btn.disabled = true; btn.textContent = '조회 중…';
     try{
       const res = await fetchOpeningResult(w);
-      await WatchStore.save({...w, resTried: new Date().toISOString(), ...(res ? {res, myBid: w.myBid || res.mine?.amt || null} : {})});
+      const {auto, ...rest} = w;
+      await WatchStore.save({...rest, resTried: new Date().toISOString(), ...(res ? {res, myBid: w.myBid || res.mine?.amt || null} : {})});
       if(!res){ btn.textContent = '아직 결과 없음'; return; }
     }catch(e){ btn.textContent = '조회 실패'; btn.title = e.message; return; }
     renderWatch();

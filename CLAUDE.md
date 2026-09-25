@@ -149,6 +149,7 @@ data/                 수집 결과 (아래)
 - **추천은 전국 모델 우선**(`modelPredict` → `recFromModel`): 공고의 예상 참가수(`predictLnN`, 입력값이 있으면 그 값)와 예가범위(모르면 ±3%)로 `model.curves` 에서 곡선을 골라 추천 x·안전 범위·낙찰확률. 모델이 없으면 지역 곡선(`recFromLocal`). 예측 화면 파란 카드에 "✅ 추천 체크"(경쟁 규모·추천 위치·금액·입력 누락·순공사원가·기록), 배지 = 역검증 요약(`valBadge`). 설정 탭 "역검증" = `renderValidation`.
 - **우리 업체**(설정, `Company` → `localStorage bp.company` {sido, sgg, lics[], biz}): `eligibility(b)` = 참가가능지역(rgn, 비면 제한 없음; "강원특별자치도"는 시·도 전체, "… 춘천시"는 그 시·군만) + 면허(겹치면 가능, 공고 면허 정보 없으면 '확인 필요'). 입찰공고 두 모드에 "참가 가능한 공고만"(`bElig`/`lElig`), 카드 태그 `eligTag`.
 - **개찰 결과 실시간 조회**(관심공고): 개찰 시각이 지난 공고는 `fetchOpeningResult` 로 낙찰정보서비스 `getOpengResultListInfoOpengCompt`(순위) + `…CnstwkPreparPcDetail`(예정가격)을 브라우저에서 직접 조회(한 번에 5건, 결과 없으면 1시간 뒤). 사업자번호가 맞는 행 = 우리 순위·투찰금액(myBid 자동). 결과는 WatchStore 항목 `res` {n, plan, base, win, mine, top(10), xs(전체 금액)}.
+- **참여한 공고**(관심공고 탭 안 전환 `watchMode` 'watch'|'joined', 하단 탭 5개 유지): 참여 = WatchStore 항목의 `joined`·`myBid`·`res.mine`. 사업자번호가 있으면 `findMyBidsInOpening` 이 수집된 개찰 상세(regions.json 지역)에서 우리 행을 찾아 자동 목록(저장 전 가상 항목, "＋ 저장"). `addJoinedByNo` = 공고번호로 추가 후 바로 개찰 결과 조회. 조달청 API에는 사업자번호로 공고를 찾는 기능이 없다.
 - 금액 입력칸은 `input.money`(text) — 입력 중 쉼표, 읽기 `numOf(el)`, 쓰기 `setMoney(el, v)`.
 - 예측분석 "참고 분포 조건"(시·군·면허·체크박스)은 추천 금액과 무관: 참고 사정율 분포·근거 공고·곡선의 옅은 막대·계산기 안내에만 쓰인다. 발주기관 예가 구간확률·시뮬레이터는 "예가 분석 도구"로 접어 둠.
 - 공고 목록 간단 예측(`quickPredict`): 모델이 있으면 지역 파일 없이도 추천·예상 참가·낙찰확률(정렬에 사용). 없으면 `quickPredictLocal`: 같은 시도 최근 24개월 → 면허 겹침(10건 이상일 때) → 예가범위 같음(30건 이상일 때). 조건별로 결과 캐시.
