@@ -1,0 +1,62 @@
+name: 데이터 수집
+
+on:
+  schedule:
+    - cron: "0 17 * * *"   # 매일 02:00 KST
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "과거 일괄 수집 시작일 (YYYYMMDD). 비우면 기본값(3년 전)부터"
+        required: false
+        default: ""
+      reset_backfill:
+        description: "과거 수집을 오늘부터 처음부터 다시"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 의존성 설치
+        run: pip install requests
+
+      - name: 수집
+        env:
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+          START_DATE: ${{ inputs.start_date }}
+          RESET_BACKFILL: ${{ inputs.reset_backfill }}
+          MAX_MINUTES: "300"
+        run: python scripts/collect.py
+
+      - name: 변경 있으면 커밋
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A data
+          # meta.json 만 바뀐 경우(호출 횟수 등)는 커밋하지 않음
+          if git diff --cached --name-only | grep -v '^data/meta.json$' | grep -q .; then
+            git commit -m "data: 수집 $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M')"
+            for i in 1 2 3 4; do
+              git pull --rebase -X theirs origin "${GITHUB_REF_NAME}" && git push && break
+              sleep $((i * 5))
+            done
+          else
+            echo "변경 없음"
+          fi

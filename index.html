@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>낙찰가 예측 도우미</title>
+<meta name="description" content="나라장터 공사 입찰 과거 낙찰 데이터로 사정율·투찰금액을 추정하는 참고용 도구">
+<meta name="theme-color" content="#2F6FED">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="낙찰예측">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="update-bar" id="updateBar" hidden>
+  새 버전이 있습니다 <button id="updateBtn" type="button">새로고침</button>
+</div>
+
+<nav class="nav" id="nav">
+  <div class="brand"><span class="dot"></span>낙찰가 예측 도우미</div>
+  <button class="nav-item" data-tab="bids" type="button"><span class="ico">📋</span><span>입찰공고</span><span class="nav-badge" id="newBadge" hidden></span></button>
+  <button class="nav-item" data-tab="predict" type="button"><span class="ico">🔍</span><span>예측분석</span></button>
+  <button class="nav-item" data-tab="watch" type="button"><span class="ico">⭐</span><span>관심공고</span></button>
+  <button class="nav-item" data-tab="stats" type="button"><span class="ico">📊</span><span>통계</span></button>
+  <button class="nav-item" data-tab="settings" type="button"><span class="ico">⚙️</span><span>설정</span></button>
+</nav>
+
+<main class="main">
+  <div class="topbar">
+    <h1 id="pageTitle">입찰공고</h1>
+    <div class="date" id="todayLabel"></div>
+  </div>
+
+  <!-- ===================== 입찰공고 ===================== -->
+  <section id="view-bids" hidden>
+    <div class="card">
+      <h2>진행중 입찰공고</h2>
+      <p class="sub">시도 → 시·군 → 면허 → 공고명 순으로 좁혀 보세요. 마감 임박 순으로 보여줍니다.</p>
+      <div class="inline-inputs">
+        <div><label for="bSido">시·도</label><select id="bSido"></select></div>
+        <div><label for="bSgg">시·군·구</label><select id="bSgg"></select></div>
+        <div><label for="bLic">면허</label><select id="bLic"></select></div>
+        <div><label for="bQuery">공고명 검색</label><input type="search" id="bQuery" placeholder="예: 도로, 배수로"></div>
+      </div>
+      <div class="meta-line" id="bidsInfo"></div>
+      <div class="bid-list" id="bidsList"></div>
+      <div class="more"><button class="btn line sm" id="bidsMore" type="button" hidden>더 보기</button></div>
+    </div>
+  </section>
+
+  <!-- ===================== 예측분석 ===================== -->
+  <section id="view-predict" hidden>
+    <p class="disclaimer">⚠️ 모든 예측은 과거 데이터 통계에 따른 <b>참고용이며 낙찰을 보장하지 않습니다.</b> 표본이 30건 미만이면 "참고 부족"으로 표시합니다.</p>
+
+    <div class="card" id="pBidCard" hidden></div>
+
+    <div class="card">
+      <h2>지역 선택</h2>
+      <p class="sub">시·도를 고르면 해당 지역 낙찰 데이터만 불러옵니다. 시·군을 고르면 더 좁힙니다. (복수 선택)</p>
+      <div class="chip-group" id="pSidoChips"></div>
+      <div class="chip-group" id="pSggChips" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>면허 선택</h2>
+      <p class="sub">공고의 면허 제한 기준입니다. 비우면 전체. (복수 선택)</p>
+      <div class="chip-group" id="pLicChips"></div>
+    </div>
+
+    <div class="card">
+      <h2>예측에 반영할 항목</h2>
+      <p class="sub">체크한 항목만 이번 예측에 반영됩니다.</p>
+      <div class="field-list">
+        <div class="field-item">
+          <input type="checkbox" id="fBase">
+          <div><label for="fBase">기초금액 유사도 (±40%)</label><div class="desc">아래 기초금액과 비슷한 규모의 공고만 반영</div></div>
+        </div>
+        <div class="field-item">
+          <input type="checkbox" id="fRecent" checked>
+          <div><label for="fRecent">최근 12개월만</label><div class="desc">개찰일이 최근 12개월 이내인 공고만 반영</div></div>
+        </div>
+        <div class="field-item">
+          <input type="checkbox" id="fCnt">
+          <div><label for="fCnt">참가업체 수 유사도 (±2)</label><div class="desc">아래 참가업체 수와 ±2개사 이내인 공고만 반영</div></div>
+        </div>
+      </div>
+      <div class="inline-inputs">
+        <div><label for="inBase">이번 공고 기초금액(원)</label><input type="number" id="inBase" inputmode="numeric" placeholder="예: 300000000"></div>
+        <div><label for="inCnt">예상 참가업체 수</label><input type="number" id="inCnt" inputmode="numeric" placeholder="예: 150"></div>
+      </div>
+      <div class="btn-row" style="margin-top:16px;">
+        <button class="btn" id="runPredict" type="button">예측 실행</button>
+        <span class="meta-line" id="matchCount"></span>
+      </div>
+    </div>
+
+    <div id="predictResult"></div>
+
+    <div class="card">
+      <h2>투찰가 계산기</h2>
+      <p class="sub">투찰금액 = (예정가격 − A값) × 낙찰하한율 + A값. 예측 실행 시 적용 사정율이 자동으로 채워집니다.</p>
+      <div class="inline-inputs">
+        <div><label for="cBase">기초금액(원)</label><input type="number" id="cBase" inputmode="numeric"></div>
+        <div><label for="cA">A값(원, 없으면 0)</label><input type="number" id="cA" inputmode="numeric" placeholder="0"></div>
+        <div><label for="cFloor">낙찰하한율(%)</label><input type="number" id="cFloor" step="0.001" value="87.745"></div>
+        <div><label for="cRate">적용 사정율(%)</label><input type="number" id="cRate" step="0.0001" placeholder="예: 100.12"></div>
+        <div><label for="cNet">순공사원가(원, 선택)</label><input type="number" id="cNet" inputmode="numeric"></div>
+        <div><label for="cManual">직접 투찰금액(원, 선택)</label><input type="number" id="cManual" inputmode="numeric" placeholder="계산값 대신 검토할 금액"></div>
+      </div>
+      <div id="calcResult" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>발주기관 예가 구간확률</h2>
+          <p class="sub">같은 기관의 과거 복수예비가격 15개(기초금액 대비 %)로 4개 조합(1,365가지) 평균을 계산해, 사정율 0.1% 구간별 확률을 보여줍니다.</p>
+        </div>
+      </div>
+      <div class="inline-inputs" style="margin-top:0;">
+        <div><label for="orgSido">시·도</label><select id="orgSido"></select></div>
+        <div style="flex:2;"><label for="orgSel">발주기관</label><select id="orgSel"></select></div>
+      </div>
+      <div id="orgResult" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>복수예비가격 시뮬레이터</h2>
+      <p class="sub">기초금액 ±예가범위 안에서 예비가격 15개를 무작위로 만들고 4개를 뽑아 예정가격을 정하는 구조를 재현합니다. <b>참고용이며 실제 추첨 결과를 예측하지 않습니다.</b></p>
+      <div class="inline-inputs">
+        <div><label for="sRange">예가범위(±%)</label><input type="number" id="sRange" value="2" step="0.1"></div>
+        <div><label for="sRuns">반복 횟수</label><input type="number" id="sRuns" value="5000" step="1000"></div>
+      </div>
+      <div class="btn-row" style="margin-top:12px;"><button class="btn ghost" id="simRun" type="button">시뮬레이션</button></div>
+      <div id="simResult" style="margin-top:12px;"></div>
+    </div>
+  </section>
+
+  <!-- ===================== 관심공고 ===================== -->
+  <section id="view-watch" hidden>
+    <div class="card">
+      <h2>관심공고</h2>
+      <p class="sub">입찰공고에서 ☆를 눌러 저장한 공고입니다. 개찰되면 내 예측과 실제 사정율·1위 투찰률을 비교합니다.</p>
+      <div id="watchList"></div>
+    </div>
+  </section>
+
+  <!-- ===================== 통계 ===================== -->
+  <section id="view-stats" hidden>
+    <div class="card">
+      <h2>조회 조건</h2>
+      <div class="inline-inputs" style="margin-top:0;">
+        <div><label for="sSido">시·도</label><select id="sSido"></select></div>
+        <div><label for="sLic">면허</label><select id="sLic"></select></div>
+        <div><label for="sPeriod">기간</label>
+          <select id="sPeriod"><option value="12">최근 12개월</option><option value="24">최근 24개월</option><option value="0">전체</option></select>
+        </div>
+      </div>
+    </div>
+    <div id="statsBody"></div>
+  </section>
+
+  <!-- ===================== 설정 ===================== -->
+  <section id="view-settings" hidden>
+    <div class="card">
+      <h2>데이터 현황</h2>
+      <div id="setData"></div>
+    </div>
+    <div class="card">
+      <h2>상세 수집 진행 상황</h2>
+      <p class="sub">개찰 전체 순위·복수예가 상세는 공고 1건마다 API를 호출해야 해서 하루 한도 안에서 나눠 수집합니다.</p>
+      <div id="setDetail"></div>
+    </div>
+    <div class="card">
+      <h2>백테스트</h2>
+      <p class="sub">최근 N건을 각 개찰일 이전 데이터만으로 예측했을 때, 추천 투찰가가 낙찰하한가 이상이면서 실제 1위(낙찰금액)보다 낮았던 비율과 사정율 평균 오차입니다.</p>
+      <div class="inline-inputs" style="margin-top:0;">
+        <div><label for="btSido">시·도</label><select id="btSido"></select></div>
+        <div><label for="btN">최근 N건</label><input type="number" id="btN" value="100" min="10" step="10"></div>
+      </div>
+      <div class="btn-row" style="margin-top:12px;"><button class="btn ghost" id="btRun" type="button">백테스트 실행</button></div>
+      <div id="btResult" style="margin-top:12px;"></div>
+    </div>
+    <div class="card">
+      <h2>앱</h2>
+      <dl class="kv">
+        <dt>앱 버전</dt><dd id="appVersion">-</dd>
+        <dt>화면 테마</dt>
+        <dd><div class="seg" id="themeSeg"><button data-v="auto" type="button">시스템</button><button data-v="light" type="button">라이트</button><button data-v="dark" type="button">다크</button></div></dd>
+      </dl>
+      <div class="btn-row" style="margin-top:14px;"><button class="btn line sm" id="clearCache" type="button">데이터 캐시 비우기</button></div>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
