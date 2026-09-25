@@ -461,7 +461,7 @@ function valBadge(){
 }
 /** 예상 참가수가 속한 역검증 구간 */
 const valSegment = (nExp) => Model.m?.validation?.segments?.find(s => nExp >= s.k[0] && (s.k[1] == null || nExp < s.k[1]));
-/** 역검증(표본외) 기준 낙찰확률 = 비슷한 공고의 평균 업체 확률(1/참가수 평균) × 그 경쟁 규모 구간의 역검증 배수.
+/** 역검증(표본외) 기준 낙찰확률 = 비슷한 공고의 공정 기대(1/(참가수+1) 평균 — 우리가 들어가면 참가자가 하나 늘어난다) × 그 경쟁 규모 구간의 역검증 배수.
  *  곡선 최대값(e.p)은 과거 데이터에 맞춘 값이라 새 공고에서는 부풀려져 있다 */
 function valWinP(random, nExp){
   const s = nExp ? valSegment(nExp) : null;
@@ -807,7 +807,7 @@ function bidCard(b, today){
         <div class="pv"><span>추천 투찰가</span><b>${qp.bid ? won(qp.bid) : '기초금액 미공개'}</b></div>
         ${qp.cnt ? `<div class="pv"><span>예상 참가</span><b>~${fmtNum(qp.cnt)}개사</b></div>` : ''}
       </div>
-      <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.model ? ' · 추천값·낙찰확률은 전국의 경쟁 규모가 비슷한 공고 기준 · ×는 평균 업체 대비' : qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}${qp.value ? ` · 기대 수주액 ${eok(qp.value)}` : ''}</div>`;
+      <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.model ? ' · 추천값·낙찰확률은 전국의 경쟁 규모가 비슷한 공고 기준 · ×는 공정 기대(1÷(참가+1)) 대비' : qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}${qp.value ? ` · 기대 수주액 ${eok(qp.value)}` : ''}</div>`;
   }else if(b.sido && !Data.hasScsbid(b.sido)){
     pred = '<div class="b-note">이 지역 낙찰 데이터 없음</div>';
   }
@@ -1548,8 +1548,8 @@ async function runPredict(){
     const level = !rec.nExp ? '' : rec.nExp < 20 ? '<b style="color:var(--ok)">경쟁 적음 — 유리</b>' : rec.nExp < 80 ? '보통' : '<b style="color:var(--warn)">경쟁 많음</b>';
     const check = [
       rec.nExp ? `<li class="ok"><b>경쟁 규모</b>: 예상 참가 <b>~${fmtNum(rec.nExp)}곳</b>${rec.byInput ? '(직접 입력)' : ''} → ${level}${seg ? ` · 이런 공고의 역검증 낙찰률 <b>${(seg.near / seg.n * 100).toFixed(1)}%</b> (${fmtNum(seg.n)}건)` : ''}</li>` : '',
-      `<li class="ok"><b>추천 위치</b>: ${rec.src === 'model' ? '경쟁 규모가 비슷한 전국 과거 공고에서 가장 자주 1순위였던 투찰 사정률' : '이 지역 과거 공고에서 가장 자주 1순위였던 투찰 사정률'} <b>${pct(rec.x, 3)}</b>${T?.n ? ` · 새 달 역검증 ${fmtNum(T.n)}건에서 <b>${fmtNum(T.near)}건</b> 낙찰 (평균 사정율 방식 ${fmtNum(T.mean)}건 · 평균 업체 기대 ${fmtNum(Math.round(T.rand))}건)` : ''}</li>`,
-      rec.sb != null ? `<li class="ok"><b>하한 미달은 정상</b>: 비슷한 과거 공고에서 이 값은 <b>${Math.round(rec.sb * 100)}%</b>가 낙찰하한가 미달이었습니다. 미달이 잦아도 1순위가 될 확률은 위 예상 낙찰확률 그대로입니다 — 하한 이상에 넣어도 1순위가 아니면 똑같이 떨어지고, 사정율보다 한참 높게 넣는 값(예: 100.4~100.8%)은 역검증에서 평균 업체보다 18~34% 덜 낙찰됐습니다.</li>` : '',
+      `<li class="ok"><b>추천 위치</b>: ${rec.src === 'model' ? '경쟁 규모가 비슷한 전국 과거 공고에서 가장 자주 1순위였던 투찰 사정률' : '이 지역 과거 공고에서 가장 자주 1순위였던 투찰 사정률'} <b>${pct(rec.x, 3)}</b>${T?.n ? ` · 새 달 역검증 ${fmtNum(T.n)}건에서 <b>${fmtNum(T.near)}건</b> 낙찰 (평균 사정율 방식 ${fmtNum(T.mean)}건 · 공정 기대 ${fmtNum(Math.round(T.rand))}건)` : ''}</li>`,
+      rec.sb != null ? `<li class="ok"><b>하한 미달은 정상</b>: 비슷한 과거 공고에서 이 값은 <b>${Math.round(rec.sb * 100)}%</b>가 낙찰하한가 미달이었습니다. 미달이 잦아도 1순위가 될 확률은 위 예상 낙찰확률 그대로입니다 — 하한 이상에 넣어도 1순위가 아니면 똑같이 떨어지고, 사정율보다 한참 높게 넣는 값(예: 100.5~100.8%)은 역검증에서 공정 기대보다 13~27% 덜 낙찰됐습니다.</li>` : '',
       `<li class="ok"><b>금액</b>: ${recAmt ? `<b>${won(recAmt)}</b>을 ` : ''}원 단위까지 그대로. 안전 범위 ${recAmt ? `${won(amtAt(rec.lo))} ~ ${won(amtAt(rec.hi))}` : `${pct(rec.lo, 3)} ~ ${pct(rec.hi, 3)}`} 안이면 확률 비슷</li>`,
       !base ? `<li class="warn"><b>기초금액</b>을 넣어야 추천 금액이 계산됩니다</li>` : '',
       !rec.rngKnown && rec.src === 'model' ? `<li class="warn"><b>예가범위</b>를 모르면 ±3% 기준으로 계산합니다. 공고문에서 확인해 ② 칸에 고르세요</li>` : '',
@@ -1566,7 +1566,7 @@ async function runPredict(){
         </div>
         <div class="hero-stats">
           <div class="stat hl"><div class="t">예상 낙찰확률</div><div class="v">${((vw ? vw.p : rec.p) * 100).toFixed(2)}%</div></div>
-          <div class="stat"><div class="t">평균 업체 대비 ${vw ? '(역검증)' : '(과거)'}</div><div class="v">${lift ? '×' + lift.toFixed(2) : '-'}</div></div>
+          <div class="stat"><div class="t">공정 기대 대비 ${vw ? '(역검증)' : '(과거)'}</div><div class="v">${lift ? '×' + lift.toFixed(2) : '-'}</div></div>
           <div class="stat"><div class="t">예상 참가</div><div class="v">${rec.nExp ? '~' + fmtNum(rec.nExp) + '곳' : '-'}</div></div>
           <div class="stat"><div class="t">평균 사정율로 넣으면</div><div class="v">${(rec.at(meanX) * 100).toFixed(2)}%</div></div>
         </div>
@@ -1587,12 +1587,12 @@ async function runPredict(){
               {pts: rec.pts(), color: 'var(--primary)', label: '과거 낙찰확률', fill: true}],
         {min: vMin, max: vMax, marks: [{x: rec.x, color: 'var(--target)', label: `추천 ${rec.x.toFixed(3)}`}, {x: meanX, color: 'var(--text-faint)', label: `평균 ${meanX.toFixed(2)}`}]})}
       <div class="table-wrap" style="margin-top:10px; max-height:none;"><table>
-        <thead><tr><th>후보</th><th class="num">투찰 사정률</th><th class="num">과거 낙찰확률</th><th class="num">평균 업체 대비</th><th class="num">투찰금액</th><th></th></tr></thead>
+        <thead><tr><th>후보</th><th class="num">투찰 사정률</th><th class="num">과거 낙찰확률</th><th class="num">공정 기대 대비</th><th class="num">투찰금액</th><th></th></tr></thead>
         <tbody>${rec.peaks.map((c, i) => `<tr${i ? '' : ' class="hl-row"'}><td>${i + 1}${i ? '' : ' ★'}</td><td class="num">${pct(c.x, 3)}</td><td class="num">${(c.p * 100).toFixed(2)}%</td>
           <td class="num">${rec.random ? '×' + (c.p / rec.random).toFixed(2) : '-'}</td><td class="num">${base ? won(amtAt(c.x)) : '-'}</td>
           <td><button class="btn sm line" data-use-sr="${c.x}" type="button">적용</button></td></tr>`).join('')}</tbody>
       </table></div>
-      <div class="meta-line">곡선 표본: ${esc(rec.note)} · 곡선 폭 ±${rec.src === 'model' && Model.m?.smooth ? Model.m.smooth : curveSmooth()}%p · 과거 낙찰확률은 과거에 맞춘 값이라 새 공고에선 더 낮음(위 예상 낙찰확률은 역검증 기준) · 평균 업체 = 1 ÷ 참가업체 수</div>
+      <div class="meta-line">곡선 표본: ${esc(rec.note)} · 곡선 폭 ±${rec.src === 'model' && Model.m?.smooth ? Model.m.smooth : curveSmooth()}%p · 과거 낙찰확률은 과거에 맞춘 값이라 새 공고에선 더 낮음(위 예상 낙찰확률은 역검증 기준) · 공정 기대 = 1 ÷ (참가업체 수 + 1), 우리가 들어가면 한 곳 늘어나므로</div>
     </div>`;
 
     // ---- 3) 금액·숫자 팁
@@ -2267,13 +2267,13 @@ function renderValidation(){
   return `<div class="stat-grid">
       <div class="stat hl"><div class="t">추천값(비슷한 경쟁 규모)</div><div class="v">${fmtNum(T.near)}건 · ${rate(T.near, T.n)}</div></div>
       <div class="stat"><div class="t">평균 사정율로 넣었다면</div><div class="v">${fmtNum(T.mean)}건 · ${rate(T.mean, T.n)}</div></div>
-      <div class="stat"><div class="t">평균 업체 기대</div><div class="v">${fmtNum(T.rand, 1)}건</div></div>
+      <div class="stat"><div class="t">공정 기대 (1÷(참가+1))</div><div class="v">${fmtNum(T.rand, 1)}건</div></div>
       <div class="stat"><div class="t">추천값 vs 평균 사정율</div><div class="v" style="color:${d > 0 ? 'var(--ok)' : 'var(--warn)'}">${d >= 0 ? '+' : ''}${d.toFixed(1)}%</div></div>
     </div>
     <div class="meta-line">시험 공고 ${fmtNum(T.n)}건 · 추천값 95% 신뢰구간 ${(T.near_ci[0]*100).toFixed(2)}~${(T.near_ci[1]*100).toFixed(2)}% · 하한 미달 추천값 ${(T.below_near*100).toFixed(0)}% / 평균 ${(T.below_mean*100).toFixed(0)}% · ${esc(V.rule)}</div>
     <h3>달별</h3>
     <div class="table-wrap" style="max-height:none;"><table>
-      <thead><tr><th>시험 달</th><th class="num">공고</th><th class="num">추천값 낙찰</th><th class="num">평균 사정율 낙찰</th><th class="num">평균 업체 기대</th></tr></thead>
+      <thead><tr><th>시험 달</th><th class="num">공고</th><th class="num">추천값 낙찰</th><th class="num">평균 사정율 낙찰</th><th class="num">공정 기대</th></tr></thead>
       <tbody>${V.months.map(m => `<tr><td>${esc(m.m)}</td><td class="num">${fmtNum(m.n)}</td><td class="num"><b>${m.near}</b></td><td class="num">${m.mean}</td><td class="num">${fmtNum(m.rand, 1)}</td></tr>`).join('')}</tbody>
     </table></div>
     <h3>예상 참가 규모별 — 공고 고르기 효과</h3>

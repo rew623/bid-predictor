@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 G0, GS, GN = 97.0, 0.001, 6000
 SMOOTH_K = 200           # ±0.2%p (±0.01 은 봉우리가 우연이라 새 달에서 못 이김)
-LN_BW = 0.4              # 예측 참가수 로그 ±0.4 (×0.67~×1.49)
+LN_BW = 0.4              # 예측 참가수 로그 ±0.4 (×0.67~×1.49). 0.6·0.8 은 시험 기간에 따라 ±2% 엇갈려 잡음 수준(2026-09)
 MIN_POOL = 300
 KEY_STEP = 2             # 곡선 키 = round(10·ln 참가수), 2 간격(로그 0.2)
 KEYS = list(range(10, 81, KEY_STEP))   # 참가수 약 3 ~ 3000
@@ -236,7 +236,7 @@ def summarize(sm, S, N):
     x = lambda i: round(G0 + i * GS, 3)
     qs = np.quantile(S, [0.01, 0.99])
     return {"x": x(bi), "p": round(float(sm[bi]), 5), "lo": x(lo), "hi": x(hi), "n": int(len(S)),
-            "r": round(float(np.mean(1 / N)), 5), "cnt": round(float(np.median(N)), 1),
+            "r": round(float(np.mean(1 / (N + 1))), 5), "cnt": round(float(np.median(N)), 1),
             "sb": round(float(np.mean(S > G0 + bi * GS)), 3),   # 추천값이 하한 미달(사정율보다 낮음)이던 비율
             "pk": [[x(i), round(float(sm[i]), 5)] for i in peaks],
             "v": [round(max(G0, min(float(qs[0]), x(bi) - 0.3)), 1), round(min(G0 + GN * GS, max(float(qs[1]), x(bi) + 0.3)), 1)],
@@ -281,7 +281,7 @@ def validate(rows):
             row["n"] += 1
             row["near"] += hn
             row["mean"] += hm
-            row["rand"] += 1 / r["N"]
+            row["rand"] += 1 / (r["N"] + 1)   # 공정 기대: 우리가 들어가면 참가자가 하나 늘어난다
             row["below_near"] += xn < r["S"]
             row["below_mean"] += xm < r["S"]
             pn = math.exp(ln_p)
@@ -289,7 +289,7 @@ def validate(rows):
             s["n"] += 1
             s["near"] += hn
             s["mean"] += hm
-            s["rand"] += 1 / r["N"]
+            s["rand"] += 1 / (r["N"] + 1)
         row["rand"] = round(row["rand"], 2)
         out_m.append(row)
     for s in seg:
