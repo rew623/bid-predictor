@@ -767,7 +767,7 @@ const LIVE_KINDS = {
   '외자': ['getBidPblancListInfoFrgcptPPSSrch', 'getBidPblancListInfoFrgcpt', null],
   '기타': ['getBidPblancListInfoEtcPPSSrch', 'getBidPblancListInfoEtc', null],
 };
-const Live = {items: [], total: 0, page: 0, params: null, token: 0, kind: '공사', fallback: false};
+const Live = {items: [], raw: 0, page: 0, params: null, token: 0, kind: '공사', fallback: false, wins: [], wi: 0, totals: []};
 let bidsMode = LS.get('bidsMode', null);
 function apiKey(){
   const k = String(LS.get('apiKey', '') || '').trim();
@@ -863,7 +863,7 @@ function initLive(){
   fillLSgg();
   Data.loadBids().then(fillLSgg);
   $('lRgn').addEventListener('change', fillLSgg);
-  $('lSgg').addEventListener('change', () => { if(Live.params) renderLive(); });
+  $('lSgg').addEventListener('change', async () => { if(!Live.params) return; renderLive(); if(liveRows().length < 30 && !liveDone()) await liveSearch(true); });
   fillSelect($('lLic'), LICENSES, {all:'업종 전체'});
   fillSelect($('lAmt'), AMT_RANGES, {all:'추정가격 전체'});
   const setPeriod = (days) => { const t = new Date(); $('lTo').value = kstDay(t); $('lFrom').value = kstDay(new Date(t - days * 86400000)); };
@@ -880,7 +880,7 @@ function initLive(){
   ['lQuery', 'lOrg', 'lDmd'].forEach(id => $(id).addEventListener('keydown', (e) => { if(e.key === 'Enter') liveSearch(); }));
   $('liveMore').addEventListener('click', () => liveSearch(true));
   $('lElig').checked = LS.get('bidsFilter', {}).elig ?? Company.isSet();
-  $('lElig').addEventListener('change', () => { if(Live.params) renderLive(); });
+  $('lElig').addEventListener('change', async () => { if(!Live.params) return; renderLive(); if(liveRows().length < 30 && !liveDone()) await liveSearch(true); });
   $('bMode').addEventListener('click', (e) => {
     const v = e.target.dataset?.v; if(!v) return;
     bidsMode = v; LS.set('bidsMode', v); renderBidsTab();
@@ -898,7 +898,7 @@ function renderBidsTab(){
 
 function liveParams(){
   const [aLo, aHi] = ($('lAmt').value || '-').split('-').map(v => v === '' ? null : +v * 1e8);
-  const p = {inqryDiv: $('lDiv').value, inqryBgnDt: $('lFrom').value.replace(/-/g, '') + '0000', inqryEndDt: $('lTo').value.replace(/-/g, '') + '2359'};
+  const p = {inqryDiv: $('lDiv').value};   // 기간은 liveWindows 구간마다 넣는다
   const set = (k, v) => { if(v != null && v !== '') p[k] = v; };
   set('bidNtceNm', $('lQuery').value.trim());
   set('ntceInsttNm', $('lOrg').value.trim());
@@ -910,6 +910,78 @@ function liveParams(){
   if($('lOpen').checked) p.bidClseExcpYn = 'Y';
   return p;
 }
+// 조달청 API 는 한 번에 약 1개월까지만 조회된다 → 기간을 30일씩 나눠 최신 구간부터 차례로 받는다
+const LIVE_SPAN_DAYS = 30;
+const ymd8 = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+const date8 = (s) => new Date(`${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T00:00:00`);
+function liveWindows(from, to){
+  const out = [], start = new Date(from + 'T00:00:00');
+  let end = new Date(to + 'T00:00:00');
+  while(end >= start){
+    let bgn = new Date(end); bgn.setDate(bgn.getDate() - (LIVE_SPAN_DAYS - 1));
+    if(bgn < start) bgn = new Date(start);
+    out.push([ymd8(bgn), ymd8(end)]);
+    end = new Date(bgn); end.setDate(end.getDate() - 1);
+  }
+  return out;
+}
+const liveDone = () => Live.wi >= Live.wins.length;
+/** 앱에서 거르는 조건(시·군, 참가 가능, 기본 목록 대체 조회)이 있나 — 있으면 충분히 모일 때까지 더 받는다 */
+const liveClientFilter = () => !!($('lSgg').value || ($('lElig').checked && Company.isSet()) || Live.fallback);
+function liveRows(){
+  const maxOrd = {};
+  Live.items.forEach(b => { if(!maxOrd[b.no] || b.ord > maxOrd[b.no]) maxOrd[b.no] = b.ord; });   // 변경공고는 마지막 차수만
+  const elig = $('lElig').checked && Company.isSet();
+  const sgg = $('lSgg').value;
+  const inSgg = (b) => !sgg || b.sgg === sgg || (b.rgn || []).some(t => parseRegion(t).sgg === sgg);
+  return Live.items.filter(b => b.ord === maxOrd[b.no] && !b.cancel && (!elig || eligibility(b).ok) && inSgg(b));
+}
+/** 현재 구간의 다음 쪽 1번 호출 */
+async function liveFetchOne(){
+  const [bgn, end] = Live.wins[Live.wi];
+  const [srchOp, listOp] = LIVE_KINDS[Live.kind];
+  const q = {inqryBgnDt: bgn + '0000', inqryEndDt: end + '2359', numOfRows: LIVE_ROWS, pageNo: Live.page + 1};
+  const rangeErr = (m) => /범위|\(07\)/.test(m);
+  let res;
+  try{
+    if(!Live.fallback){
+      try{ res = await liveCall(srchOp, {...Live.params, ...q}); }
+      catch(e){
+        if(/서비스키|SERVICE_KEY|SERVICE ACCESS|ACCESS_DENIED|UNREGISTERED|등록되지/.test(e.message) || rangeErr(e.message)) throw e;
+        Live.fallback = true;   // 검색조건 조회가 안 되면 기본 목록 조회 + 앱에서 거르기
+      }
+    }
+    if(Live.fallback) res = await liveCall(listOp, {inqryDiv: Live.params.inqryDiv, ...q});
+  }catch(e){
+    // 그래도 기간이 길다고 하면 구간을 반으로 나눠 다시
+    if(rangeErr(e.message) && bgn < end){
+      const mid = new Date((date8(bgn).getTime() + date8(end).getTime()) / 2);
+      const midNext = new Date(mid); midNext.setDate(midNext.getDate() + 1);
+      Live.wins.splice(Live.wi, 1, [ymd8(midNext), end], [bgn, ymd8(mid)]);
+      return;
+    }
+    throw e;
+  }
+  Live.totals[Live.wi] = res.total;
+  Live.page++;
+  Live.raw += res.items.length;
+  const have = new Set(Live.items.map(b => b.id));
+  const P2 = Live.params, low = (v) => String(v || '').toLowerCase();
+  const keep = (n) => !Live.fallback || (
+    (!P2.bidNtceNm || low(n.nm).includes(low(P2.bidNtceNm))) &&
+    (!P2.ntceInsttNm || low(n.org).includes(low(P2.ntceInsttNm))) &&
+    (!P2.dminsttNm || low(n.dmd).includes(low(P2.dminsttNm))) &&
+    (!P2.prtcptLmtRgnNm || n.sido === P2.prtcptLmtRgnNm) &&
+    (!P2.indstrytyNm || (n.lic || []).includes(P2.indstrytyNm)) &&
+    (!P2.presmptPrceBgn || (n.est || 0) >= P2.presmptPrceBgn) &&
+    (!P2.presmptPrceEnd || (n.est || Infinity) < P2.presmptPrceEnd) &&
+    (!P2.bidClseExcpYn || !n.close || parseKst(n.close) >= new Date()));
+  for(const it of res.items){
+    const n = liveNotice(it);
+    if(n.no && !have.has(n.id) && keep(n)){ have.add(n.id); Live.items.push(n); }
+  }
+  if(!res.items.length || Live.page * LIVE_ROWS >= res.total){ Live.wi++; Live.page = 0; }
+}
 async function liveSearch(more=false){
   const list = $('liveList');
   if(!apiKey()){ $('liveKeyHint').hidden = false; return; }
@@ -918,47 +990,25 @@ async function liveSearch(more=false){
   }
   const token = ++Live.token;
   if(!more){
-    Live.params = liveParams(); Live.items = []; Live.page = 0; Live.total = 0; Live.kind = $('lKind').value; Live.fallback = false;
+    Object.assign(Live, {params: liveParams(), items: [], raw: 0, kind: $('lKind').value, fallback: false,
+      wins: liveWindows($('lFrom').value, $('lTo').value), wi: 0, page: 0, totals: []});
     list.innerHTML = loadingHtml('나라장터에서 조회 중…');
     $('liveMore').hidden = true;
   }
   $('liveMore').disabled = true;
+  // 한 번에: 앱에서 거르는 조건이 없으면 100건, 있으면 조건에 맞는 30건이 모일 때까지 (최대 12번 호출)
+  const startRaw = Live.raw, startRows = liveRows().length;
   try{
-    const [srchOp, listOp] = LIVE_KINDS[Live.kind];
-    const page = {numOfRows: LIVE_ROWS, pageNo: Live.page + 1};
-    let res;
-    if(!Live.fallback){
-      try{ res = await liveCall(srchOp, {...Live.params, ...page}); }
-      catch(e){
-        if(/서비스키|SERVICE_KEY|SERVICE ACCESS|ACCESS_DENIED|UNREGISTERED|등록되지/.test(e.message)) throw e;
-        Live.fallback = true;   // 검색조건 조회가 안 되면 기본 목록 조회 + 앱에서 거르기
-      }
-    }
-    if(Live.fallback){
-      const {inqryDiv, inqryBgnDt, inqryEndDt} = Live.params;
-      res = await liveCall(listOp, {inqryDiv, inqryBgnDt, inqryEndDt, ...page});
-    }
-    if(token !== Live.token) return;
-    Live.page++; Live.total = res.total;
-    const have = new Set(Live.items.map(b => b.id));
-    const P2 = Live.params, low = (v) => String(v || '').toLowerCase();
-    const keep = (n) => !Live.fallback || (
-      (!P2.bidNtceNm || low(n.nm).includes(low(P2.bidNtceNm))) &&
-      (!P2.ntceInsttNm || low(n.org).includes(low(P2.ntceInsttNm))) &&
-      (!P2.dminsttNm || low(n.dmd).includes(low(P2.dminsttNm))) &&
-      (!P2.prtcptLmtRgnNm || n.sido === P2.prtcptLmtRgnNm) &&
-      (!P2.indstrytyNm || (n.lic || []).includes(P2.indstrytyNm)) &&
-      (!P2.presmptPrceBgn || (n.est || 0) >= P2.presmptPrceBgn) &&
-      (!P2.presmptPrceEnd || (n.est || Infinity) < P2.presmptPrceEnd) &&
-      (!P2.bidClseExcpYn || !n.close || parseKst(n.close) >= new Date()));
-    for(const it of res.items){
-      const n = liveNotice(it);
-      if(n.no && !have.has(n.id) && keep(n)){ have.add(n.id); Live.items.push(n); }
+    for(let calls = 0; calls < 12 && !liveDone(); calls++){
+      await liveFetchOne();
+      if(token !== Live.token) return;
+      if(liveClientFilter() ? liveRows().length - startRows >= 30 : Live.raw - startRaw >= LIVE_ROWS) break;
+      if(!more) list.innerHTML = loadingHtml(`나라장터에서 조회 중… (${Math.min(Live.wi + 1, Live.wins.length)}/${Live.wins.length}구간, ${fmtNum(Live.raw)}건 받음)`);
     }
   }catch(e){
     if(token !== Live.token) return;
     $('liveInfo').textContent = '';
-    list.innerHTML = `<div class="empty card">조회하지 못했습니다: ${esc(e.message)}<br><span class="faint">기간이 너무 길면 줄여 보세요. 서비스키 오류라면 설정 탭에서 키를 확인하세요 (활용 승인 직후에는 1~2시간 걸릴 수 있습니다).</span></div>`;
+    list.innerHTML = `<div class="empty card">조회하지 못했습니다: ${esc(e.message)}<br><span class="faint">서비스키 오류라면 설정 탭에서 키를 확인하세요 (활용 승인 직후에는 1~2시간 걸릴 수 있습니다).</span></div>`;
     return;
   }finally{ $('liveMore').disabled = false; }
   renderLive();
@@ -970,22 +1020,18 @@ async function renderLive(){
     if(Data.hasScsbid(sido) && !Data.scsbid[sido]){ try{ await Data.loadScsbid(sido); }catch(e){ console.warn(e); } }
   }
   watchIds = new Set((await WatchStore.list()).map(w => w.id));
-  // 변경공고는 같은 공고번호의 마지막 차수만, 취소공고 제외
-  const maxOrd = {};
-  Live.items.forEach(b => { if(!maxOrd[b.no] || b.ord > maxOrd[b.no]) maxOrd[b.no] = b.ord; });
-  const elig = $('lElig').checked && Company.isSet();
-  const sgg = $('lSgg').value;
-  const inSgg = (b) => !sgg || b.sgg === sgg || (b.rgn || []).some(t => parseRegion(t).sgg === sgg);
-  const rows = Live.items.filter(b => b.ord === maxOrd[b.no] && !b.cancel && (!elig || eligibility(b).ok) && inSgg(b));
+  const rows = liveRows(), sgg = $('lSgg').value;
   const today = kstDay(new Date());
-  $('liveInfo').innerHTML = [`나라장터 실시간 ${esc(Live.kind)} ${fmtNum(Live.total)}건 중 ${fmtNum(Math.min(Live.total, Live.page * LIVE_ROWS))}건 조회${Live.fallback || sgg || elig ? ` → 조건에 맞는 ${fmtNum(rows.length)}건` : ''}`,
+  const known = Live.totals.reduce((a, b) => a + (b || 0), 0);
+  const nW = Live.wins.length, doneW = Math.min(Live.wi, nW);
+  $('liveInfo').innerHTML = [`나라장터 실시간 ${esc(Live.kind)} ${fmtNum(Live.raw)}건 받음${liveDone() ? ` (전체 ${fmtNum(known)}건)` : ` · 전체 ${fmtNum(known)}건 이상`}${liveClientFilter() ? ` → 조건에 맞는 ${fmtNum(rows.length)}건` : ''}`,
+    nW > 1 ? `기간을 1개월씩 ${nW}구간으로 나눠 최신부터 조회 (${doneW}/${nW}구간 완료)` : '',
     sgg ? `시·군(${esc(sgg)})은 공사 현장·참가가능지역 기준으로 앱에서 거름` : '',
     Live.kind !== '공사' ? '예측은 공사만 제공' : '',
     !sido && !Model.m ? '지역을 고르면 예상 사정율·낙찰확률도 표시됩니다' : ''].filter(Boolean).join(' · ');
-  list.innerHTML = rows.length ? rows.map(b => bidCard(b, today)).join('') : '<div class="empty card">조건에 맞는 공고가 없습니다.</div>';
-  const left = Math.max(0, Live.total - Live.page * LIVE_ROWS);
-  $('liveMore').hidden = !left;
-  $('liveMore').textContent = `더 보기 (${fmtNum(left)}건 남음)`;
+  list.innerHTML = rows.length ? rows.map(b => bidCard(b, today)).join('') : `<div class="empty card">${liveDone() ? '조건에 맞는 공고가 없습니다.' : '아직 조건에 맞는 공고를 못 찾았습니다. "더 보기"로 이전 기간을 이어서 조회하세요.'}</div>`;
+  $('liveMore').hidden = liveDone();
+  $('liveMore').textContent = '더 보기 (이어서 조회)';
 }
 
 async function toggleWatch(id, btn){
