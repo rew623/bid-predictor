@@ -31,7 +31,7 @@ scripts/commit_data.sh  data/ 변경 커밋·푸시 (워크플로에서 단계�
 scripts/model.py      전국 추천 모델·역검증 → data/model.json (수집 단계마다 실행, numpy)
 scripts/korea.py      시도·시군구 파싱, 면허 23개 + 옛 명칭 별칭표
 scripts/regions.json  개찰 상세(전체 순위·복수예가)를 수집할 시·도 목록. 예: ["강원"]
-.github/workflows/collect.yml  02:00 KST 전체 + 09·13·17시 공고만 + 수동 실행(start_date, reset_backfill, quick_only)
+.github/workflows/collect.yml  02:00·14:00 KST 전체 + 09·13·17시 공고만 + 수동 실행(start_date, reset_backfill, quick_only)
 reference/prototype.html       초기 프로토타입 (디자인 참고용, 가상 데이터 코드는 쓰지 않음)
 data/                 수집 결과 (아래)
 ```
@@ -44,6 +44,7 @@ data/                 수집 결과 (아래)
 - `지역보강`: 과거 낙찰 레코드에 참가가능지역(`rgn`)을 채운다. 공고 게시일 7일 단위로 최신→가장 오래된 낙찰 달 앞까지 한 번(`meta.rgn_fill` {cursor: YYYYMMDD, done}), 입찰공고 호출 `REGION_RESERVE`(250)회는 남김. 최근낙찰은 notice_cache 의 rgn 으로 보강.
   참가가능지역·면허제한 API 는 공사·물품·용역 전부를 돌려줘 한 달치 호출이 많다 → 과거낙찰(달 단위, 중간 저장 없음)에 넣으면 한 달을 못 끝내 매일 같은 달만 반복한다(2026-09-25 실제로 겪음). 달 단위 단계에 무거운 조회를 더하지 말 것.
 - 환경변수 `STEPS` 로 단계를 골라 실행. 워크플로는 1차 `공고,최근낙찰`(MAX_MINUTES 40) → 커밋 → 2차 `과거낙찰,지역보강,물품최근,물품과거,상세` → 커밋 순서라 공고는 몇 분 안에 앱에 뜬다. 09·13·17시 예약 실행과 `quick_only` 수동 실행은 1차만.
+- 조달청 접속이 연속 `NET_FAIL_STOP`(3)번 안 되면 그 실행을 멈춘다(2026-09-26 새벽 2~7시 접속 불가로 공고당 17분씩 5시간 헛돈 일). 14:00 전체 수집이 남은 한도로 다시 한다.
 - 하루 호출 한도: 서비스별 `API_DAILY_LIMIT`(기본 950). 호출 수는 `meta.api.calls` 에 날짜별로 기록, 넘으면 저장 후 다음 날 이어서.
 - 예정가격이 없으면 `낙찰금액 ÷ 낙찰률` 로 역산, 사정율 `sr = 예정가격 ÷ 기초금액 × 100` (80~120 벗어나면 버림).
 - 공고번호-차수(`id`)로 중복 병합. 워크플로는 meta.json 외 파일이 바뀐 경우에만 커밋.

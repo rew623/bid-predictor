@@ -56,6 +56,7 @@ BACKFILL_YEARS = 3
 DETAIL_RESERVE = 250                        # 첫 상세 단계는 낙찰정보 호출을 이만큼 남겨 과거 수집에 쓴다
 RECENT_FIRST_MONTHS = 24                    # 과거 낙찰은 이 기간을 먼저 채운 뒤 상세 → 나머지 과거 순으로
 DETAIL_MAX_TRIES = 3
+NET_FAIL_STOP = 3                           # 조달청 접속이 연속 이만큼 안 되면 그 실행은 멈춘다 (2026-09-26 새벽 5시간 헛돈 일)
 REGION_RESERVE = 250                        # 지역보강은 입찰공고 호출을 이만큼 남긴다 (뒤의 과거 수집 몫)
 THNG_RESERVE = 250                          # 물품과거는 낙찰정보 호출을 이만큼 남긴다 (뒤의 개찰 상세 몫)
 THNG_BID_RESERVE = 400                      # 물품과거는 입찰공고 호출을 이만큼 남긴다 (뒤의 지역보강·공사 과거 수집 몫)
@@ -310,6 +311,7 @@ class Api:
         api["calls"] = calls
         self.calls = calls
         self.errors = []
+        self.net_fail = 0     # 연속 접속 실패 수 — NET_FAIL_STOP 번이면 오늘은 조달청이 안 되는 것으로 보고 멈춘다
         self.session = requests.Session()
         self.session.headers["User-Agent"] = "bid-predictor-collector/1.0"
 
@@ -325,24 +327,29 @@ class Api:
             raise BudgetExhausted(svc)
         if time.time() > self.deadline:
             raise BudgetExhausted("time")
+        if self.net_fail >= NET_FAIL_STOP:
+            raise BudgetExhausted("network")
         bases = SERVICES[svc]
         known = self.bases.get(svc)
         if known in bases:
             bases = [known] + [b for b in bases if b != known]
         last_err = None
+        reached = False
         for base in bases:
             url = f"{base}/{opname}"
             q = {"serviceKey": self.key, "type": "json", **params}
             resp = None
             for attempt in range(4):
                 try:
-                    resp = self.session.get(url, params=q, timeout=60)
+                    resp = self.session.get(url, params=q, timeout=(15, 60))   # 접속 15초, 응답 60초
                     break
                 except requests.RequestException as e:
                     last_err = e
                     time.sleep(2 ** attempt)
             if resp is None:
                 continue
+            reached = True
+            self.net_fail = 0
             self.calls[svc] = self.calls.get(svc, 0) + 1
             text = resp.text or ""
             if any(s in text for s in ("SERVICE_KEY_IS_NOT_REGISTERED", "SERVICE KEY IS NOT REGISTERED",
@@ -365,6 +372,11 @@ class Api:
             if items:
                 self._save_sample(op, url, params, j, items)
             return items, total
+        if not reached:
+            self.net_fail += 1
+            if self.net_fail >= NET_FAIL_STOP:
+                log(f"  ! 조달청 접속이 {NET_FAIL_STOP}번 연속 안 됨 — 오늘 수집은 여기서 멈춤")
+                raise BudgetExhausted("network")
         raise ApiError("NET", f"{opname}: {last_err}")
 
     @staticmethod
