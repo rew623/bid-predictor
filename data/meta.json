@@ -203,17 +203,16 @@
   }
  },
  "last_run": {
-  "at": "2026-09-26T02:48:06+09:00",
+  "at": "2026-09-26T07:13:36+09:00",
   "calls": {
    "bid": 37,
    "date": "20260926",
    "scsbid": 11
   },
   "errors": [
-   "공고: ApiError: NET: getBidPblancListInfoCnstwk: HTTPSConnectionPool(host='apis.data.go.kr', port=443): Max retries exceeded with url: /1230000/BidPublicInfoService04/getBidPblancListInfoCnstwk?serviceKey=ExsurRG5CjkB44Ob8nW6MeuHfudT1GuSleyT9sEkZLGVNVwYELNlQXJ8TAH2EbeSRvesxeV7%2FZjO9HpBucCkGg%3D%3D&type=json&inqryDiv=1&inqryBgnDt=202609240205&inqryEndDt=202609260205&pageNo=1&numOfRows=100 (Caused by ConnectTimeoutError(<HTTPSConnection(host='apis.data.go.kr', port=443) at 0x7f4cd3a23c50>, 'Connection to apis.data.go.kr timed out. (connect timeout=60)'))",
-   "최근낙찰: ApiError: NET: getScsbidListSttusCnstwk: HTTPSConnectionPool(host='apis.data.go.kr', port=443): Max retries exceeded with url: /1230000/ScsbidInfoService/getScsbidListSttusCnstwk?serviceKey=ExsurRG5CjkB44Ob8nW6MeuHfudT1GuSleyT9sEkZLGVNVwYELNlQXJ8TAH2EbeSRvesxeV7%2FZjO9HpBucCkGg%3D%3D&type=json&inqryDiv=1&inqryBgnDt=202608170205&inqryEndDt=202609260205&pageNo=1&numOfRows=100 (Caused by ConnectTimeoutError(<HTTPSConnection(host='apis.data.go.kr', port=443) at 0x7f4cd3960830>, 'Connection to apis.data.go.kr timed out. (connect timeout=60)'))"
+   "물품최근: 한도 소진 (time)"
   ],
-  "minutes": 42.9
+  "minutes": 265.2
  },
  "mf_scan": true,
  "model": {
