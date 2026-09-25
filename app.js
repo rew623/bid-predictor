@@ -1137,7 +1137,7 @@ const pickNotice = (b) => ({id:b.id, no:b.no, ord:b.ord, nm:b.nm, org:b.org, dmd
 
 // ============================================================ 우리 업체 (소재지·보유 면허·사업자번호 — 이 기기에만 저장)
 const Company = {
-  get(){ return {sido: '', sgg: '', lics: [], biz: '', ...LS.get('company', {})}; },
+  get(){ return {sido: '', sgg: '', lics: [], biz: '', caps: {}, ...LS.get('company', {})}; },
   set(c){ LS.set('company', c); qpCache.clear(); },
   isSet(){ const c = this.get(); return !!(c.sido || c.lics.length); },
 };
@@ -1173,9 +1173,34 @@ async function fetchLiveLimits(rows){
   })]);
   return true;
 }
+// 참여가능금액(면허별 적격심사 실적 한도) 칸: j3·j5 = 지자체 3년·5년, g = 조달청·그 외 기관, k = 한국수력원자력(다를 때만)
+const CAP_FIELDS = [['j3', '지자체 3년'], ['j5', '지자체 5년'], ['g', '조달청·그 외'], ['k', '한수원 (다를 때만)']];
+/** 발주기관 종류: 지자체(행안부 기준) / 한수원 / 그 외(조달청 기준) */
+function orgKind(b){
+  const t = `${b.org || ''} ${b.dmd || ''}`;
+  if(/한국수력원자력/.test(t)) return 'k';
+  if(/특별시|광역시|특별자치시|특별자치도|도청|시청|군청|구청|교육청|교육지원청/.test(t) || /(^|\s)\S+[도시군구](\s|$)/.test(t)) return 'j';
+  return 'g';
+}
+/** 공고 금액(추정가격, 없으면 기초금액)이 우리 참여가능금액 안인가. 'ok' | 'check'(지자체 3~5년 사이) | 'no' | null(검사 안 함) */
+function capCheck(b){
+  const c = Company.get(), amt = b.est || b.base;
+  if(!amt || !c.caps) return null;
+  const kind = orgKind(b);
+  let best = null;
+  for(const l of licOf(b).filter(l => c.lics.includes(l))){
+    const v = c.caps[l];
+    if(!v) continue;
+    let r = null;
+    if(kind === 'j' && (v.j3 || v.j5)) r = v.j3 && amt <= v.j3 ? 'ok' : v.j5 && amt <= v.j5 ? (v.j3 ? 'check' : 'ok') : 'no';
+    else if(v.g || v.k) r = amt <= ((kind === 'k' && v.k) || v.g || v.k) ? 'ok' : 'no';
+    if(r) best = best === 'ok' || r === 'ok' ? 'ok' : best === 'check' || r === 'check' ? 'check' : 'no';
+  }
+  return best;
+}
 function eligibility(b){
   const c = Company.get();
-  const out = {ok: true, lic: null, rgn: null};
+  const out = {ok: true, lic: null, rgn: null, cap: null};
   const lics = licOf(b), rgn = rgnOf(b);
   if(c.lics.length){
     if(!lics.length) out.lic = b.limOk ? 'ok' : 'unknown';   // limOk: 조달청 조회 결과 면허 제한 없음
@@ -1191,12 +1216,17 @@ function eligibility(b){
     out.rgn = hit ? 'ok' : 'no';
     if(!hit) out.ok = false;
   }
+  if(out.ok){
+    out.cap = capCheck(b);
+    if(out.cap === 'no') out.ok = false;
+  }
   return out;
 }
 function eligTag(b){
   if(!Company.isSet()) return '';
   const e = eligibility(b);
-  if(!e.ok) return `<span class="tag bad">참가 불가 · ${e.rgn === 'no' ? '지역 제한' : '면허 불일치'}</span>`;
+  if(!e.ok) return `<span class="tag bad">참가 불가 · ${e.rgn === 'no' ? '지역 제한' : e.cap === 'no' ? '실적 한도 초과' : '면허 불일치'}</span>`;
+  if(e.cap === 'check') return '<span class="tag warn" title="추정가격이 지자체 3년 실적 한도는 넘고 5년 한도 안 — 공고문의 실적 기간 확인">실적 확인 (지자체 5년 기준만 가능)</span>';
   if(e.lic === 'unknown') return '<span class="tag warn">면허 확인 필요</span>';
   return '<span class="tag okc">참가 가능</span>';
 }
@@ -1222,9 +1252,25 @@ function initCompany(){
   $('coSido').addEventListener('change', () => fillSgg(''));
   $('coBiz').value = c.biz || '';
   const lics = new Set(c.lics);
-  buildChips($('coLics'), LICENSES, lics, null);
+  const caps = {...c.caps};
+  const readCaps = () => $('coCaps').querySelectorAll('input[data-cap]').forEach(el => {
+    const [l, f] = el.dataset.cap.split('|'), v = numOf(el);
+    caps[l] = {...caps[l]};
+    if(v) caps[l][f] = v; else delete caps[l][f];
+  });
+  const renderCaps = () => {
+    readCaps();
+    $('coCaps').innerHTML = [...lics].map(l => `<div class="cap-row"><b>${esc(l)}</b><div class="inline-inputs" style="margin-top:4px;">${CAP_FIELDS.map(([f, t]) =>
+      `<div><label>${t}</label><input class="money" type="text" inputmode="numeric" data-cap="${esc(l)}|${f}" placeholder="원"></div>`).join('')}</div></div>`).join('')
+      || '<p class="faint">보유 면허를 먼저 고르세요.</p>';
+    $('coCaps').querySelectorAll('input[data-cap]').forEach(el => { const [l, f] = el.dataset.cap.split('|'); if(caps[l]?.[f]) setMoney(el, caps[l][f]); });
+  };
+  buildChips($('coLics'), LICENSES, lics, renderCaps);
+  renderCaps();
   $('coSave').addEventListener('click', () => {
-    Company.set({sido: $('coSido').value, sgg: $('coSgg').value, lics: [...lics], biz: $('coBiz').value.replace(/\D/g, '')});
+    readCaps();
+    const keep = Object.fromEntries(Object.entries(caps).filter(([l, v]) => lics.has(l) && Object.keys(v).length));
+    Company.set({sido: $('coSido').value, sgg: $('coSgg').value, lics: [...lics], biz: $('coBiz').value.replace(/\D/g, ''), caps: keep});
     $('coMsg').innerHTML = '<span class="badge ok">저장됨</span> 입찰공고에서 "참가 가능한 공고만"을 켜면 적용됩니다';
     LS.set('bidsFilter', {...LS.get('bidsFilter', {}), elig: true});
     $('bElig').checked = true; $('lElig').checked = true;
