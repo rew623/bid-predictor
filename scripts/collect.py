@@ -17,7 +17,8 @@ GitHub Actions(.github/workflows/collect.yml)에서 매일 실행된다.
   3) 상세      개찰 전체 순위·복수예가(최신부터, 과거 수집 몫 250회는 남김) → data/opening/{시도}/{연도}.json (regions.json 지역만)
   4) 과거낙찰  과거 낙찰 목록, 최근 24개월까지 먼저 (진행 상황 meta.json)
   5) 상세      남은 한도로 이어서
-  6) 과거낙찰  나머지 과거(3년까지)
+  6) 지역보강  과거 낙찰 레코드에 참가가능지역(rgn) 채우기 — 달 단위로 최신부터, 입찰공고 호출 REGION_RESERVE 회는 남김
+  7) 과거낙찰  나머지 과거(3년까지)
 
 API 필드명이 확정되지 않았으므로 모든 필드 접근은 후보 이름 목록(F_*)을 거친다.
 첫 실행 때 각 API 원본 1건을 data/_sample_{op}.json 에 저장하니 그걸 보고 후보를 고친다.
@@ -52,6 +53,7 @@ BACKFILL_YEARS = 3
 DETAIL_RESERVE = 250                        # 첫 상세 단계는 낙찰정보 호출을 이만큼 남겨 과거 수집에 쓴다
 RECENT_FIRST_MONTHS = 24                    # 과거 낙찰은 이 기간을 먼저 채운 뒤 상세 → 나머지 과거 순으로
 DETAIL_MAX_TRIES = 3
+REGION_RESERVE = 250                        # 지역보강은 입찰공고 호출을 이만큼 남긴다 (뒤의 과거 수집 몫)
 SCHEMA_VERSION = 1
 
 # ---------------------------------------------------------------- API 정의
@@ -625,7 +627,7 @@ def finish_notice(e):
 
 # ---------------------------------------------------------------- 낙찰 목록
 SCSBID_FIELDS = ("id", "no", "ord", "nm", "org", "dmd", "sido", "sgg", "lic", "base", "plan", "amt",
-                 "rate", "cnt", "floor", "a", "net", "rng", "date", "win", "winBiz", "sr")
+                 "rate", "cnt", "floor", "a", "net", "rng", "rgn", "date", "win", "winBiz", "sr")
 
 
 def compute_sr(r):
@@ -702,7 +704,7 @@ class ScsbidStore:
     def enrich(self, r, n):
         """공고 정보(n)로 낙찰 레코드(r)를 채운다. 공고 쪽 값이 있으면 우선."""
         before = dumps(r)
-        for k in ("org", "dmd", "base", "floor", "a", "net", "rng", "lic"):
+        for k in ("org", "dmd", "base", "floor", "a", "net", "rng", "lic", "rgn"):
             if n.get(k) not in (None, "", []):
                 r[k] = n[k]
         if n.get("sido"):
@@ -719,6 +721,19 @@ class ScsbidStore:
             r = self.recs[id_]
             if r.get("ord") == n.get("ord") or len(ids) == 1:
                 self.enrich(r, n)
+
+    def add_region(self, it):
+        """참가가능지역 API 한 행 → 같은 공고번호(차수)의 낙찰 레코드 rgn 에 추가"""
+        _, no, ord_ = notice_id(it)
+        r_ = pick(it, F_RGN)
+        ids = self.by_no.get(no, []) if r_ else []
+        for id_ in ids:
+            r = self.recs[id_]
+            if r.get("ord") == ord_ or len(ids) == 1:
+                lst = r.setdefault("rgn", [])
+                if r_ not in lst:
+                    lst.append(r_)
+                    self.dirty = True
 
     def save(self):
         files, counts = {}, {}
@@ -959,6 +974,8 @@ def step_backfill(api, meta, store, now, checkpoint, horizon=None):
         for it in api.fetch_range("notice_license", bgn, end):
             if notice_id(it)[0] in month.items:
                 month.add_license(it)
+        for it in api.fetch_range("notice_region", bgn, end):
+            store.add_region(it)
         for e in month.items.values():
             finish_notice(e)
             store.enrich_by_notice(e)
@@ -966,6 +983,38 @@ def step_backfill(api, meta, store, now, checkpoint, horizon=None):
         bf["months_done"] = bf.get("months_done", 0) + 1
         bf["oldest"] = bgn.strftime("%Y%m%d")
         log(f"  낙찰 {cnt}건, 공고 보강 {len(month.items)}건")
+        checkpoint()
+
+
+def step_region_fill(api, meta, store, now, checkpoint):
+    """과거 낙찰 레코드에 참가가능지역(rgn)을 채운다. 참가수 예측에 쓰임(시·군 제한이면 참가가 적다).
+    공고 게시 달 단위로 최신 → 가장 오래된 낙찰 달까지 한 번 훑는다. 진행: meta.rgn_fill {cursor: YYYYMM, done}"""
+    rf = meta.setdefault("rgn_fill", {})
+    if rf.get("done"):
+        return
+    dates = [r["date"] for r in store.recs.values() if r.get("date")]
+    if not dates:
+        return
+    d0 = dt.date.fromisoformat(sorted(dates)[len(dates) // 500])   # 드문 아주 옛 레코드는 무시
+    oldest = (d0.replace(day=1) - dt.timedelta(days=1)).strftime("%Y%m")   # 개찰 한 달 전 게시 공고까지
+    cursor = rf.get("cursor") or now.strftime("%Y%m")
+    while True:
+        if cursor < oldest:
+            rf["done"], rf["cursor"] = True, None
+            log("[지역보강] 완료")
+            return
+        if api.remaining("bid") < REGION_RESERVE or api.time_left() < 20:
+            log(f"[지역보강] 오늘 몫 끝, 커서 {cursor}")
+            return
+        bgn = dt.datetime.strptime(cursor + "01", "%Y%m%d").replace(tzinfo=KST)
+        end = min((bgn + dt.timedelta(days=32)).replace(day=1) - dt.timedelta(minutes=1), now)
+        log(f"[지역보강] {bgn:%Y-%m}")
+        n = 0
+        for it in api.fetch_range("notice_region", bgn, end):
+            store.add_region(it)
+            n += 1
+        cursor = rf["cursor"] = (bgn - dt.timedelta(days=1)).strftime("%Y%m")
+        log(f"  지역 {n}행")
         checkpoint()
 
 
@@ -1082,6 +1131,7 @@ def main():
         ("최근낙찰", lambda: step_recent_scsbid(api, meta, store, cache, now)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all, reserve=DETAIL_RESERVE)),
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all, horizon)),
+        ("지역보강", lambda: step_region_fill(api, meta, store, now, save_all)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all)),
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all)),
     ]

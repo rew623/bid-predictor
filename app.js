@@ -389,7 +389,37 @@ function predictLnN(n){
     const [m, c] = (keys[name] && M.t[name][keys[name]]) || [est, 0];
     est = (c * m + M.shrink * est) / (c + M.shrink);
   }
+  // 보정층(model.py ADJ_KEYS): 같은 시·군×면허의 과거 참가수 → 참가가능지역 범위
+  if(M.adj){
+    const sc = rgnScope(rgnOf(n));
+    const k2 = {hl: n.sgg ? `${n.sido || ''}|${n.sgg}|${lic}` : '', r: sc, rs: ab != null ? `${sc}|${n.sido || ''}|${ab}` : ''};
+    for(const name of ['hl', 'r', 'rs']){
+      const [m, c] = (k2[name] && M.adj.t[name]?.[k2[name]]) || [0, 0];
+      est += c * m / (c + M.adj.k);
+    }
+  }
   return est;
+}
+/** 참가가능지역 → 범위 코드 (model.py rgn_scope 와 같은 규칙). n 모름·제한없음 / g 시·군 하나 / G 시·군 2~4 / s 시·도 하나 / S 시·도 여럿 */
+function rgnScope(rgn){
+  if(!rgn?.length) return 'n';
+  const pairs = new Set(), sidos = new Set();
+  let sidoLevel = false;
+  for(const t of rgn){
+    const {sido, sgg} = parseRegion(t), head = String(t).trim().split(/\s+/)[0];   // 시·도는 원문 첫 단어로 센다
+    if(sido) sidos.add(head);
+    if(sgg) pairs.add(`${head} ${sgg}`); else if(sido) sidoLevel = true;
+  }
+  if(pairs.size && !sidoLevel && pairs.size <= 4) return pairs.size === 1 ? 'g' : 'G';
+  return sidos.size <= 1 ? 's' : 'S';
+}
+/** 공고의 참가가능지역: 공고에 없으면(실시간 검색) 수집된 진행중 공고에서 */
+let bidRgn = null;
+function rgnOf(n){
+  if(n.rgn) return n.rgn;
+  if(!Data.bids?.length) return null;
+  if(!bidRgn || bidRgn.src !== Data.bids) bidRgn = {src: Data.bids, map: new Map(Data.bids.map(b => [b.id, b.rgn]))};
+  return bidRgn.map.get(n.id) || null;
 }
 /** 공고 → 모델 추천. cnt 를 주면 예상 참가수 대신 그 값을 쓴다 */
 function modelPredict(n, cnt){
