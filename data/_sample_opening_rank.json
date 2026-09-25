@@ -1,0 +1,58 @@
+{
+  "endpoint": "https://apis.data.go.kr/1230000/as/ScsbidInfoService/getOpengResultListInfoOpengCompt",
+  "params": {
+    "bidNtceNo": "R26BK01741583",
+    "bidNtceOrd": "000",
+    "pageNo": 1,
+    "numOfRows": 999
+  },
+  "saved_at": "2026-09-25T16:23:53+09:00",
+  "fields": [
+    "bidClsfcNo",
+    "bidNtceNo",
+    "bidNtceOrd",
+    "bidPrceEvlVal",
+    "bidprcAmt",
+    "bidprcDt",
+    "bidprcrt",
+    "cnsttyAccotBidAmtUrl",
+    "drwtNo1",
+    "drwtNo2",
+    "opengRank",
+    "opengRsltDivNm",
+    "prcbdrBizno",
+    "prcbdrCeoNm",
+    "prcbdrNm",
+    "rbidNo",
+    "rmrk",
+    "techEvlNaturVal",
+    "techEvlVal",
+    "totalEvlAmtVal"
+  ],
+  "item": {
+    "opengRsltDivNm": "개찰완료",
+    "bidNtceNo": "R26BK01741583",
+    "bidNtceOrd": "000",
+    "bidClsfcNo": "0",
+    "rbidNo": "000",
+    "opengRank": "1",
+    "prcbdrBizno": "3058199426",
+    "prcbdrNm": "도영건설 주식회사",
+    "prcbdrCeoNm": "김은선",
+    "bidprcAmt": "36795500",
+    "bidprcrt": "89.745",
+    "rmrk": "정상",
+    "cnsttyAccotBidAmtUrl": "",
+    "drwtNo1": "",
+    "drwtNo2": "",
+    "bidprcDt": "2026-09-23 11:01:00",
+    "bidPrceEvlVal": "",
+    "techEvlVal": "",
+    "totalEvlAmtVal": "",
+    "techEvlNaturVal": ""
+  },
+  "raw_header": {
+    "resultCode": "00",
+    "resultMsg": "정상"
+  }
+}

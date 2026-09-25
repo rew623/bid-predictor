@@ -1,0 +1,54 @@
+{
+  "endpoint": "https://apis.data.go.kr/1230000/as/ScsbidInfoService/getOpengResultListInfoCnstwkPreparPcDetail",
+  "params": {
+    "inqryDiv": "2",
+    "bidNtceNo": "R26BK01741583",
+    "pageNo": 1,
+    "numOfRows": 999
+  },
+  "saved_at": "2026-09-25T16:23:53+09:00",
+  "fields": [
+    "PrearngPrcePurcnstcst",
+    "bidClsfcNo",
+    "bidNtceNm",
+    "bidNtceNo",
+    "bidNtceOrd",
+    "bidwinrSlctnAplBssCntnts",
+    "bsisPlnprc",
+    "bssamt",
+    "bssamtBssUpNum",
+    "compnoRsrvtnPrceMkngDt",
+    "compnoRsrvtnPrceSno",
+    "drwtNum",
+    "drwtYn",
+    "inptDt",
+    "plnprc",
+    "rbidNo",
+    "rlOpengDt",
+    "totRsrvtnPrceNum"
+  ],
+  "item": {
+    "bidNtceNo": "R26BK01741583",
+    "bidNtceOrd": "000",
+    "bidClsfcNo": "0",
+    "rbidNo": "000",
+    "bidNtceNm": "강원특별자치도세계잼버리수련장 폐물탱크 철거공사",
+    "plnprc": "41000000",
+    "bssamt": "",
+    "totRsrvtnPrceNum": "1",
+    "compnoRsrvtnPrceSno": "",
+    "bsisPlnprc": "",
+    "drwtYn": "N",
+    "drwtNum": "0",
+    "bidwinrSlctnAplBssCntnts": "행자부",
+    "rlOpengDt": "2026-09-23 13:18:18",
+    "bssamtBssUpNum": "",
+    "compnoRsrvtnPrceMkngDt": "",
+    "inptDt": "2026-09-23 13:18:18",
+    "PrearngPrcePurcnstcst": ""
+  },
+  "raw_header": {
+    "resultCode": "00",
+    "resultMsg": "정상"
+  }
+}
