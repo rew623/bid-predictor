@@ -1,0 +1,37 @@
+{
+  "endpoint": "https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoLicenseLimit",
+  "params": {
+    "inqryDiv": "1",
+    "inqryBgnDt": "202608261347",
+    "inqryEndDt": "202609251347",
+    "pageNo": 1,
+    "numOfRows": 999
+  },
+  "saved_at": "2026-09-25T13:50:37+09:00",
+  "fields": [
+    "bidNtceNo",
+    "bidNtceOrd",
+    "bsnsDivNm",
+    "indstrytyMfrcFldList",
+    "lcnsLmtNm",
+    "lmtGrpNo",
+    "lmtSno",
+    "permsnIndstrytyList",
+    "rgstDt"
+  ],
+  "item": {
+    "bidNtceNo": "R26BK01698968",
+    "bidNtceOrd": "000",
+    "lmtGrpNo": "1",
+    "lmtSno": "1",
+    "lcnsLmtNm": "기상장비업/3562",
+    "permsnIndstrytyList": "",
+    "indstrytyMfrcFldList": "",
+    "rgstDt": "2026-08-26 13:59:00",
+    "bsnsDivNm": "물품"
+  },
+  "raw_header": {
+    "resultCode": "00",
+    "resultMsg": "정상"
+  }
+}

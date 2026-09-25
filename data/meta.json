@@ -1,6 +1,116 @@
 {
- "counts": {"bids": 0, "opening": {}, "scsbid": {}, "scsbid_total": 0},
- "files": {"opening": {}, "scsbid": {}},
- "updated_at": null,
+ "api": {
+  "base": {
+   "bid": "https://apis.data.go.kr/1230000/ad/BidPublicInfoService",
+   "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
+  },
+  "calls": {
+   "bid": 230,
+   "date": "20260925",
+   "scsbid": 34
+  }
+ },
+ "backfill": {
+  "cursor": "20260630",
+  "months_done": 3,
+  "oldest": "20260701",
+  "target_start": "20230926"
+ },
+ "counts": {
+  "bids": 1652,
+  "opening": {},
+  "scsbid": {
+   "강원": 1683,
+   "경기": 3504,
+   "경남": 2036,
+   "경북": 2401,
+   "광주": 105,
+   "기타": 487,
+   "대구": 722,
+   "대전": 461,
+   "부산": 708,
+   "서울": 1545,
+   "세종": 98,
+   "울산": 424,
+   "인천": 569,
+   "전남": 1969,
+   "전북": 1392,
+   "제주": 354,
+   "충남": 1870,
+   "충북": 1437
+  },
+  "scsbid_total": 21765
+ },
+ "files": {
+  "opening": {},
+  "scsbid": {
+   "강원": [
+    "scsbid/강원.json"
+   ],
+   "경기": [
+    "scsbid/경기.json"
+   ],
+   "경남": [
+    "scsbid/경남.json"
+   ],
+   "경북": [
+    "scsbid/경북.json"
+   ],
+   "광주": [
+    "scsbid/광주.json"
+   ],
+   "기타": [
+    "scsbid/기타.json"
+   ],
+   "대구": [
+    "scsbid/대구.json"
+   ],
+   "대전": [
+    "scsbid/대전.json"
+   ],
+   "부산": [
+    "scsbid/부산.json"
+   ],
+   "서울": [
+    "scsbid/서울.json"
+   ],
+   "세종": [
+    "scsbid/세종.json"
+   ],
+   "울산": [
+    "scsbid/울산.json"
+   ],
+   "인천": [
+    "scsbid/인천.json"
+   ],
+   "전남": [
+    "scsbid/전남.json"
+   ],
+   "전북": [
+    "scsbid/전북.json"
+   ],
+   "제주": [
+    "scsbid/제주.json"
+   ],
+   "충남": [
+    "scsbid/충남.json"
+   ],
+   "충북": [
+    "scsbid/충북.json"
+   ]
+  }
+ },
+ "last_run": {
+  "at": "2026-09-25T14:18:46+09:00",
+  "calls": {
+   "bid": 230,
+   "date": "20260925",
+   "scsbid": 34
+  },
+  "errors": [],
+  "minutes": 31.1
+ },
+ "notice_last": "2026-09-25T13:47+09:00",
+ "updated_at": "2026-09-25T14:18:46+09:00",
  "v": 1
 }

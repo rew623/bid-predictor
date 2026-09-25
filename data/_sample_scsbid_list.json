@@ -1,0 +1,59 @@
+{
+  "endpoint": "https://apis.data.go.kr/1230000/as/ScsbidInfoService/getScsbidListSttusCnstwk",
+  "params": {
+    "inqryDiv": "1",
+    "inqryBgnDt": "202608161347",
+    "inqryEndDt": "202609051347",
+    "pageNo": 1,
+    "numOfRows": 999
+  },
+  "saved_at": "2026-09-25T13:55:48+09:00",
+  "fields": [
+    "bidClsfcNo",
+    "bidNtceNm",
+    "bidNtceNo",
+    "bidNtceOrd",
+    "bidwinnrAdrs",
+    "bidwinnrBizno",
+    "bidwinnrCeoNm",
+    "bidwinnrNm",
+    "bidwinnrTelNo",
+    "dminsttCd",
+    "dminsttNm",
+    "fnlSucsfCorpOfcl",
+    "fnlSucsfDate",
+    "ntceDivCd",
+    "prtcptCnum",
+    "rbidNo",
+    "rgstDt",
+    "rlOpengDt",
+    "sucsfbidAmt",
+    "sucsfbidRate"
+  ],
+  "item": {
+    "bidNtceNo": "R26BK01699254",
+    "bidNtceOrd": "000",
+    "bidClsfcNo": "0",
+    "rbidNo": "000",
+    "ntceDivCd": "통050001",
+    "bidNtceNm": "청량리119안전센터 내부 환경개선 공사",
+    "prtcptCnum": "1",
+    "bidwinnrNm": "율산종합건설 주식회사",
+    "bidwinnrBizno": "5358600683",
+    "bidwinnrCeoNm": "이미영",
+    "bidwinnrAdrs": "서울특별시 강남구 광평로 63, 501호(일원동, 정오빌딩)",
+    "bidwinnrTelNo": "02-2226-8518",
+    "sucsfbidAmt": "26400000",
+    "sucsfbidRate": "99.697",
+    "rlOpengDt": "2026-08-27 13:00:00",
+    "dminsttCd": "6110575",
+    "dminsttNm": "서울특별시 동대문소방서",
+    "rgstDt": "2026-08-27 13:05:23",
+    "fnlSucsfDate": "2026-08-27",
+    "fnlSucsfCorpOfcl": ""
+  },
+  "raw_header": {
+    "resultCode": "00",
+    "resultMsg": "정상"
+  }
+}

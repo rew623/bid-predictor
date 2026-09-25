@@ -1,0 +1,31 @@
+{
+  "endpoint": "https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoPrtcptPsblRgn",
+  "params": {
+    "inqryDiv": "1",
+    "inqryBgnDt": "202608261347",
+    "inqryEndDt": "202609251347",
+    "pageNo": 1,
+    "numOfRows": 999
+  },
+  "saved_at": "2026-09-25T13:54:21+09:00",
+  "fields": [
+    "bidNtceNo",
+    "bidNtceOrd",
+    "bsnsDivNm",
+    "lmtSno",
+    "prtcptPsblRgnNm",
+    "rgstDt"
+  ],
+  "item": {
+    "bidNtceNo": "R26BK01699023",
+    "bidNtceOrd": "000",
+    "lmtSno": "1",
+    "prtcptPsblRgnNm": "경상북도",
+    "rgstDt": "2026-08-26 13:47:11",
+    "bsnsDivNm": "공사"
+  },
+  "raw_header": {
+    "resultCode": "00",
+    "resultMsg": "정상"
+  }
+}
