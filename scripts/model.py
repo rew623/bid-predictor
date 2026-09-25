@@ -237,6 +237,7 @@ def summarize(sm, S, N):
     qs = np.quantile(S, [0.01, 0.99])
     return {"x": x(bi), "p": round(float(sm[bi]), 5), "lo": x(lo), "hi": x(hi), "n": int(len(S)),
             "r": round(float(np.mean(1 / N)), 5), "cnt": round(float(np.median(N)), 1),
+            "sb": round(float(np.mean(S > G0 + bi * GS)), 3),   # 추천값이 하한 미달(사정율보다 낮음)이던 비율
             "pk": [[x(i), round(float(sm[i]), 5)] for i in peaks],
             "v": [round(max(G0, min(float(qs[0]), x(bi) - 0.3)), 1), round(min(G0 + GN * GS, max(float(qs[1]), x(bi) + 0.3)), 1)],
             "c": [int(round(v * 1e5)) for v in sm[::10]]}   # 0.01 간격 601칸, ×1e5 정수

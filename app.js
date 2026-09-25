@@ -441,7 +441,7 @@ function modelPredict(n, cnt){
 function recFromModel(mp){
   const e = mp.e, g = Model.m.grid;
   const at = (x) => { const i = Math.round((x - g.x0) / g.step); return i >= 0 && i < e.c.length ? e.c[i] / g.scale : 0; };
-  return {src: 'model', x: e.x, p: e.p, lo: e.lo, hi: e.hi, peaks: e.pk.map(([x, p]) => ({x, p})), random: e.r, n: e.n, nExp: mp.nExp,
+  return {src: 'model', x: e.x, p: e.p, sb: e.sb, lo: e.lo, hi: e.hi, peaks: e.pk.map(([x, p]) => ({x, p})), random: e.r, n: e.n, nExp: mp.nExp,
     view: e.v, at, meanS: mp.meanS, rng: mp.rng, rngKnown: mp.rngKnown, byInput: mp.byInput,
     pts: () => { const out = []; for(let x = e.v[0]; x <= e.v[1] + 1e-9; x += g.step) out.push({x: +x.toFixed(2), y: at(x)}); return out; },
     note: `전국 최근 24개월 · 예가범위 ${rngText(mp.rng)}${mp.rngKnown ? '' : '(모름 → ±3% 기준)'} · 예상 참가 ${fmtNum(Math.max(1, Math.round(mp.nExp / Model.m.band)))}~${fmtNum(Math.round(mp.nExp * Model.m.band))}곳 공고 ${fmtNum(e.n)}건`};
@@ -1416,6 +1416,7 @@ async function runPredict(){
     const check = [
       rec.nExp ? `<li class="ok"><b>경쟁 규모</b>: 예상 참가 <b>~${fmtNum(rec.nExp)}곳</b>${rec.byInput ? '(직접 입력)' : ''} → ${level}${seg ? ` · 이런 공고의 역검증 낙찰률 <b>${(seg.near / seg.n * 100).toFixed(1)}%</b> (${fmtNum(seg.n)}건)` : ''}</li>` : '',
       `<li class="ok"><b>추천 위치</b>: ${rec.src === 'model' ? '경쟁 규모가 비슷한 전국 과거 공고에서 가장 자주 1순위였던 투찰 사정률' : '이 지역 과거 공고에서 가장 자주 1순위였던 투찰 사정률'} <b>${pct(rec.x, 3)}</b>${T?.n ? ` · 새 달 역검증 ${fmtNum(T.n)}건에서 <b>${fmtNum(T.near)}건</b> 낙찰 (평균 사정율 방식 ${fmtNum(T.mean)}건 · 평균 업체 기대 ${fmtNum(Math.round(T.rand))}건)` : ''}</li>`,
+      rec.sb != null ? `<li class="ok"><b>하한 미달은 정상</b>: 비슷한 과거 공고에서 이 값은 <b>${Math.round(rec.sb * 100)}%</b>가 낙찰하한가 미달이었습니다. 미달이 잦아도 1순위가 될 확률은 위 예상 낙찰확률 그대로입니다 — 하한 이상에 넣어도 1순위가 아니면 똑같이 떨어지고, 사정율보다 한참 높게 넣는 값(예: 100.4~100.8%)은 역검증에서 평균 업체보다 18~34% 덜 낙찰됐습니다.</li>` : '',
       `<li class="ok"><b>금액</b>: ${recAmt ? `<b>${won(recAmt)}</b>을 ` : ''}원 단위까지 그대로. 안전 범위 ${recAmt ? `${won(amtAt(rec.lo))} ~ ${won(amtAt(rec.hi))}` : `${pct(rec.lo, 3)} ~ ${pct(rec.hi, 3)}`} 안이면 확률 비슷</li>`,
       !base ? `<li class="warn"><b>기초금액</b>을 넣어야 추천 금액이 계산됩니다</li>` : '',
       !rec.rngKnown && rec.src === 'model' ? `<li class="warn"><b>예가범위</b>를 모르면 ±3% 기준으로 계산합니다. 공고문에서 확인해 ② 칸에 고르세요</li>` : '',
