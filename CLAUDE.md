@@ -102,6 +102,9 @@ data/                 수집 결과 (아래)
 - 역검증: 최근 12개월 각 달을 그 이전 24개월로만 추천(예측 참가수 → 곡선)해 S ≤ x < W 를 센다. 비교 = 평균 사정율, 평균 업체(1/참가수).
 - 근거(2026-07~09 실데이터): 고정 위치 하나로는 오라클도 평균 업체 ×1.06이 한계. 참가수에 따라 유리한 위치가 다르다(많으면 분포 가장자리, 예: ±3% 98.42%). "비슷한 경쟁 규모로 학습"을 8월로 골라 9월에 적용 → 138건 vs 평균 사정율 124건. 예상 참가 하위 20% 공고만 넣으면 낙찰률 약 2배.
 
+### data/lic_map.json — 공고별 면허제한 (수집기 `write_lic_map`, 최근 60일 공사)
+`{"v":1, "lic":[면허명…], "items":{"공고ID":[lic 번호…]}}` — 실시간 검색의 업종 거르기용.
+
 ### data/scsbid/{시도}.json — 과거 낙찰 (최근 개찰 순)
 `{"sido":"강원", "v":1, "part":1, "parts":1, "items":[ … ]}` 항목: `id, no, ord, nm, org, dmd, sido, sgg, lic, base, a, net, floor, rng` (bids 와 같은 뜻) +
 | 키 | 뜻 |
@@ -146,7 +149,7 @@ data/                 수집 결과 (아래)
 - **내 투찰 기록**(관심공고): WatchStore 항목에 `myBid`(실제 넣은 금액). 개찰 뒤 `judgeBid` 로 낙찰권/하한 미달/1위보다 높음 + 차이 금액 + (상세 있으면) 예상 순위. `calibrate` = 내 기록 전체에서 투찰 사정률을 −1~+1%p 옮겼을 때 낙찰권이 가장 많았던 이동량 → `bp.myCal` 에 저장해 예측 화면 팁에 표시.
 - 입찰공고 탭은 두 모드: **실시간 검색**(조달청 `BidPublicInfoService` 의 `getBidPblancListInfo{Cnstwk|Servc|Thng|Frgcpt|Etc}PPSSrch` 를 브라우저에서 직접 호출, CORS 허용됨. 업무구분 공사·용역·물품·외자·기타, `LIVE_KINDS`. 검색조건 조회가 키 오류 외 이유로 실패하면 기본 목록 조회 + 앱에서 거르기로 대체. 예측은 공사만) / **진행중 공고**(자동 수집 bids.json). 서비스키는 설정 탭에서 입력해 `localStorage bp.apiKey` 에만 저장(저장소에 넣지 않음). 다른 기기로는 설정 탭 "폰으로 보내기 (QR)" → `앱주소#key=…` 링크를 열면 init() 이 저장하고 주소에서 지운다(# 뒤라 서버로 안 감). 키가 있으면 실시간이 기본.
   조달청 API 는 한 번에 약 1개월까지만 조회되므로 기간을 30일 구간(`liveWindows`, 최신부터)으로 나눠 차례로 받고, 07/범위 오류면 구간을 반으로 나눠 다시. 시·군·참가 가능처럼 앱에서 거르는 조건이 있으면 맞는 공고가 30건 모일 때까지(최대 12번 호출) 자동으로 더 받는다.
-  업종 조건은 이름 대신 나라장터 업종코드 `LIC_CODES`(예: 금속창호 4991, 도장·습식·방수·석공 4992)로 `indstrytyCd` 에 보낸다 — 이름은 조달청 표기(ㆍ, '조립')와 달라 0건이 된다.
+  업종은 조달청에 보내지 않는다: PPSSrch 의 업종 조건(indstrytyNm·indstrytyCd)은 맞는 공고가 있어도 0건을 돌려준다(실사용 확인, 다른 개발자도 같은 보고). 대신 받은 공고의 주공종·부대공종(mainCnsttyNm, subsiCnsttyNm1~9) + 수집된 면허제한 `data/lic_map.json` 으로 앱에서 거르고(`liveHasLic`), 이때는 999건씩 받는다. `LIC_CODES` 는 참고용 업종코드(금속창호 4991, 도장·습식·방수·석공 4992 …).
   설정 "조달청 대조 점검"(`runVerify`): 수집된 최근 1개월 낙찰 10건을 조달청에 다시 조회해 낙찰금액·예정가격·참가수를 비교.
   실시간 결과는 같은 공고번호의 마지막 차수만, 취소공고 제외. "이 공고로 예측" 때 `getBidPblancListInfoCnstwkBsisAmount`(inqryDiv=2, 공고번호)로 기초금액·A값·예가범위를 채운다(`enrichLive`). 검색 조건 파라미터 이름(bidNtceNm, ntceInsttNm, dminsttNm, prtcptLmtRgnNm, indstrytyNm, presmptPrceBgn/End, bidClseExcpYn)은 실제 키로 확인 전 — 안 먹히면 여기부터 확인.
 - **추천은 전국 모델 우선**(`modelPredict` → `recFromModel`): 공고의 예상 참가수(`predictLnN`, 입력값이 있으면 그 값)와 예가범위(모르면 ±3%)로 `model.curves` 에서 곡선을 골라 추천 x·안전 범위·낙찰확률. 모델이 없으면 지역 곡선(`recFromLocal`). 예측 화면 파란 카드에 "✅ 추천 체크"(경쟁 규모·추천 위치·금액·입력 누락·순공사원가·기록), 배지 = 역검증 요약(`valBadge`). 설정 탭 "역검증" = `renderValidation`.

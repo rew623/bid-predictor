@@ -158,6 +158,16 @@ const Data = {
     this.meta.files = this.meta.files || {scsbid:{}, opening:{}};
     return this.meta;
   },
+  /** 수집기가 만든 공고별 면허제한 (최근 60일, 공사) → Map(공고ID → [면허]) */
+  loadLicMap(){
+    return this.once('licmap', async () => {
+      try{
+        const j = await this.fetchJson('lic_map.json');
+        this.licMap = new Map(Object.entries(j.items || {}).map(([id, idx]) => [id, idx.map(i => j.lic[i])]));
+      }catch(e){ this.licMap = new Map(); }
+      return this.licMap;
+    });
+  },
   loadModel(){
     return this.once('model', async () => {
       try{ Model.m = await this.fetchJson('model.json'); }catch(e){ console.warn('model', e); Model.m = null; }
@@ -837,7 +847,7 @@ function liveNotice(it){
   const org = pickF(it, 'ntceInsttNm'), dmd = pickF(it, 'dminsttNm');
   const {sido, sgg} = parseRegion(pickF(it, 'cnstrtsiteRgnNm', 'cnstrtSiteRgnNm', 'cnstwkSiteRgnNm'), dmd, org);
   const b = {id: `${no}-${ord}`, no, ord, nm: String(pickF(it, 'bidNtceNm', 'cnstwkNm') || '').trim(), org, dmd, sido, sgg,
-    lic: normLic(pickF(it, 'mainCnsttyNm')), est: numF(pickF(it, 'presmptPrce', 'presmptPrc')), base: numF(pickF(it, 'bssamt', 'bsisAmt')),
+    lic: [...new Set(['mainCnsttyNm', ...Array.from({length: 9}, (_, i) => `subsiCnsttyNm${i + 1}`)].map(k => pickF(it, k)).filter(Boolean).flatMap(normLic))], est: numF(pickF(it, 'presmptPrce', 'presmptPrc')), base: numF(pickF(it, 'bssamt', 'bsisAmt')),
     floor: numF(pickF(it, 'sucsfbidLwltRate', 'scsbdLwltRate')), ntce: normDt(pickF(it, 'bidNtceDt', 'rgstDt')),
     close: normDt(pickF(it, 'bidClseDt')), open: normDt(pickF(it, 'opengDt', 'rlOpengDt')),
     url: pickF(it, 'bidNtceDtlUrl', 'bidNtceUrl'), cancel: /취소/.test(pickF(it, 'ntceKindNm') || ''), live: true, kind: Live.kind};
@@ -871,6 +881,7 @@ function initLive(){
   fillLSgg();
   Data.loadBids().then(fillLSgg);
   $('lRgn').addEventListener('change', fillLSgg);
+  $('lLic').addEventListener('change', async () => { if(!Live.params || $('lLic').disabled) return; await Data.loadLicMap(); renderLive(); if(liveRows().length < 30 && !liveDone()) await liveSearch(true); });
   $('lSgg').addEventListener('change', async () => { if(!Live.params) return; renderLive(); if(liveRows().length < 30 && !liveDone()) await liveSearch(true); });
   fillSelect($('lLic'), LICENSES, {all:'업종 전체'});
   fillSelect($('lAmt'), AMT_RANGES, {all:'추정가격 전체'});
@@ -912,8 +923,8 @@ function liveParams(){
   set('ntceInsttNm', $('lOrg').value.trim());
   set('dminsttNm', $('lDmd').value.trim());
   set('prtcptLmtRgnNm', $('lRgn').value);
-  const lic = $('lLic').value;
-  if(lic) LIC_CODES[lic] ? set('indstrytyCd', LIC_CODES[lic]) : set('indstrytyNm', lic.replace(/·/g, 'ㆍ'));
+  // 업종은 보내지 않는다: 조달청 검색조건의 업종 필터는 맞는 공고가 있어도 0건을 돌려주는 일이 있어(다른 개발자도 같은 보고),
+  // 주공종·부대공종 + 수집된 면허제한(lic_map.json)으로 앱에서 거른다 → liveRows
   set('presmptPrceBgn', aLo);
   set('presmptPrceEnd', aHi);
   if($('lOpen').checked) p.bidClseExcpYn = 'Y';
@@ -936,20 +947,24 @@ function liveWindows(from, to){
 }
 const liveDone = () => Live.wi >= Live.wins.length;
 /** 앱에서 거르는 조건(시·군, 참가 가능, 기본 목록 대체 조회)이 있나 — 있으면 충분히 모일 때까지 더 받는다 */
-const liveClientFilter = () => !!($('lSgg').value || ($('lElig').checked && Company.isSet()) || Live.fallback);
+const liveClientFilter = () => !!($('lSgg').value || $('lLic').value || ($('lElig').checked && Company.isSet()) || Live.fallback);
+/** 공고에 이 면허가 걸려 있나: 주공종·부대공종 또는 수집된 면허제한 */
+const liveHasLic = (b, lic) => (b.lic || []).includes(lic) || (Data.licMap?.get(b.id) || []).includes(lic);
 function liveRows(){
   const maxOrd = {};
   Live.items.forEach(b => { if(!maxOrd[b.no] || b.ord > maxOrd[b.no]) maxOrd[b.no] = b.ord; });   // 변경공고는 마지막 차수만
   const elig = $('lElig').checked && Company.isSet();
   const sgg = $('lSgg').value;
   const inSgg = (b) => !sgg || b.sgg === sgg || (b.rgn || []).some(t => parseRegion(t).sgg === sgg);
-  return Live.items.filter(b => b.ord === maxOrd[b.no] && !b.cancel && (!elig || eligibility(b).ok) && inSgg(b));
+  const lic = $('lLic').value;
+  return Live.items.filter(b => b.ord === maxOrd[b.no] && !b.cancel && (!elig || eligibility(b).ok) && inSgg(b) && (!lic || liveHasLic(b, lic)));
 }
 /** 현재 구간의 다음 쪽 1번 호출 */
 async function liveFetchOne(){
   const [bgn, end] = Live.wins[Live.wi];
   const [srchOp, listOp] = LIVE_KINDS[Live.kind];
-  const q = {inqryBgnDt: bgn + '0000', inqryEndDt: end + '2359', numOfRows: LIVE_ROWS, pageNo: Live.page + 1};
+  const rows = Live.rows || LIVE_ROWS;
+  const q = {inqryBgnDt: bgn + '0000', inqryEndDt: end + '2359', numOfRows: rows, pageNo: Live.page + 1};
   const rangeErr = (m) => /범위|\(07\)/.test(m);
   let res;
   try{
@@ -981,7 +996,6 @@ async function liveFetchOne(){
     (!P2.ntceInsttNm || low(n.org).includes(low(P2.ntceInsttNm))) &&
     (!P2.dminsttNm || low(n.dmd).includes(low(P2.dminsttNm))) &&
     (!P2.prtcptLmtRgnNm || n.sido === P2.prtcptLmtRgnNm) &&
-    (!$('lLic').value || (n.lic || []).includes($('lLic').value)) &&
     (!P2.presmptPrceBgn || (n.est || 0) >= P2.presmptPrceBgn) &&
     (!P2.presmptPrceEnd || (n.est || Infinity) < P2.presmptPrceEnd) &&
     (!P2.bidClseExcpYn || !n.close || parseKst(n.close) >= new Date()));
@@ -989,7 +1003,7 @@ async function liveFetchOne(){
     const n = liveNotice(it);
     if(n.no && !have.has(n.id) && keep(n)){ have.add(n.id); Live.items.push(n); }
   }
-  if(!res.items.length || Live.page * LIVE_ROWS >= res.total){ Live.wi++; Live.page = 0; }
+  if(!res.items.length || Live.page * rows >= res.total){ Live.wi++; Live.page = 0; }
 }
 async function liveSearch(more=false){
   const list = $('liveList');
@@ -1000,7 +1014,8 @@ async function liveSearch(more=false){
   const token = ++Live.token;
   if(!more){
     Object.assign(Live, {params: liveParams(), items: [], raw: 0, kind: $('lKind').value, fallback: false,
-      wins: liveWindows($('lFrom').value, $('lTo').value), wi: 0, page: 0, totals: []});
+      wins: liveWindows($('lFrom').value, $('lTo').value), wi: 0, page: 0, totals: [], rows: liveClientFilter() ? 999 : LIVE_ROWS});
+    if($('lLic').value) await Data.loadLicMap();
     list.innerHTML = loadingHtml('나라장터에서 조회 중…');
     $('liveMore').hidden = true;
   }
@@ -1036,6 +1051,7 @@ async function renderLive(){
   $('liveInfo').innerHTML = [`나라장터 실시간 ${esc(Live.kind)} ${fmtNum(Live.raw)}건 받음${liveDone() ? ` (전체 ${fmtNum(known)}건)` : ` · 전체 ${fmtNum(known)}건 이상`}${liveClientFilter() ? ` → 조건에 맞는 ${fmtNum(rows.length)}건` : ''}`,
     nW > 1 ? `기간을 1개월씩 ${nW}구간으로 나눠 최신부터 조회 (${doneW}/${nW}구간 완료)` : '',
     sgg ? `시·군(${esc(sgg)})은 공사 현장·참가가능지역 기준으로 앱에서 거름` : '',
+    $('lLic').value ? `업종(${esc($('lLic').value)})은 주공종·부대공종·면허제한 기준으로 앱에서 거름` : '',
     Live.kind !== '공사' ? '예측은 공사만 제공' : '',
     !sido && !Model.m ? '지역을 고르면 예상 사정율·낙찰확률도 표시됩니다' : ''].filter(Boolean).join(' · ');
   list.innerHTML = rows.length ? rows.map(b => bidCard(b, today)).join('') : `<div class="empty card">${liveDone() ? '조건에 맞는 공고가 없습니다.' : '아직 조건에 맞는 공고를 못 찾았습니다. "더 보기"로 이전 기간을 이어서 조회하세요.'}</div>`;

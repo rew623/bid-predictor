@@ -593,6 +593,23 @@ class NoticeCache:
         return out
 
 
+def write_lic_map(cache):
+    """앱 실시간 검색의 업종 거르기용: 최근 60일 공사 공고별 면허제한 → data/lic_map.json
+    {"v":1, "lic":[면허명…], "items":{공고ID:[면허 번호…]}} (조달청 검색조건의 업종 필터가 0건을 돌려주는 문제 대신)"""
+    names, index, items = [], {}, {}
+    for id_, e in sorted(cache.items.items()):
+        if not e.get("nm") or not e.get("lic"):
+            continue
+        idx = []
+        for l in e["lic"]:
+            if l not in index:
+                index[l] = len(names)
+                names.append(l)
+            idx.append(index[l])
+        items[id_] = idx
+    return write_if_changed(DATA / "lic_map.json", dumps({"v": SCHEMA_VERSION, "lic": names, "items": items}))
+
+
 def finish_notice(e):
     rgn = e.get("rgn") or []
     single_rgn = rgn[0] if len(rgn) == 1 else None
@@ -1041,6 +1058,7 @@ def main():
         files_o, counts_o = ostore.files()
         bids = cache.bids(now)
         changed = write_if_changed(DATA / "bids.json", dumps({"items": bids, "v": SCHEMA_VERSION}))
+        changed = write_lic_map(cache) or changed
         old_files = meta.get("files", {})
         meta["files"] = {"scsbid": files_s, "opening": files_o}
         meta["counts"] = {"bids": len(bids), "scsbid": counts_s, "opening": counts_o,
