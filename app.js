@@ -1589,6 +1589,26 @@ function initSettings(){
     }catch(e){ keyMsg(`<span class="badge">연결 실패</span> ${esc(e.message)} (키는 저장됨)`); }
   });
   $('keyDel').addEventListener('click', () => { LS.set('apiKey', ''); Live.params = null; keyMsg('키를 지웠습니다.'); });
+  // 이 기기의 키를 QR 로 보여줘 폰 카메라로 찍으면 폰 앱에 저장되게 한다 (키는 주소의 # 뒤에만 실려 서버로 가지 않음)
+  $('keyQr').addEventListener('click', async () => {
+    const box = $('keyQrBox');
+    if(!box.hidden){ box.hidden = true; box.innerHTML = ''; return; }
+    const k = String(LS.get('apiKey', '') || '').trim();
+    if(!k){ keyMsg('먼저 이 기기에 서비스키를 저장하세요.'); return; }
+    const url = location.origin + location.pathname + '#key=' + encodeURIComponent(k);
+    box.hidden = false;
+    box.innerHTML = loadingHtml('QR 만드는 중…');
+    try{
+      if(!window.QRCode) await new Promise((res, rej) => {
+        const sc = document.createElement('script');
+        sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+        sc.onload = res; sc.onerror = () => rej(new Error('QR 라이브러리를 불러오지 못했습니다'));
+        document.head.appendChild(sc);
+      });
+      box.innerHTML = '<div id="keyQrImg"></div><div class="meta-line">폰 카메라로 찍어 열면 폰 앱에 키가 저장됩니다. 다 쓰면 이 버튼을 다시 눌러 QR을 닫으세요. 이 QR·링크를 다른 사람에게 보내지 마세요.</div>';
+      new QRCode($('keyQrImg'), {text: url, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M});
+    }catch(e){ box.innerHTML = `<div class="alert warn">${esc(e.message)}</div>`; }
+  });
   fillSelect($('btSido'), SIDOS, {all:'시·도 선택', value: Data.meta.detail?.regions?.[0] || ''});
   $('btRun').addEventListener('click', runBacktest);
   $('themeSeg').addEventListener('click', (e) => {
@@ -1747,6 +1767,13 @@ function initServiceWorker(){
 
 // ============================================================ 시작
 async function init(){
+  // QR/링크로 받은 서비스키 저장 (#key=…) 후 주소에서 바로 지운다
+  const km = location.hash.match(/^#key=(.+)$/);
+  if(km){
+    try{ LS.set('apiKey', decodeURIComponent(km[1])); LS.set('bidsMode', 'live'); }catch(e){}
+    history.replaceState(null, '', location.pathname + '#bids');
+    setTimeout(() => alert('이 기기에 조달청 서비스키를 저장했습니다. 입찰공고 탭에서 실시간 검색을 쓸 수 있어요.'), 300);
+  }
   applyTheme();
   $('todayLabel').textContent = new Date().toLocaleDateString('ko-KR', {year:'numeric', month:'long', day:'numeric', weekday:'short'});
   const lv = LS.get('lastVisit', null);
