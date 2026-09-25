@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """수집 뒤 실행: 전국 과거 낙찰로 추천 모델을 만들고 표본외 역검증까지 해서 data/model.json 에 쓴다.
 
-1) 참가업체 수 예측표  — 기관 → 시도×금액대×하한율 → 시도×금액대 → 금액대×예가범위 순으로 로그 평균을 수축(shrink)해 섞는다.
+1) 참가업체 수 예측표  — 금액대×예가범위 → 시도×금액대 → 시도×금액대×하한율 → 면허 → 시도×면허 → 기관 순으로 로그 평균을 수축(shrink)해 섞는다.
 2) 낙찰확률 곡선        — 예가범위 × 예상 참가수(로그 0.2 간격)마다, 참가수가 비슷한(×1/4~×4) 최근 24개월 전국 공고의
                          승리 구간 [S, W) 를 쌓아 97~103% 0.001 간격으로 계산, ±0.01%p 이동평균. 최대점 = 추천 투찰 사정률.
 3) 역검증              — 최근 12개월 각 달을 그 이전 데이터만으로 추천해, 실제로 1순위였는지 센다.
@@ -64,16 +64,19 @@ def load_rows():
                 continue
             rows.append({"S": S, "W": W, "N": n, "rng": rng_key(r.get("rng")), "date": r["date"],
                          "org": r.get("org") or r.get("dmd") or "", "sido": r.get("sido") or "",
-                         "ab": amt_bin(base), "fl": floor_key(r.get("floor"))})
+                         "ab": amt_bin(base), "fl": floor_key(r.get("floor")), "lic": "+".join(sorted(r.get("lic") or []))})
     rows.sort(key=lambda r: r["date"])
     return rows
 
 
 # ---------------------------------------------------------------- 참가수 예측
+# 넓은 → 좁은 순. 면허를 넣으면 참가수 예측 상관이 0.62 → 0.67 (2026-09 표본외)
 PRED_KEYS = [
     ("a", lambda r: f'{r["ab"]}|{r["rng"]}'),
     ("sa", lambda r: f'{r["sido"]}|{r["ab"]}'),
     ("saf", lambda r: f'{r["sido"]}|{r["ab"]}|{r["fl"]}'),
+    ("l", lambda r: r["lic"]),
+    ("sl", lambda r: f'{r["sido"]}|{r["lic"]}' if r["lic"] else ""),
     ("o", lambda r: r["org"]),
 ]
 

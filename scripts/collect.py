@@ -14,9 +14,10 @@ GitHub Actions(.github/workflows/collect.yml)에서 매일 실행된다.
 단계 (이름)
   1) 공고      입찰공고(진행중) 갱신      → data/bids.json, data/notice_cache.json
   2) 최근낙찰  최근 낙찰 목록 갱신        → data/scsbid/{시도}.json
-  3) 과거낙찰  과거 낙찰 목록, 최근 24개월까지 먼저 (진행 상황 meta.json)
-  4) 상세      개찰 전체 순위·복수예가    → data/opening/{시도}/{연도}.json (scripts/regions.json 지역만)
-  5) 과거낙찰  나머지 과거(3년까지)
+  3) 상세      개찰 전체 순위·복수예가(최신부터, 과거 수집 몫 250회는 남김) → data/opening/{시도}/{연도}.json (regions.json 지역만)
+  4) 과거낙찰  과거 낙찰 목록, 최근 24개월까지 먼저 (진행 상황 meta.json)
+  5) 상세      남은 한도로 이어서
+  6) 과거낙찰  나머지 과거(3년까지)
 
 API 필드명이 확정되지 않았으므로 모든 필드 접근은 후보 이름 목록(F_*)을 거친다.
 첫 실행 때 각 API 원본 1건을 data/_sample_{op}.json 에 저장하니 그걸 보고 후보를 고친다.
@@ -48,6 +49,7 @@ ROWS = 999                                  # 페이지당 건수
 NOTICE_CACHE_DAYS = 60                      # 낙찰 정보 보강용 공고 보관 기간
 RECENT_SCSBID_DAYS = 40                     # 매일 다시 훑는 최근 낙찰 기간
 BACKFILL_YEARS = 3
+DETAIL_RESERVE = 250                        # 첫 상세 단계는 낙찰정보 호출을 이만큼 남겨 과거 수집에 쓴다
 RECENT_FIRST_MONTHS = 24                    # 과거 낙찰은 이 기간을 먼저 채운 뒤 상세 → 나머지 과거 순으로
 DETAIL_MAX_TRIES = 3
 SCHEMA_VERSION = 1
@@ -950,7 +952,8 @@ def step_backfill(api, meta, store, now, checkpoint, horizon=None):
         checkpoint()
 
 
-def step_details(api, meta, store, ostore, regions, now, checkpoint):
+def step_details(api, meta, store, ostore, regions, now, checkpoint, reserve=3):
+    """reserve: 낙찰정보 서비스 호출을 이만큼 남기고 멈춘다 (뒤에 과거 수집이 쓸 몫)"""
     target = meta.get("backfill", {}).get("target_start") or (now - dt.timedelta(days=365 * BACKFILL_YEARS)).strftime("%Y%m%d")
     tdate = f"{target[:4]}-{target[4:6]}-{target[6:8]}"
     dm = meta.setdefault("detail", {})
@@ -967,7 +970,7 @@ def step_details(api, meta, store, ostore, regions, now, checkpoint):
     log(f"[상세] 대기 {len(queue)}건")
     done_now = 0
     for sido, rec in queue:
-        if api.remaining("scsbid") < 3 or api.time_left() < 10:
+        if api.remaining("scsbid") < reserve or api.time_left() < 10:
             break
         try:
             ranks = list(api.paged("opening_rank", {"bidNtceNo": rec["no"], "bidNtceOrd": rec["ord"]}))
@@ -997,8 +1000,13 @@ def step_details(api, meta, store, ostore, regions, now, checkpoint):
         if done_now % 100 == 0:
             checkpoint()
     hist = (dm.get("history") or [])[-6:]
+    today = now.strftime("%Y%m%d")
     if done_now:
-        hist.append(done_now)
+        if dm.get("history_date") == today and hist:
+            hist[-1] += done_now          # 하루에 두 번 돌면 합친다
+        else:
+            hist.append(done_now)
+        dm["history_date"] = today
     dm["history"] = hist
     per_day = max(hist) if hist else max(1, (DAILY_LIMIT - 60) // 2)
     remaining = sum(max(0, dm[s]["total"] - dm[s]["done"] - dm[s]["failed"]) for s in regions)
@@ -1048,11 +1056,13 @@ def main():
         if final:
             log(f"저장 완료: 공고 {len(bids)}건, 낙찰 {sum(counts_s.values())}건, 상세 {sum(counts_o.values())}건")
 
-    # 예측(앱은 최근 24개월 위주)에 효과가 큰 순서: 공고 → 최근 낙찰 → 과거 24개월 → 개찰 상세 → 나머지 과거
+    # 순서: 공고 → 최근 낙찰 → 개찰 상세(최신부터, 과거 수집 몫은 남김) → 과거 24개월 → 남은 한도로 상세 → 나머지 과거
+    # 상세는 낙찰정보 서비스만 쓰고 과거 수집은 주로 입찰공고 서비스를 써서, 같이 돌려도 서로 크게 방해하지 않는다
     horizon = now - dt.timedelta(days=round(30.44 * RECENT_FIRST_MONTHS))
     steps = [
         ("공고", lambda: step_notices(api, meta, cache, now)),
         ("최근낙찰", lambda: step_recent_scsbid(api, meta, store, cache, now)),
+        ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all, reserve=DETAIL_RESERVE)),
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all, horizon)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all)),
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all)),

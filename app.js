@@ -87,6 +87,22 @@ function fillSelect(el, items, {all='전체', value=''}={}){
   if(el.value !== value) el.value = el.options[0]?.value ?? '';
 }
 
+// ---------- 금액 입력칸: 쉼표를 넣어 보여주고, 읽을 때는 숫자만 (class="money")
+const numOf = (el) => { const v = +String(el?.value ?? '').replace(/[^\d.]/g, ''); return isFinite(v) ? v : 0; };
+const moneyText = (v) => (v === '' || v == null || !isFinite(+v) || +v === 0) ? '' : Math.round(+v).toLocaleString('ko-KR');
+function setMoney(el, v){ if(el) el.value = moneyText(v); }
+/** 입력하는 동안 쉼표 다시 찍기 (커서는 앞쪽 숫자 개수 기준으로 되돌림) */
+function formatMoneyInput(el){
+  const pos = el.selectionStart ?? el.value.length;
+  const digitsBefore = el.value.slice(0, pos).replace(/\D/g, '').length;
+  const digits = el.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+  el.value = digits ? (+digits).toLocaleString('ko-KR') : '';
+  let i = 0, seen = 0;
+  while(i < el.value.length && seen < digitsBefore){ if(/\d/.test(el.value[i])) seen++; i++; }
+  try{ el.setSelectionRange(i, i); }catch(e){}
+}
+document.addEventListener('input', (e) => { if(e.target.matches?.('input.money')) formatMoneyInput(e.target); }, true);
+
 function downloadCSV(filename, header, rows){
   const q = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s; };
   const text = '﻿' + [header, ...rows].map(r => r.map(q).join(',')).join('\n');
@@ -339,16 +355,19 @@ function expectedCnt(pool, notice){
 // ---------- 전국 추천 모델 (data/model.json — scripts/model.py 가 매일 계산, 설계·근거는 CLAUDE.md)
 const Model = {m: null};
 const rngKeyOf = (rng) => rng ? rng.map(v => +v).join(',') : '';
-/** 예상 참가업체 수(로그). 기관 → 시도×금액대×하한율 → 시도×금액대 → 금액대×예가범위 순으로 수축해 섞는다 (model.py 와 같은 계산) */
+/** 예상 참가업체 수(로그). 금액대×예가범위 → 시도×금액대 → 시도×금액대×하한율 → 면허 → 시도×면허 → 기관 순으로 수축해 섞는다 (model.py 와 같은 계산) */
 function predictLnN(n){
   const M = Model.m?.npred;
   if(!M) return null;
   const base = n.base || n.est;
   const ab = base ? Model.m.amt_edges.filter(e => Math.log10(base) >= e).length : null;
   const fl = n.floor ? String(+n.floor) : '';
-  const keys = ab == null ? {o: recOrg(n)} : {a: `${ab}|${rngKeyOf(n.rng)}`, sa: `${n.sido || ''}|${ab}`, saf: `${n.sido || ''}|${ab}|${fl}`, o: recOrg(n)};
+  const lic = [...(n.lic || [])].sort().join('+');
+  const keys = {o: recOrg(n), l: lic, sl: lic ? `${n.sido || ''}|${lic}` : ''};
+  if(ab != null) Object.assign(keys, {a: `${ab}|${rngKeyOf(n.rng)}`, sa: `${n.sido || ''}|${ab}`, saf: `${n.sido || ''}|${ab}|${fl}`});
   let est = M.g;
-  for(const name of ['a', 'sa', 'saf', 'o']){
+  for(const name of ['a', 'sa', 'saf', 'l', 'sl', 'o']){
+    if(!M.t[name]) continue;
     const [m, c] = (keys[name] && M.t[name][keys[name]]) || [est, 0];
     est = (c * m + M.shrink * est) / (c + M.shrink);
   }
@@ -580,7 +599,8 @@ function initBidsFilters(){
   fillBidsSgg(saved.sgg || '');
   const onChange = () => { saveBidsFilter(); bidsShown = PAGE_SIZE; renderBids(); };
   $('bSido').addEventListener('change', () => { fillBidsSgg(''); onChange(); });
-  ['bSgg','bLic','bAmt','bSort'].forEach(id => $(id).addEventListener('change', onChange));
+  $('bElig').checked = saved.elig ?? Company.isSet();
+  ['bSgg','bLic','bAmt','bSort','bElig'].forEach(id => $(id).addEventListener('change', onChange));
   let t; $('bQuery').addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { bidsShown = PAGE_SIZE; renderBids(); }, 200); });
   $('bidsMore').addEventListener('click', () => { bidsShown += PAGE_SIZE; renderBids(); });
   $('bidsKpis').addEventListener('click', (e) => {
@@ -591,7 +611,7 @@ function initBidsFilters(){
 }
 function saveBidsFilter(){
   LS.set('bidsFilter', {sido: $('bSido').value, sgg: $('bSgg').value, lic: $('bLic').value,
-    amt: $('bAmt').value, sort: $('bSort').value, quick: bidsQuick});
+    amt: $('bAmt').value, sort: $('bSort').value, quick: bidsQuick, elig: $('bElig').checked});
 }
 function fillBidsSgg(value){
   const sido = $('bSido').value;
@@ -605,6 +625,7 @@ async function renderBids(){
   const list = $('bidsList');
   if(!Data.bids){ list.innerHTML = loadingHtml(); await Data.loadBids(); fillBidsSgg(LS.get('bidsFilter', {}).sgg || ''); }
   const sido = $('bSido').value, sgg = $('bSgg').value, lic = $('bLic').value, sort = $('bSort').value;
+  const elig = $('bElig').checked && Company.isSet();
   const [aLo, aHi] = ($('bAmt').value || '-').split('-').map(v => v === '' ? null : +v * 1e8);
   const q = $('bQuery').value.trim().toLowerCase();
   const now = new Date(), today = kstDay(now);
@@ -615,7 +636,7 @@ async function renderBids(){
       (!lic || (b.lic||[]).includes(lic)) &&
       (aLo == null || (amt && amt >= aLo)) && (aHi == null || (amt && amt < aHi)) &&
       (!q || (b.nm||'').toLowerCase().includes(q) || (b.org||'').toLowerCase().includes(q) || (b.dmd||'').toLowerCase().includes(q)) &&
-      (!b.close || parseKst(b.close) >= now);
+      (!b.close || parseKst(b.close) >= now) && (!elig || eligibility(b).ok);
   });
   const quickFn = {
     all: () => true,
@@ -697,6 +718,7 @@ function bidCard(b, today){
     ...(b.lic || []).map(l => `<span class="tag lic">${esc(l)}</span>`),
     b.rng ? `<span class="tag">예가 ${esc(rngText(b.rng))}</span>` : '',
     b.floor ? `<span class="tag">하한 ${b.floor}%</span>` : '',
+    eligTag(b),
   ].join('');
   let pred = '';
   if(qp){
@@ -753,9 +775,9 @@ function apiKey(){
 }
 const findNotice = (id) => Data.bids?.find(x => x.id === id) || Live.items.find(x => x.id === id);
 
-async function liveCall(op, params){
+async function liveCall(op, params, base=LIVE_BASE){
   const q = new URLSearchParams({serviceKey: apiKey(), type: 'json', ...params});
-  const r = await fetch(`${LIVE_BASE}/${op}?${q}`);
+  const r = await fetch(`${base}/${op}?${q}`);
   const text = await r.text();
   let j;
   try{ j = JSON.parse(text); }
@@ -793,10 +815,14 @@ function parseRegion(...texts){
   }
   return {};
 }
+// 면허 이름 맞추기: 코드(/4991)·구분점(· ㆍ .)·"공사업/사업/업"을 떼고 비교. 나라장터는 "금속창호ㆍ지붕건축물조립공사업"으로 쓴다
+const licKey = (s) => String(s).split('/')[0].replace(/[·ㆍ.,\s]/g, '').replace('지붕건축물조립', '지붕건축물조성');
+const LIC_BY_KEY = new Map(LICENSES.map(l => [licKey(l), l]));
 function normLic(raw){
   if(!raw) return undefined;
-  const s = String(raw).trim().replace(/공사업$|업$/, '');
-  return [LICENSES.includes(s) ? s : String(raw).trim()];
+  const k = licKey(raw);
+  const hit = [k, k.replace(/공사업$/, ''), k.replace(/사업$/, ''), k.replace(/업$/, '')].map(x => LIC_BY_KEY.get(x)).find(Boolean);
+  return [hit || String(raw).split('/')[0].trim()];
 }
 function liveNotice(it){
   const no = String(pickF(it, 'bidNtceNo') || '').trim(), ord = String(pickF(it, 'bidNtceOrd') ?? '000').trim();
@@ -848,6 +874,8 @@ function initLive(){
   $('lSearch').addEventListener('click', () => liveSearch());
   ['lQuery', 'lOrg', 'lDmd'].forEach(id => $(id).addEventListener('keydown', (e) => { if(e.key === 'Enter') liveSearch(); }));
   $('liveMore').addEventListener('click', () => liveSearch(true));
+  $('lElig').checked = LS.get('bidsFilter', {}).elig ?? Company.isSet();
+  $('lElig').addEventListener('change', () => { if(Live.params) renderLive(); });
   $('bMode').addEventListener('click', (e) => {
     const v = e.target.dataset?.v; if(!v) return;
     bidsMode = v; LS.set('bidsMode', v); renderBidsTab();
@@ -940,7 +968,8 @@ async function renderLive(){
   // 변경공고는 같은 공고번호의 마지막 차수만, 취소공고 제외
   const maxOrd = {};
   Live.items.forEach(b => { if(!maxOrd[b.no] || b.ord > maxOrd[b.no]) maxOrd[b.no] = b.ord; });
-  const rows = Live.items.filter(b => b.ord === maxOrd[b.no] && !b.cancel);
+  const elig = $('lElig').checked && Company.isSet();
+  const rows = Live.items.filter(b => b.ord === maxOrd[b.no] && !b.cancel && (!elig || eligibility(b).ok));
   const today = kstDay(new Date());
   $('liveInfo').innerHTML = [`나라장터 실시간 ${esc(Live.kind)} ${fmtNum(Live.total)}건 중 ${fmtNum(Math.min(Live.total, Live.page * LIVE_ROWS))}건 조회${Live.fallback ? `(조건은 앱에서 거름 → ${fmtNum(rows.length)}건)` : ''}`,
     Live.kind !== '공사' ? '예측은 공사만 제공' : '',
@@ -966,7 +995,67 @@ async function toggleWatch(id, btn){
   }
 }
 const pickNotice = (b) => ({id:b.id, no:b.no, ord:b.ord, nm:b.nm, org:b.org, dmd:b.dmd, sido:b.sido, sgg:b.sgg,
-  lic:b.lic, base:b.base, a:b.a, floor:b.floor, net:b.net, rng:b.rng, close:b.close, url:b.url});
+  lic:b.lic, rgn:b.rgn, base:b.base, est:b.est, a:b.a, floor:b.floor, net:b.net, rng:b.rng, close:b.close, open:b.open, url:b.url});
+
+// ============================================================ 우리 업체 (소재지·보유 면허·사업자번호 — 이 기기에만 저장)
+const Company = {
+  get(){ return {sido: '', sgg: '', lics: [], biz: '', ...LS.get('company', {})}; },
+  set(c){ LS.set('company', c); qpCache.clear(); },
+  isSet(){ const c = this.get(); return !!(c.sido || c.lics.length); },
+};
+/** 이 공고에 우리 업체가 참가할 수 있나. 참가가능지역(rgn)·면허(lic) 기준. 정보가 없으면 '확인 필요' */
+function eligibility(b){
+  const c = Company.get();
+  const out = {ok: true, lic: null, rgn: null};
+  if(c.lics.length){
+    if(!b.lic?.length) out.lic = 'unknown';
+    else if(b.lic.some(l => c.lics.includes(l))) out.lic = 'ok';
+    else { out.lic = 'no'; out.ok = false; }
+  }
+  if(c.sido && b.rgn?.length){
+    const hit = b.rgn.some(t => {
+      if(/전국/.test(t)) return true;
+      const r = parseRegion(t);
+      return r.sido === c.sido && (!r.sgg || !c.sgg || r.sgg === c.sgg);
+    });
+    out.rgn = hit ? 'ok' : 'no';
+    if(!hit) out.ok = false;
+  }
+  return out;
+}
+function eligTag(b){
+  if(!Company.isSet()) return '';
+  const e = eligibility(b);
+  if(!e.ok) return `<span class="tag bad">참가 불가 · ${e.rgn === 'no' ? '지역 제한' : '면허 불일치'}</span>`;
+  if(e.lic === 'unknown') return '<span class="tag warn">면허 확인 필요</span>';
+  return '<span class="tag okc">참가 가능</span>';
+}
+
+function initCompany(){
+  const c = Company.get();
+  fillSelect($('coSido'), SIDOS, {all: '선택 안 함', value: c.sido});
+  const fillSgg = (value) => {
+    const sido = $('coSido').value;
+    const set = new Set();
+    (Data.bids || []).forEach(b => {
+      if(b.sido === sido && b.sgg) set.add(b.sgg);
+      (b.rgn || []).forEach(t => { const r = parseRegion(t); if(r.sido === sido && r.sgg) set.add(r.sgg); });
+    });
+    fillSelect($('coSgg'), [...set].sort(), {all: '시·군 전체', value});
+    $('coSgg').disabled = !sido;
+  };
+  Data.loadBids().then(() => fillSgg(c.sgg));
+  $('coSido').addEventListener('change', () => fillSgg(''));
+  $('coBiz').value = c.biz || '';
+  const lics = new Set(c.lics);
+  buildChips($('coLics'), LICENSES, lics, null);
+  $('coSave').addEventListener('click', () => {
+    Company.set({sido: $('coSido').value, sgg: $('coSgg').value, lics: [...lics], biz: $('coBiz').value.replace(/\D/g, '')});
+    $('coMsg').innerHTML = '<span class="badge ok">저장됨</span> 입찰공고에서 "참가 가능한 공고만"을 켜면 적용됩니다';
+    LS.set('bidsFilter', {...LS.get('bidsFilter', {}), elig: true});
+    $('bElig').checked = true; $('lElig').checked = true;
+  });
+}
 
 // ============================================================ 예측분석
 const P = {
@@ -1063,16 +1152,16 @@ async function predictWithNotice(id){
   P.sggs.clear();
   P.lics = new Set(b.lic || []); LS.set('pLics', [...P.lics]);
   syncChips($('pSidoChips'), P.sidos); syncChips($('pLicChips'), P.lics);
-  $('inBase').value = b.base || b.est || '';
-  $('inA').value = b.a || '';
+  setMoney($('inBase'), b.base || b.est);
+  setMoney($('inA'), b.a);
   $('inFloor').value = b.floor || '';
   $('inCnt').value = '';
   $('pRng').value = b.rng && [2, 3].includes(b.rng[1]) && b.rng[0] === -b.rng[1] ? `${b.rng[0]},${b.rng[1]}` : '';
   $('fBase').checked = !!(b.base || b.est);
-  $('cBase').value = b.base || '';
-  $('cA').value = b.a || '';
+  setMoney($('cBase'), b.base);
+  setMoney($('cA'), b.a);
   $('cFloor').value = b.floor || DEFAULT_FLOOR;
-  $('cNet').value = b.net || '';
+  setMoney($('cNet'), b.net);
   $('cManual').value = '';
   $('fRng').checked = !!b.rng;
   if(b.rng?.[1]) $('sRange').value = Math.abs(b.rng[1]);
@@ -1106,8 +1195,8 @@ async function runPredict(){
   }catch(e){ out.innerHTML = `<div class="card"><div class="empty">데이터를 불러오지 못했습니다. (${esc(e.message)})</div></div>`; return; }
   const selRng = $('pRng').value ? $('pRng').value.split(',').map(Number) : (P.notice?.rng || null);
   const o = {sggs: P.sggs, lics: P.lics, recent: $('fRecent').checked,
-    useBase: $('fBase').checked, base: +$('inBase').value || 0,
-    useCnt: $('fCnt').checked, cnt: +$('inCnt').value || 0,
+    useBase: $('fBase').checked, base: numOf($('inBase')),
+    useCnt: $('fCnt').checked, cnt: numOf($('inCnt')),
     rng: $('fRng').checked ? selRng : null,
     org: $('fOrg').checked && P.notice ? recOrg(P.notice) : ''};
   let rows = filterRecords(recs, o);
@@ -1122,7 +1211,7 @@ async function runPredict(){
   const curveRows = rngPool.length >= MIN_SAMPLE ? rngPool : recent24;
   const wc = pred ? winCurve(curveRows, {sido: homeSido, opening}) : null;
   // 이 공고의 예상 참가업체 수: 입력값 → 비슷한 과거 공고 중앙값
-  const ec = +$('inCnt').value ? {n: +$('inCnt').value, k: 0} : expectedCnt(recs.filter(r => (r.date || '') >= monthsAgo(24)), P.notice || {lic: [...P.lics], base: o.base});
+  const ec = numOf($('inCnt')) ? {n: numOf($('inCnt')), k: 0} : expectedCnt(recs.filter(r => (r.date || '') >= monthsAgo(24)), P.notice || {lic: [...P.lics], base: o.base});
   P.last = pred ? {pred, rows, wc, ec} : null;
   if(!pred || rows.length < 3){
     out.innerHTML = `<div class="card"><div class="empty">조건에 맞는 과거 데이터가 너무 적습니다 (${rows.length}건). 조건을 넓혀 보세요.${missing.length ? `<br>데이터 없는 지역: ${esc(missing.join(', '))}` : ''}</div></div>`;
@@ -1130,11 +1219,11 @@ async function runPredict(){
   }
   $('cRate').value = (wc ? wc.best.x : pred.mean).toFixed(4);
   renderCalc();
-  const base = +$('cBase').value || 0, a = +$('cA').value || 0, floor = +$('cFloor').value || DEFAULT_FLOOR;
+  const base = numOf($('cBase')), a = numOf($('cA')), floor = +$('cFloor').value || DEFAULT_FLOOR;
   const amtAt = (x) => base ? bidAmount(base, x, a, floor) : null;
 
   // ---- 1) 추천 요약: 전국 모델(비슷한 경쟁 규모)이 있으면 우선, 없으면 이 지역 곡선
-  const nIn = +$('inCnt').value || 0;
+  const nIn = numOf($('inCnt'));
   const noticeLike = {...(P.notice || {}), sido: homeSido || P.notice?.sido, base: o.base || P.notice?.base || P.notice?.est,
     rng: selRng, floor: +$('inFloor').value || P.notice?.floor};
   const mp = modelPredict(noticeLike, nIn);
@@ -1146,7 +1235,7 @@ async function runPredict(){
     const lift = rec.random ? rec.p / rec.random : null;
     const meanX = rec.meanS ?? pred.mean;
     const V = Model.m?.validation, T = V?.total, seg = rec.nExp ? valSegment(rec.nExp) : null;
-    const net = +$('cNet').value || P.notice?.net || 0;
+    const net = numOf($('cNet')) || P.notice?.net || 0;
     const recAmt = amtAt(rec.x);
     const level = !rec.nExp ? '' : rec.nExp < 20 ? '<b style="color:var(--ok)">경쟁 적음 — 유리</b>' : rec.nExp < 80 ? '보통' : '<b style="color:var(--warn)">경쟁 많음</b>';
     const check = [
@@ -1273,9 +1362,9 @@ async function runPredict(){
 }
 
 function calcValues(){
-  const base = +$('cBase').value || 0, a = +$('cA').value || 0;
+  const base = numOf($('cBase')), a = numOf($('cA'));
   const floor = +$('cFloor').value || DEFAULT_FLOOR, sr = +$('cRate').value || 0;
-  const net = +$('cNet').value || 0, manual = +$('cManual').value || 0;
+  const net = numOf($('cNet')), manual = numOf($('cManual'));
   const plan = base && sr ? base * sr / 100 : 0;
   const computed = bidAmount(base, sr, a, floor);
   return {base, a, floor, sr, net, manual, plan, computed, final: manual || computed};
@@ -1381,7 +1470,7 @@ async function renderOrgProb(keepMsg){
 function runSimulation(){
   const range = Math.abs(+$('sRange').value || 2) / 100;
   const runs = Math.min(100000, Math.max(100, +$('sRuns').value || 5000));
-  const base = +$('cBase').value || 0;
+  const base = numOf($('cBase'));
   const srs = [];
   let example = null;
   for(let t=0; t<runs; t++){
@@ -1407,6 +1496,34 @@ function runSimulation(){
     <div class="meta-line">예시 1회: 예비가격 ${example.prices.map((p,i) => example.idx.includes(i) ? `<b>${p.toFixed(2)}</b>` : p.toFixed(2)).join(' · ')} (굵게 = 추첨) → 사정율 ${example.sr.toFixed(3)}%</div>
     <div class="meta-line">무작위 가정에 따른 참고용 시뮬레이션입니다. 실제 예가 생성 방식·업체 추첨과 다를 수 있습니다.</div>`;
 }
+
+// ---------- 개찰 결과 실시간 조회 (조달청 낙찰정보서비스, 같은 서비스키)
+const SCS_BASE = () => Data.meta?.api?.base?.scsbid || 'https://apis.data.go.kr/1230000/as/ScsbidInfoService';
+/** 공고 1건의 개찰 순위 + 예정가격. 아직 개찰 전이면 null */
+async function fetchOpeningResult(w){
+  const ord = w.ord || '000';
+  const [ranks, prices] = await Promise.all([
+    liveCall('getOpengResultListInfoOpengCompt', {bidNtceNo: w.no, bidNtceOrd: ord, numOfRows: 999, pageNo: 1}, SCS_BASE()).then(r => r.items),
+    liveCall('getOpengResultListInfoCnstwkPreparPcDetail', {inqryDiv: '2', bidNtceNo: w.no, numOfRows: 100, pageNo: 1}, SCS_BASE()).then(r => r.items).catch(() => []),
+  ]);
+  const lastRebid = (lst) => { const rb = lst.map(i => +(i.rbidNo || 0)); const mx = Math.max(0, ...rb); return lst.filter((_, k) => rb[k] === mx); };
+  const R = lastRebid(ranks).map(it => ({
+    rank: +(pickF(it, 'opengRank', 'rank') || 0), name: String(pickF(it, 'prcbdrNm', 'bidprcCorpNm', 'corpNm') || '').trim(),
+    biz: String(pickF(it, 'prcbdrBizno', 'bizno', 'bizNo') || '').replace(/\D/g, ''), amt: numF(pickF(it, 'bidprcAmt', 'bidAmt')),
+    rate: numF(pickF(it, 'bidprcrt', 'bidprcRt', 'bidRate')), note: String(pickF(it, 'rmrk', 'rmk') || '').trim(),
+  })).filter(x => x.amt).sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9));
+  const pr = lastRebid(prices);
+  const prOrd = pr.filter(it => String(pickF(it, 'bidNtceOrd') ?? ord) === ord);
+  const P2 = prOrd.length ? prOrd : pr;
+  const plan = P2.map(it => numF(pickF(it, 'plnprc', 'plnPrc'))).find(Boolean) || null;
+  const base = P2.map(it => numF(pickF(it, 'bssamt', 'bsisAmt', 'bssAmt'))).find(Boolean) || w.base || null;
+  if(!R.length && !plan) return null;
+  const biz = String(Company.get().biz || '').replace(/\D/g, '');
+  const mine = biz ? R.find(x => x.biz === biz) || null : null;
+  return {at: new Date().toISOString(), n: R.length, plan, base, win: R[0] || null, mine,
+    top: R.slice(0, 10), xs: R.map(x => x.amt)};   // xs = 전체 투찰금액 (순위 계산용)
+}
+const opened = (w) => { const t = parseKst(w.open || w.close); return t && t < new Date(); };
 
 // ============================================================ 관심공고 (내 투찰 기록 → 개찰 뒤 검증 → 다음 투찰 보정)
 /** 내 투찰금액을 승리 구간과 비교. 개찰 상세가 있으면 내 예상 순위도 센다. */
@@ -1442,7 +1559,7 @@ function calibrate(list){
 
 async function renderWatch(){
   const el = $('watchList');
-  const items = await WatchStore.list();
+  let items = await WatchStore.list();
   if(!items.length){ el.innerHTML = '<div class="empty">아직 저장한 관심공고가 없습니다. 입찰공고 탭에서 ☆를 눌러 보세요.</div>'; return; }
   el.innerHTML = loadingHtml();
   const sidos = [...new Set(items.map(i => i.sido).filter(s => s && Data.hasScsbid(s)))];
@@ -1450,44 +1567,73 @@ async function renderWatch(){
     await Data.loadScsbidMany(sidos);
     await Promise.all(sidos.filter(s => Data.hasDetail(s)).map(s => Data.loadOpening(s)));
   }catch(e){ console.warn(e); }
+  // 개찰 시각이 지난 공고는 조달청에서 결과를 바로 가져온다 (한 번에 최대 5건, 결과 없으면 1시간 뒤 다시)
+  if(apiKey()){
+    const due = items.filter(w => opened(w) && !w.res?.n && (!w.resTried || Date.now() - Date.parse(w.resTried) > 3600000)).slice(0, 5);
+    if(due.length){
+      el.innerHTML = loadingHtml(`개찰 결과 조회 중… (${due.length}건)`);
+      for(const w of due){
+        try{
+          const res = await fetchOpeningResult(w);
+          await WatchStore.save({...w, resTried: new Date().toISOString(), ...(res ? {res, myBid: w.myBid || res.mine?.amt || null} : {})});
+        }catch(e){ console.warn('개찰 조회', w.id, e); await WatchStore.save({...w, resTried: new Date().toISOString()}); }
+      }
+      items = await WatchStore.list();
+    }
+  }
   const findRec = (w) => {
     const s = Data.scsbid[w.sido];
     if(!s) return null;
     return s.byId.get(w.id) || s.recs.find(r => r.no === w.no) || null;
   };
   const judged = [];
+  let nBid = 0, nOpen = 0, nFirst = 0;
   const cards = items.map(w => {
-    const r = findRec(w);
-    const op = r ? Data.opening[w.sido]?.bids.get(r.id) : null;
+    // 판정 재료: 조달청 실시간 결과(res) 우선, 없으면 수집된 낙찰 기록
+    const r0 = findRec(w);
+    const res = w.res?.plan ? w.res : null;
+    const r = res ? {base: res.base || r0?.base || w.base, plan: res.plan, amt: res.win?.amt || r0?.amt, a: w.a ?? r0?.a, floor: w.floor || r0?.floor,
+                     cnt: res.n || r0?.cnt, win: res.win?.name || r0?.win, date: (w.open || '').slice(0, 10) || r0?.date}
+      : r0 ? {...r0} : null;
+    if(r && r.base && r.plan) r.sr = r.plan / r.base * 100;
+    const op = res ? {base: r.base, plan: r.plan, r: res.xs.map((amt, i) => [i + 1, 0, amt])} : r0 ? Data.opening[w.sido]?.bids.get(r0.id) : null;
     const dd = ddayLabel(w.close);
     const mine = r ? judgeBid(w.myBid, r, op) : null;
     const rec = r ? judgeBid(w.pred?.bid, r, op) : null;
+    if(w.myBid || w.res?.mine) nBid++;
+    if(r) nOpen++;
+    if(w.res?.mine?.rank === 1) nFirst++;
     if(mine) judged.push(mine);
     let body;
     if(r && r.sr != null){
-      const diff = w.pred?.sr != null ? w.pred.sr - r.sr : null;
+      const rank = w.res?.mine?.rank || mine?.rank;
       body = `<div class="stat-grid" style="margin-top:8px;">
           <div class="stat"><div class="t">실제 사정율</div><div class="v">${pct(r.sr)}</div></div>
-          <div class="stat"><div class="t">1위 투찰 사정률</div><div class="v">${mine ? pct(mine.W) : rec ? pct(rec.W) : '-'}</div></div>
-          <div class="stat"><div class="t">예측 오차 (평균 사정율)</div><div class="v">${diff != null ? (diff >= 0 ? '+' : '') + diff.toFixed(3) + '%p' : '-'}</div></div>
-          <div class="stat"><div class="t">참가</div><div class="v">${r.cnt ? fmtNum(r.cnt) + '개사' : '-'}</div></div>
+          <div class="stat"><div class="t">1위</div><div class="v" style="font-size:14px;">${esc(r.win || '-')}<br>${won(r.amt)}</div></div>
+          <div class="stat"><div class="t">참가</div><div class="v">${r.cnt ? fmtNum(r.cnt) + '곳' : '-'}</div></div>
+          <div class="stat ${rank === 1 ? 'hl' : ''}"><div class="t">우리 순위</div><div class="v">${rank ? fmtNum(rank) + '위' : w.myBid ? '-' : '기록 없음'}</div></div>
         </div>
-        <div class="meta-line">개찰 ${esc(r.date)} · 1위 ${esc(r.win || '-')} ${won(r.amt)}</div>
-        ${mine ? `<div class="verdict ${mine.cls}"><b>내 투찰 ${won(w.myBid)}</b> → ${mine.label}${mine.rank ? ` · 예상 ${fmtNum(mine.rank)}순위` : ''} · ${mine.gapText} <span class="faint">(투찰 사정률 ${mine.x.toFixed(3)}%)</span></div>` : ''}
-        ${rec ? `<div class="verdict ${rec.cls} soft">앱 추천 ${won(w.pred.bid)} → ${rec.label} · ${rec.gapText}</div>` : ''}`;
+        <div class="meta-line">개찰 ${esc(r.date || '')} · 예정가격 ${won(r.plan)}${res ? ' · 조달청 실시간 조회' : ' · 수집 데이터'}</div>
+        ${mine ? `<div class="verdict ${mine.cls}"><b>내 투찰 ${won(w.myBid)}</b> → ${mine.label}${rank ? ` · ${fmtNum(rank)}순위` : ''} · ${mine.gapText} <span class="faint">(투찰 사정률 ${mine.x.toFixed(3)}%)</span></div>` : ''}
+        ${rec ? `<div class="verdict ${rec.cls} soft">앱 추천 ${won(w.pred.bid)} → ${rec.label} · ${rec.gapText}</div>` : ''}
+        ${res?.top?.length ? `<details class="ranks"><summary>개찰 순위 상위 ${res.top.length}곳 보기</summary><div class="table-wrap" style="max-height:none;margin-top:6px;"><table>
+          <thead><tr><th>순위</th><th>업체</th><th class="num">투찰금액</th><th class="num">투찰률</th><th>비고</th></tr></thead>
+          <tbody>${res.top.map(x => `<tr${res.mine && x.biz === res.mine.biz ? ' class="hl-row"' : ''}><td>${x.rank || '-'}</td><td>${esc(x.name)}</td><td class="num">${won(x.amt)}</td><td class="num">${x.rate != null ? pct(x.rate) : '-'}</td><td>${esc(x.note)}</td></tr>`).join('')}</tbody></table></div></details>` : ''}`;
     }else{
-      body = `<div class="meta-line">${r ? '개찰됨 · 사정율 계산 불가(기초금액 없음)' : '개찰 전 또는 결과 미수집'} · 앱 추천 ${w.pred?.bid ? won(w.pred.bid) : '없음'}${w.pred?.n != null ? ` (${sampleText(w.pred.n)})` : ''}</div>`;
+      const st = opened(w) ? (apiKey() ? '개찰 시각이 지났지만 아직 결과가 올라오지 않았습니다' : '개찰됨 · 설정에서 서비스키를 넣으면 결과를 바로 조회합니다') : `개찰 전 · ${w.open ? '개찰 ' + esc(w.open.slice(5, 16).replace('-', '/')) : ''}`;
+      body = `<div class="meta-line">${st} · 앱 추천 ${w.pred?.bid ? won(w.pred.bid) : '없음'}</div>`;
     }
     return `<div class="bid">
       <div class="bid-top"><div>
-        <div class="bid-title">${esc(w.nm)}</div>
+        <div class="bid-title">${w.myBid || w.res?.mine ? '<span class="badge blue" style="margin-right:4px;">입찰함</span>' : ''}${esc(w.nm)}</div>
         <div class="bid-sub">${esc(w.org || '')} · ${esc([w.sido, w.sgg].filter(Boolean).join(' '))} · <span class="dday ${dd.urgent ? 'urgent' : ''}">${esc(dd.text)}</span></div>
       </div><button class="star on" data-unwatch="${esc(w.id)}" title="관심 해제" type="button">★</button></div>
       ${body}
       <div class="mybid-row">
         <label>내가 넣은 투찰금액</label>
-        <input type="number" inputmode="numeric" data-mybid-in="${esc(w.id)}" value="${w.myBid || ''}" placeholder="${w.pred?.bid ? '예: ' + w.pred.bid : '원 단위'}">
+        <input type="text" class="money" inputmode="numeric" autocomplete="off" data-mybid-in="${esc(w.id)}" value="${moneyText(w.myBid)}" placeholder="${w.pred?.bid ? '예: ' + moneyText(w.pred.bid) : '원 단위'}">
         <button class="btn sm ghost" data-mybid-save="${esc(w.id)}" type="button">기록</button>
+        ${opened(w) && apiKey() ? `<button class="btn sm line" data-res-fetch="${esc(w.id)}" type="button">개찰 결과 조회</button>` : ''}
       </div>
       <div class="bid-actions">${findNotice(w.id) ? `<button class="btn sm" data-predict="${esc(w.id)}" type="button">이 공고로 예측</button>` : ''}
         ${w.url ? `<a class="btn line sm" href="${esc(w.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}</div>
@@ -1496,6 +1642,12 @@ async function renderWatch(){
   const cal = calibrate(judged);
   LS.set('myCal', cal);
   const cnt = (c) => judged.filter(j => j.cls === c).length;
+  const head = `<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));">
+      <div class="kpi" style="cursor:default;"><span class="t">관심공고</span><span class="v">${fmtNum(items.length)}</span></div>
+      <div class="kpi" style="cursor:default;"><span class="t">입찰함</span><span class="v">${fmtNum(nBid)}</span></div>
+      <div class="kpi" style="cursor:default;"><span class="t">개찰됨</span><span class="v">${fmtNum(nOpen)}</span></div>
+      <div class="kpi ${nFirst ? 'on' : ''}" style="cursor:default;"><span class="t">1순위</span><span class="v">${fmtNum(nFirst || cnt('win'))}</span></div>
+    </div>`;
   const summary = cal ? `<div class="card-inner my-score">
       <h3 style="margin-top:0;">내 투찰 성적 (개찰된 ${fmtNum(cal.n)}건)${sampleBadge(cal.n)}</h3>
       <div class="stat-grid">
@@ -1505,14 +1657,25 @@ async function renderWatch(){
         <div class="stat hl"><div class="t">다음 투찰 보정</div><div class="v">${cal.shift >= 0 ? '+' : ''}${cal.shift.toFixed(3)}%p</div></div>
       </div>
       <div class="meta-line">내 투찰 사정률을 ${cal.shift >= 0 ? '+' : ''}${cal.shift.toFixed(3)}%p 옮겼다면 낙찰권이 ${cal.wins}건 → ${cal.best}건이었습니다. ${cnt('high') > cnt('below') ? '대체로 1위보다 높게 쓰는 편입니다.' : cnt('below') > cnt('high') ? '대체로 하한 미달이 많은 편입니다.' : ''} 표본이 적을수록 우연일 수 있습니다.</div>
-    </div>` : `<div class="meta-line" style="margin-bottom:10px;">실제로 넣은 금액을 기록해 두면, 개찰 뒤 낙찰권·하한 미달·1위보다 높음을 판정하고 다음에 얼마나 올리거나 내릴지 알려드립니다.</div>`;
-  el.innerHTML = summary + `<div class="bid-list" style="margin-top:0;">${cards.join('')}</div>`;
+    </div>` : `<div class="meta-line" style="margin-bottom:10px;">입찰한 공고에 넣은 금액을 기록하세요. ${Company.get().biz ? '사업자번호가 설정돼 있어 개찰되면 우리 순위와 금액을 자동으로 찾습니다.' : '설정 → 우리 업체에 사업자번호를 넣으면 개찰 뒤 우리 순위와 금액을 자동으로 찾습니다.'}</div>`;
+  el.innerHTML = head + summary + `<div class="bid-list" style="margin-top:0;">${cards.join('')}</div>`;
   el.querySelectorAll('[data-mybid-save]').forEach(btn => btn.addEventListener('click', async () => {
     const id = btn.dataset.mybidSave;
     const inp = el.querySelector(`[data-mybid-in="${CSS.escape(id)}"]`);
     const w = (await WatchStore.list()).find(x => x.id === id);
     if(!w) return;
-    await WatchStore.save({...w, myBid: +inp.value || null});
+    await WatchStore.save({...w, myBid: numOf(inp) || null});
+    renderWatch();
+  }));
+  el.querySelectorAll('[data-res-fetch]').forEach(btn => btn.addEventListener('click', async () => {
+    const w = (await WatchStore.list()).find(x => x.id === btn.dataset.resFetch);
+    if(!w) return;
+    btn.disabled = true; btn.textContent = '조회 중…';
+    try{
+      const res = await fetchOpeningResult(w);
+      await WatchStore.save({...w, resTried: new Date().toISOString(), ...(res ? {res, myBid: w.myBid || res.mine?.amt || null} : {})});
+      if(!res){ btn.textContent = '아직 결과 없음'; return; }
+    }catch(e){ btn.textContent = '조회 실패'; btn.title = e.message; return; }
     renderWatch();
   }));
 }
@@ -1928,6 +2091,7 @@ async function init(){
 
   initBidsFilters();
   initLive();
+  initCompany();
   initPredict();
   initStats();
   initSettings();

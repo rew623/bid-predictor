@@ -71,6 +71,7 @@
         <div class="search-foot">
           <select id="lAmt" aria-label="추정가격"></select>
           <label class="check"><input type="checkbox" id="lOpen"> 마감 전 공고만</label>
+          <label class="check"><input type="checkbox" id="lElig"> 🏢 참가 가능한 공고만</label>
           <button class="btn" id="lSearch" type="button">검색</button>
         </div>
       </div>
@@ -93,6 +94,7 @@
         <select id="bLic" aria-label="면허"></select>
         <select id="bAmt" aria-label="금액"></select>
       </div>
+      <label class="check" style="margin-top:10px;"><input type="checkbox" id="bElig"> 🏢 우리 업체가 참가할 수 있는 공고만 <span class="faint">(설정 → 우리 업체)</span></label>
     </div>
     <div class="list-head">
       <div class="meta-line" id="bidsInfo"></div>
@@ -145,14 +147,14 @@
       <h2>② 이번 공고 정보</h2>
       <p class="sub">공고문(나라장터 공고 원문)에 있는 값입니다. <b>기초금액을 넣어야 추천 "금액"이 나옵니다.</b> 모르는 칸은 비워 두세요.</p>
       <div class="inline-inputs" style="margin-top:0;">
-        <div><label for="inBase">기초금액(원) <span class="req">금액 계산에 필요</span></label><input type="number" id="inBase" inputmode="numeric" placeholder="예: 300000000"></div>
+        <div><label for="inBase">기초금액(원) <span class="req">금액 계산에 필요</span></label><input type="text" class="money" id="inBase" inputmode="numeric" autocomplete="off" placeholder="예: 300,000,000"></div>
         <div><label for="pRng">예가범위</label>
           <select id="pRng"><option value="">모름</option><option value="-2,2">±2% (조달청·국가기관 대부분)</option><option value="-3,3">±3% (지자체 대부분)</option></select></div>
       </div>
       <div class="inline-inputs">
-        <div><label for="inA">A값(원, 없으면 비움)</label><input type="number" id="inA" inputmode="numeric" placeholder="0"></div>
+        <div><label for="inA">A값(원, 없으면 비움)</label><input type="text" class="money" id="inA" inputmode="numeric" autocomplete="off" placeholder="0"></div>
         <div><label for="inFloor">낙찰하한율(%)</label><input type="number" id="inFloor" step="0.001" placeholder="87.745"></div>
-        <div><label for="inCnt">예상 참가업체 수 (모르면 비움)</label><input type="number" id="inCnt" inputmode="numeric" placeholder="자동 추정"></div>
+        <div><label for="inCnt">예상 참가업체 수 (모르면 비움)</label><input type="text" class="money" id="inCnt" inputmode="numeric" autocomplete="off" placeholder="자동 추정"></div>
       </div>
       <div class="btn-row" style="margin-top:16px;">
         <button class="btn" id="runPredict" type="button">예측 실행</button>
@@ -160,9 +162,11 @@
       </div>
     </div>
 
+    <div id="predictResult"></div>
+
     <details class="card fold">
-      <summary><h2>고급: 참고 분포 조건</h2><span class="meta-line" style="margin:0;">추천 금액에는 영향 없음 · 보통은 그대로 두세요</span></summary>
-      <p class="sub" style="margin-top:12px;">아래 조건은 결과 맨 아래 <b>"참고: 사정율 분포"</b>와 근거 공고 목록에만 쓰입니다. 추천 금액은 표본을 넓게(지역 24개월 전체) 써야 우연한 값에 휘둘리지 않기 때문에 이 조건으로 쪼개지 않습니다.</p>
+      <summary><h2>참고 분포 조건</h2><span class="meta-line" style="margin:0;">추천 금액과 무관 · 보통은 안 건드려도 됩니다</span></summary>
+      <p class="sub" style="margin-top:12px;">여기 조건은 <b>추천 투찰금액·낙찰확률·예상 참가 수를 바꾸지 않습니다.</b> 바뀌는 곳은 ① 위 결과의 <b>"참고: 사정율 분포"</b>(평균·공격·보수, 분포 그래프) ② <b>근거 과거 공고</b> 목록과 CSV ③ 곡선 그래프의 옅은 막대 ④ 계산기의 "실제 사정율이 적용값보다 높을 확률" 안내뿐입니다. 특정 조건(예: 같은 발주기관) 공고들의 사정율이 어땠는지 <b>구경할 때</b> 쓰세요. 바꾼 뒤 <b>예측 실행</b>을 다시 누르면 반영됩니다.</p>
       <h3>시·군 (선택)</h3>
       <div class="chip-group" id="pSggChips"></div>
       <h3>면허 (선택)</h3>
@@ -192,26 +196,27 @@
       </div>
     </details>
 
-    <div id="predictResult"></div>
-
     <div class="card">
       <h2>투찰가 계산기</h2>
       <p class="sub">투찰금액 = (예정가격 − A값) × 낙찰하한율 + A값. 예측 실행 시 낙찰확률이 가장 높았던 투찰 사정율이 자동으로 채워집니다.</p>
       <div class="inline-inputs">
-        <div><label for="cBase">기초금액(원)</label><input type="number" id="cBase" inputmode="numeric"></div>
-        <div><label for="cA">A값(원, 없으면 0)</label><input type="number" id="cA" inputmode="numeric" placeholder="0"></div>
+        <div><label for="cBase">기초금액(원)</label><input type="text" class="money" id="cBase" inputmode="numeric" autocomplete="off"></div>
+        <div><label for="cA">A값(원, 없으면 0)</label><input type="text" class="money" id="cA" inputmode="numeric" autocomplete="off" placeholder="0"></div>
         <div><label for="cFloor">낙찰하한율(%)</label><input type="number" id="cFloor" step="0.001" value="87.745"></div>
         <div><label for="cRate">적용 사정율(%)</label><input type="number" id="cRate" step="0.0001" placeholder="예: 100.12"></div>
-        <div><label for="cNet">순공사원가(원, 선택)</label><input type="number" id="cNet" inputmode="numeric"></div>
-        <div><label for="cManual">직접 투찰금액(원, 선택)</label><input type="number" id="cManual" inputmode="numeric" placeholder="계산값 대신 검토할 금액"></div>
+        <div><label for="cNet">순공사원가(원, 선택)</label><input type="text" class="money" id="cNet" inputmode="numeric" autocomplete="off"></div>
+        <div><label for="cManual">직접 투찰금액(원, 선택)</label><input type="text" class="money" id="cManual" inputmode="numeric" autocomplete="off" placeholder="계산값 대신 검토할 금액"></div>
       </div>
       <div id="calcResult" style="margin-top:12px;"></div>
     </div>
 
-    <div class="card">
+    <details class="card fold">
+      <summary><h2>예가 분석 도구</h2><span class="meta-line" style="margin:0;">발주기관 예가 구간확률 · 복수예가 시뮬레이터 (참고용)</span></summary>
+      <p class="sub" style="margin-top:12px;">예정가격이 만들어지는 방식을 살펴보는 참고 도구입니다. 추천 투찰금액과는 따로 계산됩니다. 발주기관 예가 구간확률은 <b>개찰 상세(복수예가)</b>가 수집된 지역에서만 보입니다 — 강원은 수집기가 매일 최신 공고부터 모으는 중입니다.</p>
+    <div class="tool">
       <div class="card-head">
         <div>
-          <h2>발주기관 예가 구간확률</h2>
+          <h3 style="margin-top:0;">발주기관 예가 구간확률</h3>
           <p class="sub">같은 기관의 과거 복수예비가격 15개(기초금액 대비 %)로 4개 조합(1,365가지) 평균을 계산해, 사정율 0.1% 구간별 확률을 보여줍니다.</p>
         </div>
       </div>
@@ -222,8 +227,8 @@
       <div id="orgResult" style="margin-top:12px;"></div>
     </div>
 
-    <div class="card">
-      <h2>복수예비가격 시뮬레이터</h2>
+    <div class="tool">
+      <h3>복수예비가격 시뮬레이터</h3>
       <p class="sub">기초금액 ±예가범위 안에서 예비가격 15개를 무작위로 만들고 4개를 뽑아 예정가격을 정하는 구조를 재현합니다. <b>참고용이며 실제 추첨 결과를 예측하지 않습니다.</b></p>
       <div class="inline-inputs">
         <div><label for="sRange">예가범위(±%)</label><input type="number" id="sRange" value="2" step="0.1"></div>
@@ -232,6 +237,7 @@
       <div class="btn-row" style="margin-top:12px;"><button class="btn ghost" id="simRun" type="button">시뮬레이션</button></div>
       <div id="simResult" style="margin-top:12px;"></div>
     </div>
+    </details>
   </section>
 
   <!-- ===================== 관심공고 ===================== -->
@@ -260,6 +266,18 @@
 
   <!-- ===================== 설정 ===================== -->
   <section id="view-settings" hidden>
+    <div class="card">
+      <h2>🏢 우리 업체</h2>
+      <p class="sub">소재지와 보유 면허를 넣으면 입찰공고에서 <b>참가 자격이 되는 공고만</b> 골라 보여줍니다(공고의 참가가능지역·면허 제한 기준). 사업자번호를 넣으면 관심공고의 개찰 결과에서 <b>우리 순위와 투찰금액을 자동으로</b> 찾습니다. 이 기기에만 저장됩니다.</p>
+      <div class="inline-inputs" style="margin-top:0;">
+        <div><label for="coSido">소재지 시·도</label><select id="coSido"></select></div>
+        <div><label for="coSgg">소재지 시·군·구</label><select id="coSgg"></select></div>
+        <div><label for="coBiz">사업자번호 (선택)</label><input type="text" id="coBiz" inputmode="numeric" autocomplete="off" placeholder="예: 123-45-67890"></div>
+      </div>
+      <h3>보유 면허 (여러 개 선택)</h3>
+      <div class="chip-group" id="coLics"></div>
+      <div class="btn-row" style="margin-top:14px;"><button class="btn sm" id="coSave" type="button">저장</button><span class="meta-line" id="coMsg" style="margin:0;"></span></div>
+    </div>
     <div class="card">
       <h2>실시간 공고 검색 키</h2>
       <p class="sub">공공데이터포털 "조달청_나라장터 입찰공고정보서비스"의 서비스키(Decoding 키)를 넣으면 입찰공고 탭에서 나라장터처럼 기간·조건으로 바로 검색합니다. 키는 <b>이 기기(브라우저)에만</b> 저장되고 저장소에는 올라가지 않습니다. 폰과 PC에 각각 한 번씩 넣어 주세요.</p>

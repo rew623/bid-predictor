@@ -38,7 +38,7 @@ data/                 수집 결과 (아래)
 ## 수집 (scripts/collect.py)
 - API: 공공데이터포털 조달청 나라장터 `낙찰정보서비스`(ScsbidInfoService), `입찰공고정보서비스`(BidPublicInfoService).
   엔드포인트 후보는 `SERVICES`, 오퍼레이션은 `OPS`, 필드 이름 후보는 `F_*` 목록. 첫 성공 응답 1건을 `data/_sample_{op}.json` 에 저장하므로 필드명이 다르면 그걸 보고 `F_*` 를 고친다.
-- 단계(이름): ① `공고` 진행중 공고(최근 공고·기초금액·면허제한·참가가능지역) ② `최근낙찰` 최근 40일 낙찰 목록 ③ `과거낙찰` 과거 낙찰 목록을 한 달씩 과거로, 최근 24개월(`RECENT_FIRST_MONTHS`)까지 먼저 ④ `상세` regions.json 지역의 개찰 전체 순위·복수예가(공고 1건당 2회 이상 호출, 최신 개찰부터) ⑤ `과거낙찰` 나머지 과거(기본 3년, `meta.backfill.cursor`).
+- 단계(이름): ① `공고` 진행중 공고(최근 공고·기초금액·면허제한·참가가능지역) ② `최근낙찰` 최근 40일 낙찰 목록 ③ `과거낙찰` 과거 낙찰 목록을 한 달씩 과거로, 최근 24개월(`RECENT_FIRST_MONTHS`)까지 먼저 ④ `상세` regions.json 지역의 개찰 전체 순위·복수예가(공고 1건당 2회 이상 호출, 최신 개찰부터; 첫 상세는 `DETAIL_RESERVE` 250회를 과거 수집 몫으로 남김) ⑤ `과거낙찰` 24개월까지 ⑥ `상세` 남은 한도 ⑦ `과거낙찰` 나머지(기본 3년, `meta.backfill.cursor`). 실제 순서는 ①②④⑤⑥⑦ (상세를 과거 수집 앞으로).
 - 환경변수 `STEPS` 로 단계를 골라 실행. 워크플로는 1차 `공고,최근낙찰`(MAX_MINUTES 40) → 커밋 → 2차 `과거낙찰,상세` → 커밋 순서라 공고는 몇 분 안에 앱에 뜬다. 09·13·17시 예약 실행과 `quick_only` 수동 실행은 1차만.
 - 하루 호출 한도: 서비스별 `API_DAILY_LIMIT`(기본 950). 호출 수는 `meta.api.calls` 에 날짜별로 기록, 넘으면 저장 후 다음 날 이어서.
 - 예정가격이 없으면 `낙찰금액 ÷ 낙찰률` 로 역산, 사정율 `sr = 예정가격 ÷ 기초금액 × 100` (80~120 벗어나면 버림).
@@ -147,5 +147,9 @@ data/                 수집 결과 (아래)
 - 입찰공고 탭은 두 모드: **실시간 검색**(조달청 `BidPublicInfoService` 의 `getBidPblancListInfo{Cnstwk|Servc|Thng|Frgcpt|Etc}PPSSrch` 를 브라우저에서 직접 호출, CORS 허용됨. 업무구분 공사·용역·물품·외자·기타, `LIVE_KINDS`. 검색조건 조회가 키 오류 외 이유로 실패하면 기본 목록 조회 + 앱에서 거르기로 대체. 예측은 공사만) / **진행중 공고**(자동 수집 bids.json). 서비스키는 설정 탭에서 입력해 `localStorage bp.apiKey` 에만 저장(저장소에 넣지 않음). 다른 기기로는 설정 탭 "폰으로 보내기 (QR)" → `앱주소#key=…` 링크를 열면 init() 이 저장하고 주소에서 지운다(# 뒤라 서버로 안 감). 키가 있으면 실시간이 기본.
   실시간 결과는 같은 공고번호의 마지막 차수만, 취소공고 제외. "이 공고로 예측" 때 `getBidPblancListInfoCnstwkBsisAmount`(inqryDiv=2, 공고번호)로 기초금액·A값·예가범위를 채운다(`enrichLive`). 검색 조건 파라미터 이름(bidNtceNm, ntceInsttNm, dminsttNm, prtcptLmtRgnNm, indstrytyNm, presmptPrceBgn/End, bidClseExcpYn)은 실제 키로 확인 전 — 안 먹히면 여기부터 확인.
 - **추천은 전국 모델 우선**(`modelPredict` → `recFromModel`): 공고의 예상 참가수(`predictLnN`, 입력값이 있으면 그 값)와 예가범위(모르면 ±3%)로 `model.curves` 에서 곡선을 골라 추천 x·안전 범위·낙찰확률. 모델이 없으면 지역 곡선(`recFromLocal`). 예측 화면 파란 카드에 "✅ 추천 체크"(경쟁 규모·추천 위치·금액·입력 누락·순공사원가·기록), 배지 = 역검증 요약(`valBadge`). 설정 탭 "역검증" = `renderValidation`.
+- **우리 업체**(설정, `Company` → `localStorage bp.company` {sido, sgg, lics[], biz}): `eligibility(b)` = 참가가능지역(rgn, 비면 제한 없음; "강원특별자치도"는 시·도 전체, "… 춘천시"는 그 시·군만) + 면허(겹치면 가능, 공고 면허 정보 없으면 '확인 필요'). 입찰공고 두 모드에 "참가 가능한 공고만"(`bElig`/`lElig`), 카드 태그 `eligTag`.
+- **개찰 결과 실시간 조회**(관심공고): 개찰 시각이 지난 공고는 `fetchOpeningResult` 로 낙찰정보서비스 `getOpengResultListInfoOpengCompt`(순위) + `…CnstwkPreparPcDetail`(예정가격)을 브라우저에서 직접 조회(한 번에 5건, 결과 없으면 1시간 뒤). 사업자번호가 맞는 행 = 우리 순위·투찰금액(myBid 자동). 결과는 WatchStore 항목 `res` {n, plan, base, win, mine, top(10), xs(전체 금액)}.
+- 금액 입력칸은 `input.money`(text) — 입력 중 쉼표, 읽기 `numOf(el)`, 쓰기 `setMoney(el, v)`.
+- 예측분석 "참고 분포 조건"(시·군·면허·체크박스)은 추천 금액과 무관: 참고 사정율 분포·근거 공고·곡선의 옅은 막대·계산기 안내에만 쓰인다. 발주기관 예가 구간확률·시뮬레이터는 "예가 분석 도구"로 접어 둠.
 - 공고 목록 간단 예측(`quickPredict`): 모델이 있으면 지역 파일 없이도 추천·예상 참가·낙찰확률(정렬에 사용). 없으면 `quickPredictLocal`: 같은 시도 최근 24개월 → 면허 겹침(10건 이상일 때) → 예가범위 같음(30건 이상일 때). 조건별로 결과 캐시.
 - 경고: 투찰금액 < 낙찰하한가, 또는 < 순공사원가 × 98% → 빨간 경고.
