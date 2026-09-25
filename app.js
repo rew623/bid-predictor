@@ -12,6 +12,14 @@ const LICENSES = [
   '철근·콘크리트','구조물해체·비계','상하수도설비','보링·그라우팅','철도·궤도','철강구조물','수중·준설','승강기·삭도',
   '전기','정보통신','소방시설','기계설비','가스시설시공'
 ];
+/** 면허 → 나라장터 업종코드 (공고 원문 "금속창호ㆍ지붕건축물조립공사업/4991" 에서 확인). 실시간 검색은 이름 대신 코드로 보낸다 */
+const LIC_CODES = {
+  '토목':'0001', '건축':'0002', '토목건축':'0003', '조경':'0005', '산업환경설비':'1449',
+  '지반조성·포장':'4989', '실내건축':'4990', '금속창호·지붕건축물조성':'4991', '도장·습식·방수·석공':'4992',
+  '조경식재·시설물':'4993', '철근·콘크리트':'4994', '구조물해체·비계':'4995', '상하수도설비':'4996',
+  '철도·궤도':'4997', '철강구조물':'4998', '수중·준설':'4999', '승강기·삭도':'6201', '기계설비':'6202',
+  '정보통신':'0036', '전기':'0037', '소방시설':'0040',
+};
 const DEFAULT_FLOOR = 87.745;
 const MIN_SAMPLE = 30;
 const PAGE_SIZE = 50;
@@ -904,7 +912,8 @@ function liveParams(){
   set('ntceInsttNm', $('lOrg').value.trim());
   set('dminsttNm', $('lDmd').value.trim());
   set('prtcptLmtRgnNm', $('lRgn').value);
-  set('indstrytyNm', $('lLic').value);
+  const lic = $('lLic').value;
+  if(lic) LIC_CODES[lic] ? set('indstrytyCd', LIC_CODES[lic]) : set('indstrytyNm', lic.replace(/·/g, 'ㆍ'));
   set('presmptPrceBgn', aLo);
   set('presmptPrceEnd', aHi);
   if($('lOpen').checked) p.bidClseExcpYn = 'Y';
@@ -972,7 +981,7 @@ async function liveFetchOne(){
     (!P2.ntceInsttNm || low(n.org).includes(low(P2.ntceInsttNm))) &&
     (!P2.dminsttNm || low(n.dmd).includes(low(P2.dminsttNm))) &&
     (!P2.prtcptLmtRgnNm || n.sido === P2.prtcptLmtRgnNm) &&
-    (!P2.indstrytyNm || (n.lic || []).includes(P2.indstrytyNm)) &&
+    (!$('lLic').value || (n.lic || []).includes($('lLic').value)) &&
     (!P2.presmptPrceBgn || (n.est || 0) >= P2.presmptPrceBgn) &&
     (!P2.presmptPrceEnd || (n.est || Infinity) < P2.presmptPrceEnd) &&
     (!P2.bidClseExcpYn || !n.close || parseKst(n.close) >= new Date()));
@@ -2033,7 +2042,49 @@ function renderValidation(){
     <div class="meta-line">예상 참가가 적은 공고일수록 낙찰률이 크게 높습니다 → 입찰공고 탭 "낙찰확률 높은 순"으로 공고를 고르세요. 데이터 ${esc(Model.m.data.from)} ~ ${esc(Model.m.data.to)} · 모델 갱신 ${esc(Model.m.updated_at.slice(0, 16).replace('T', ' '))}</div>`;
 }
 
+// ---------- 조달청 대조 점검: 수집 데이터가 조달청과 맞는지 무작위로 골라 다시 조회해 비교
+async function runVerify(){
+  const out = $('verifyResult');
+  if(!apiKey()){ out.innerHTML = '<div class="alert warn">먼저 위 "실시간 공고 검색 키"에 서비스키를 넣어 주세요.</div>'; return; }
+  const sido = $('vSido').value;
+  if(!sido || !Data.hasScsbid(sido)){ out.innerHTML = '<div class="empty">낙찰 데이터가 있는 시·도를 고르세요.</div>'; return; }
+  out.innerHTML = loadingHtml('조달청에서 다시 조회하는 중…');
+  const sc = await Data.loadScsbid(sido);
+  const cut = monthsAgo(1);
+  const pool = sc.recs.filter(r => r.amt && r.base && (r.date || '') >= cut);
+  const N = Math.min(10, pool.length);
+  const pick = [...pool].sort(() => Math.random() - 0.5).slice(0, N);
+  const rows = [];
+  for(const r of pick){
+    let res = null, err = '';
+    try{ res = await fetchOpeningResult({no: r.no, ord: r.ord, base: r.base}); }catch(e){ err = e.message; }
+    const near = (a, b, tol) => a && b ? Math.abs(a - b) <= Math.max(1, b * tol) : null;
+    const amtOk = res ? res.xs.includes(r.amt) : null;                  // 우리 1위 금액이 조달청 투찰 목록에 그대로 있나
+    const planOk = res?.plan ? near(r.plan, res.plan, 0.0001) : null;    // 예정가격 (낙찰률로 역산한 값이면 ±0.01%)
+    const cntOk = res?.n ? r.cnt === res.n : null;
+    rows.push({r, res, err, amtOk, planOk, cntOk});
+  }
+  const mark = (v) => v === true ? '<span class="badge ok">일치</span>' : v === false ? '<span class="badge">다름</span>' : '<span class="badge gray">확인 불가</span>';
+  const tally = (k) => ({ok: rows.filter(x => x[k] === true).length, bad: rows.filter(x => x[k] === false).length});
+  const ta = tally('amtOk'), tp = tally('planOk'), tc = tally('cntOk');
+  out.innerHTML = `<div class="stat-grid">
+      <div class="stat"><div class="t">1위(낙찰) 금액</div><div class="v">${ta.ok}/${ta.ok + ta.bad} 일치</div></div>
+      <div class="stat"><div class="t">예정가격</div><div class="v">${tp.ok}/${tp.ok + tp.bad} 일치</div></div>
+      <div class="stat"><div class="t">참가 업체 수</div><div class="v">${tc.ok}/${tc.ok + tc.bad} 일치</div></div>
+    </div>
+    <div class="table-wrap" style="margin-top:10px; max-height:none;"><table>
+      <thead><tr><th>공고</th><th class="num">낙찰금액 (앱 / 조달청 1위)</th><th>금액</th><th class="num">예정가격 (앱 / 조달청)</th><th>예가</th><th class="num">참가 (앱 / 조달청)</th><th>참가</th></tr></thead>
+      <tbody>${rows.map(x => `<tr><td class="wrap">${esc(x.r.nm)}<br><span class="faint">${esc(x.r.no)}-${esc(x.r.ord)} · ${esc(x.r.date)}</span>${x.err ? `<br><span class="faint">조회 실패: ${esc(x.err)}</span>` : !x.res ? '<br><span class="faint">조달청에 개찰 결과 없음</span>' : ''}</td>
+        <td class="num">${won(x.r.amt)}<br><span class="faint">${won(x.res?.win?.amt)}</span></td><td>${mark(x.amtOk)}</td>
+        <td class="num">${won(x.r.plan)}<br><span class="faint">${won(x.res?.plan)}</span></td><td>${mark(x.planOk)}</td>
+        <td class="num">${x.r.cnt ?? '-'}<br><span class="faint">${x.res?.n ?? '-'}</span></td><td>${mark(x.cntOk)}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <div class="meta-line">${esc(sido)} 최근 1개월 낙찰 중 무작위 ${N}건을 조달청 낙찰정보서비스(개찰 순위·예정가격)로 다시 조회해 비교했습니다. 낙찰금액은 조달청 투찰 목록에 같은 금액이 있으면 일치(1순위가 적격심사에서 떨어지면 낙찰자는 2순위 이하일 수 있음). 예정가격을 낙찰률로 역산한 공고는 ±0.01% 안이면 일치. 조달청 호출 ${N * 2}회를 씁니다.</div>`;
+}
+
 function initSettings(){
+  fillSelect($('vSido'), SIDOS, {all: '시·도 선택', value: Company.get().sido || Data.meta.detail?.regions?.[0] || ''});
+  $('vRun').addEventListener('click', runVerify);
 
   const keyMsg = (t) => { $('keyMsg').innerHTML = t; };
   keyMsg(LS.get('apiKey', '') ? '저장된 키 있음 (이 기기)' : '저장된 키 없음');
