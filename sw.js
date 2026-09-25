@@ -1,5 +1,5 @@
 /* 서비스워커 — 앱이 쓰는 파일(index.html, app.js, style.css, manifest.json, icons/)을 바꾸면 VERSION 을 올린다. */
-const VERSION = '1.5.9';
+const VERSION = '1.6.0';
 const SHELL_CACHE = 'shell-' + VERSION;
 const DATA_CACHE = 'data-v1';
 const FONT_CACHE = 'fonts-v1';

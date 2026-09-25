@@ -111,7 +111,8 @@ data/                 수집 결과 (아래)
 ### data/lic_map.json — 공고별 면허제한·참가가능지역 (수집기 `write_lic_map`, 최근 60일 공사)
 `{"v":1, "lic":[면허명…], "items":{"공고ID":[lic 번호…]}, "rg":[지역 원문…], "rgn":{"공고ID":[rg 번호…]}}` — 실시간 검색의 업종 거르기 + "참가 가능한 공고만" 판정용.
 실시간 공고의 `lic` 는 주공종·부대공종이라 면허제한이 아니다 → `eligibility` 는 `licOf`(lic_map → `b.reqLic`, 없으면 '확인 필요')·`rgnOf`(b.rgn → lic_map → bids.json)로 판정.
-lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits` 가 `getBidPblancListInfoLicenseLimit`·`…PrtcptPsblRgn`(inqryDiv=2, 공고번호)으로 20건씩 바로 조회 → `b.reqLic`, `b.rgn`([] = 지역 제한 없음), `b.limOk`(면허 제한 없음이면 참가 가능). 카드에는 `licTags` = "요구 면허" + 우리 면허는 ✓. 모델 참가수 예측도 실시간 공고는 licOf 를 쓴다.
+lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits`(renderLive 뒤 10건씩 반복)가 `getBidPblancListInfoLicenseLimit`·`…PrtcptPsblRgn`(inqryDiv=2, 공고번호)으로 바로 조회 → `b.reqLic`, `b.rgn`([] = 지역 제한 없음), `b.limOk`(면허 제한 없음이면 참가 가능). 같은 함수가 기초금액 없는 카드는 bids.json 값 → 없으면 `enrichLive` 로 기초금액·A값·예가범위를 채워 목록에서 바로 추천 투찰가를 보여 준다.
+실시간 공고 `corr`(ntceKindNm 정정)·`sui`(cntrctCnclsMthdNm 수의) → 카드 태그. 면허제한은 대업종(4991·4992 등) 단위로 온다(2026-09 최근 60일 확인) — 주력분야는 적격심사 실적 평가용. 카드에는 `licTags` = "요구 면허" + 우리 면허는 ✓. 모델 참가수 예측도 실시간 공고는 licOf 를 쓴다.
 한계: 면허제한 그룹(lmtGrpNo, 그룹 안은 모두 필요·그룹끼리는 택일)을 구분하지 않고 하나라도 겹치면 가능으로 본다.
 
 ### data/scsbid/{시도}.json — 과거 낙찰 (최근 개찰 순)

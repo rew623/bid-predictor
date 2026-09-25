@@ -787,6 +787,8 @@ function bidCard(b, today){
   const amt = b.base || b.est;
   const tags = [
     `<span class="tag loc">${esc([b.sido, b.sgg].filter(Boolean).join(' ') || '지역 미상')}</span>`,
+    b.sui ? '<span class="tag warn" title="수의계약(견적) — 추천값은 경쟁입찰 과거 공고 기준">수의</span>' : '',
+    b.corr ? '<span class="tag warn" title="정정공고 — 바뀐 내용을 원문에서 확인">정정</span>' : '',
     ...licTags(b),
     b.rng ? `<span class="tag">예가 ${esc(rngText(b.rng))}</span>` : '',
     b.floor ? `<span class="tag">하한 ${b.floor}%</span>` : '',
@@ -904,7 +906,8 @@ function liveNotice(it){
     lic: [...new Set(['mainCnsttyNm', ...Array.from({length: 9}, (_, i) => `subsiCnsttyNm${i + 1}`)].map(k => pickF(it, k)).filter(Boolean).flatMap(normLic))], est: numF(pickF(it, 'presmptPrce', 'presmptPrc')), base: numF(pickF(it, 'bssamt', 'bsisAmt')),
     floor: numF(pickF(it, 'sucsfbidLwltRate', 'scsbdLwltRate')), ntce: normDt(pickF(it, 'bidNtceDt', 'rgstDt')),
     close: normDt(pickF(it, 'bidClseDt')), open: normDt(pickF(it, 'opengDt', 'rlOpengDt')),
-    url: pickF(it, 'bidNtceDtlUrl', 'bidNtceUrl'), cancel: /취소/.test(pickF(it, 'ntceKindNm') || ''), live: true, kind: Live.kind};
+    url: pickF(it, 'bidNtceDtlUrl', 'bidNtceUrl'), cancel: /취소/.test(pickF(it, 'ntceKindNm') || ''), live: true, kind: Live.kind,
+    corr: /정정/.test(pickF(it, 'ntceKindNm') || ''), sui: /수의/.test(pickF(it, 'cntrctCnclsMthdNm') || '')};
   Object.keys(b).forEach(k => { if(b[k] == null || b[k] === '') delete b[k]; });
   return b;
 }
@@ -1144,11 +1147,20 @@ function licOf(b){
   const m = Data.licMap?.get(b.id);
   return m?.length ? m : b.reqLic?.length ? b.reqLic : (b.live ? [] : b.lic || []);
 }
-/** 실시간 공고 중 수집된 면허제한이 없는 것은 조달청에서 공고번호로 면허제한·참가가능지역을 바로 조회 (공고당 한 번, 20건씩) */
+/** 목록에 보이는 실시간 공사 공고의 빠진 정보를 채운다 (공고당 한 번, 10건씩):
+ *  면허제한·참가가능지역 = 수집된 lic_map 에 없으면 조달청 조회, 기초금액·A값·예가범위 = 수집된 진행중 공고 → 없으면 조달청 조회(enrichLive).
+ *  기초금액이 있어야 카드에 추천 투찰가가 나온다 */
 async function fetchLiveLimits(rows){
-  const need = rows.filter(b => b.live && b.kind === '공사' && !b.limTried && !Data.licMap?.get(b.id)?.length).slice(0, 20);
-  if(!need.length || !apiKey()) return false;
-  await Promise.all(need.map(async b => {
+  if(!apiKey()) return false;
+  const bsis = rows.filter(b => b.live && b.kind === '공사' && !b.base && !b.bsisTried).slice(0, 10);
+  bsis.forEach(b => {
+    const c = Data.bids?.find(x => x.id === b.id);
+    if(c?.base) ['base', 'a', 'net', 'rng', 'floor'].forEach(k => { if(c[k] != null && b[k] == null) b[k] = c[k]; });
+  });
+  const need = rows.filter(b => b.live && b.kind === '공사' && !b.limTried && !Data.licMap?.get(b.id)?.length).slice(0, 10);
+  const todo = bsis.filter(b => !b.base);
+  if(!need.length && !todo.length) return bsis.length > 0;
+  await Promise.all([...todo.map(b => enrichLive(b)), ...need.map(async b => {
     b.limTried = true;
     try{
       const q = {inqryDiv: '2', bidNtceNo: b.no, numOfRows: 100, pageNo: 1};
@@ -1158,7 +1170,7 @@ async function fetchLiveLimits(rows){
       b.rgn = [...new Set(r.items.filter(mine).map(it => pickF(it, 'prtcptPsblRgnNm')).filter(Boolean))];   // [] = 지역 제한 없음
       b.limOk = true;
     }catch(e){ console.warn('면허제한 조회', b.no, e); }
-  }));
+  })]);
   return true;
 }
 function eligibility(b){
