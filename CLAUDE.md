@@ -137,7 +137,8 @@ lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits`(renderLive 뒤 1
 시도를 알 수 없는 레코드는 `scsbid/기타.json`.
 
 ### data/thng/{시도}.json — 물품 과거 낙찰
-scsbid 와 같은 형식(`ThngStore`). A값·면허·순공사원가·rgn 은 없다(투찰 사정률 = 금액 ÷ 하한율 ÷ 기초금액). 시도는 수요·공고기관 이름으로.
+scsbid 와 같은 형식(`ThngStore`) + `cm` 계약방법(예: 수의계약·제한경쟁). A값·면허·순공사원가·rgn 은 없다(투찰 사정률 = 금액 ÷ 하한율 ÷ 기초금액). 시도는 수요·공고기관 이름으로.
+물품 낙찰 목록엔 하한율·예정가격이 없다 → 하한율·계약방법은 물품 공고(`getBidPblancListInfoThng`), 기초금액·예가범위는 `…ThngBsisAmount`, 예정가격은 낙찰금액 ÷ 낙찰률.
 
 ### data/opening/{시도}/{연도}.json — 개찰 전체 순위 + 복수예가 (regions.json 지역만)
 ```jsonc

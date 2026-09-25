@@ -84,6 +84,7 @@ OPS = {
     "notice_region": ("bid", "getBidPblancListInfoPrtcptPsblRgn", "1"),   # 참가가능지역
     "thng_list": ("scsbid", "getScsbidListSttusThng", "1"),               # 물품 낙찰 목록
     "thng_bsis": ("bid", "getBidPblancListInfoThngBsisAmount", "1"),      # 물품 기초금액·예가범위
+    "thng_notice": ("bid", "getBidPblancListInfoThng", "1"),              # 물품 공고 (낙찰하한율·계약방법 — 낙찰 목록엔 없음)
 }
 
 # ---------------------------------------------------------------- 필드 후보 (앞쪽 우선)
@@ -650,7 +651,7 @@ def finish_notice(e):
 
 # ---------------------------------------------------------------- 낙찰 목록
 SCSBID_FIELDS = ("id", "no", "ord", "nm", "org", "dmd", "sido", "sgg", "lic", "base", "plan", "amt",
-                 "rate", "cnt", "floor", "a", "net", "rng", "rgn", "date", "win", "winBiz", "sr")
+                 "rate", "cnt", "floor", "a", "net", "rng", "rgn", "cm", "date", "win", "winBiz", "sr")
 
 
 def compute_sr(r):
@@ -784,6 +785,23 @@ def enrich_thng(store, it):
     n = clean({"no": no, "ord": ord_, "base": to_int(pick(it, F_BASE)), "rng": price_range(it)})
     if n.get("base"):
         store.enrich_by_notice(n)
+
+
+F_CNTRCT = ["cntrctCnclsMthdNm"]
+
+
+def enrich_thng_notice(store, it):
+    """물품 공고 한 행 → 같은 공고의 낙찰 레코드에 낙찰하한율(floor)·계약방법(cm, 예: 수의계약·제한경쟁)"""
+    _, no, ord_ = notice_id(it)
+    ids = store.by_no.get(no, [])
+    vals = clean({"floor": to_rate(pick(it, F_FLOOR), 3), "cm": (pick(it, F_CNTRCT) or "").strip() or None})
+    for id_ in ids if vals else []:
+        r = store.recs[id_]
+        if r.get("ord") == ord_ or len(ids) == 1:
+            for k, v in vals.items():
+                if r.get(k) != v:
+                    r[k] = v
+                    store.dirty = True
 
 
 # ---------------------------------------------------------------- 개찰 상세 (전체 순위 + 복수예가)
@@ -1029,6 +1047,8 @@ def step_thng_recent(api, meta, tstore, now):
     for it in api.fetch_range("thng_list", now - dt.timedelta(days=RECENT_SCSBID_DAYS), now):
         tstore.merge(it, None)
         n += 1
+    for it in api.fetch_range("thng_notice", now - dt.timedelta(days=NOTICE_CACHE_DAYS), now):
+        enrich_thng_notice(tstore, it)
     for it in api.fetch_range("thng_bsis", now - dt.timedelta(days=NOTICE_CACHE_DAYS), now):
         enrich_thng(tstore, it)
     log(f"  물품 낙찰 {n}건 조회")
@@ -1058,6 +1078,8 @@ def step_thng_backfill(api, meta, tstore, now, checkpoint):
             tstore.merge(it, None)
             cnt += 1
         # 기초금액은 공고 쪽이라 개찰보다 먼저 올라온다 — 과거로 가며 다음 달 처리 때 앞 달 개찰분도 채워진다
+        for it in api.fetch_range("thng_notice", bgn, end):
+            enrich_thng_notice(tstore, it)
         for it in api.fetch_range("thng_bsis", bgn, end):
             enrich_thng(tstore, it)
         cursor = bf["cursor"] = (bgn - dt.timedelta(days=1)).strftime("%Y%m%d")
