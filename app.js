@@ -134,6 +134,12 @@ const Data = {
     this.meta.files = this.meta.files || {scsbid:{}, opening:{}};
     return this.meta;
   },
+  loadModel(){
+    return this.once('model', async () => {
+      try{ Model.m = await this.fetchJson('model.json'); }catch(e){ console.warn('model', e); Model.m = null; }
+      return Model.m;
+    });
+  },
   loadBids(){
     return this.once('bids', async () => {
       try{ this.bids = (await this.fetchJson('bids.json')).items || []; }
@@ -330,10 +336,73 @@ function expectedCnt(pool, notice){
   return null;
 }
 
+// ---------- 전국 추천 모델 (data/model.json — scripts/model.py 가 매일 계산, 설계·근거는 CLAUDE.md)
+const Model = {m: null};
+const rngKeyOf = (rng) => rng ? rng.map(v => +v).join(',') : '';
+/** 예상 참가업체 수(로그). 기관 → 시도×금액대×하한율 → 시도×금액대 → 금액대×예가범위 순으로 수축해 섞는다 (model.py 와 같은 계산) */
+function predictLnN(n){
+  const M = Model.m?.npred;
+  if(!M) return null;
+  const base = n.base || n.est;
+  const ab = base ? Model.m.amt_edges.filter(e => Math.log10(base) >= e).length : null;
+  const fl = n.floor ? String(+n.floor) : '';
+  const keys = ab == null ? {o: recOrg(n)} : {a: `${ab}|${rngKeyOf(n.rng)}`, sa: `${n.sido || ''}|${ab}`, saf: `${n.sido || ''}|${ab}|${fl}`, o: recOrg(n)};
+  let est = M.g;
+  for(const name of ['a', 'sa', 'saf', 'o']){
+    const [m, c] = (keys[name] && M.t[name][keys[name]]) || [est, 0];
+    est = (c * m + M.shrink * est) / (c + M.shrink);
+  }
+  return est;
+}
+/** 공고 → 모델 추천. cnt 를 주면 예상 참가수 대신 그 값을 쓴다 */
+function modelPredict(n, cnt){
+  if(!Model.m || (n.kind && n.kind !== '공사')) return null;
+  const rngKnown = rngKeyOf(n.rng) in Model.m.curves;
+  const rng = rngKnown ? n.rng : [-3, 3];
+  const ln = cnt ? Math.log(cnt) : predictLnN(n);
+  const list = Model.m.curves[rngKeyOf(rng)];
+  if(ln == null || !list?.length) return null;
+  const k = Math.round(ln * 5) * 2;
+  const e = list.reduce((b, x) => Math.abs(x.k - k) < Math.abs(b.k - k) ? x : b, list[0]);
+  return {e, rng, rngKnown, nExp: Math.max(1, Math.round(Math.exp(ln))), byInput: !!cnt, meanS: Model.m.meanS[rngKeyOf(rng)]};
+}
+/** 추천 결과를 한 모양으로: 전국 모델(mp) 또는 이 지역 곡선(wc) */
+function recFromModel(mp){
+  const e = mp.e, g = Model.m.grid;
+  const at = (x) => { const i = Math.round((x - g.x0) / g.step); return i >= 0 && i < e.c.length ? e.c[i] / g.scale : 0; };
+  return {src: 'model', x: e.x, p: e.p, lo: e.lo, hi: e.hi, peaks: e.pk.map(([x, p]) => ({x, p})), random: e.r, n: e.n, nExp: mp.nExp,
+    view: e.v, at, meanS: mp.meanS, rng: mp.rng, rngKnown: mp.rngKnown, byInput: mp.byInput,
+    pts: () => { const out = []; for(let x = e.v[0]; x <= e.v[1] + 1e-9; x += g.step) out.push({x: +x.toFixed(2), y: at(x)}); return out; },
+    note: `전국 최근 24개월 · 예가범위 ${rngText(mp.rng)}${mp.rngKnown ? '' : '(모름 → ±3% 기준)'} · 참가 ${fmtNum(Math.max(1, Math.round(mp.nExp / Model.m.band)))}~${fmtNum(Math.round(mp.nExp * Model.m.band))}곳 공고 ${fmtNum(e.n)}건`};
+}
+function recFromLocal(wc, ec){
+  return {src: 'local', x: wc.best.x, p: adjustP(wc, wc.best.p, ec?.n), lo: wc.safe.lo, hi: wc.safe.hi,
+    peaks: wc.peaks.map(c => ({x: c.x, p: adjustP(wc, c.p, ec?.n)})), random: wc.random, n: wc.n, nExp: ec?.n, view: wc.view,
+    at: (x) => adjustP(wc, wc.at(x), ec?.n), pts: () => curvePts(wc), note: '이 지역 과거 공고'};
+}
+/** 매일 자동 역검증(전국) 요약 배지 */
+function valBadge(){
+  const t = Model.m?.validation?.total;
+  if(!t?.n) return btBadge('');
+  const d = t.mean ? (t.near / t.mean - 1) * 100 : 0;
+  return `<span class="badge ${d > 0 ? 'ok' : 'warn'}">역검증 ${fmtNum(t.n)}건: 평균 사정율 방식보다 ${d >= 0 ? '+' : ''}${d.toFixed(0)}% ${d >= 0 ? '더' : '덜'} 낙찰</span>`;
+}
+/** 예상 참가수가 속한 역검증 구간 */
+const valSegment = (nExp) => Model.m?.validation?.segments?.find(s => nExp >= s.k[0] && (s.k[1] == null || nExp < s.k[1]));
+
 /** 공고 목록용 간단 예측. 평균 사정율: 같은 시도 최근 24개월 → 면허 겹침(10건↑) → 예가범위 같음(30건↑).
  *  낙찰확률 곡선: 같은 시도 최근 24개월 → 예가범위 같음(30건↑) (면허로는 쪼개지 않음). 조건별 결과는 재사용 */
-const qpCache = new Map();
+/** 공고 목록용 예측: 전국 모델이 있으면 그걸로(지역 파일 없이도 됨), 없으면 이 지역 곡선 */
 function quickPredict(notice){
+  if(notice.kind && notice.kind !== '공사') return null;
+  const mp = modelPredict(notice);
+  if(!mp) return quickPredictLocal(notice);
+  const e = mp.e, amt = notice.base || notice.est;
+  return {sr: quickPredictLocal(notice)?.sr ?? mp.meanS, n: e.n, note: '', model: true, bestSr: e.x, winP: e.p,
+    lift: e.r ? e.p / e.r : null, cnt: mp.nExp, value: amt ? e.p * amt : null, bid: bidAmount(notice.base, e.x, notice.a, notice.floor)};
+}
+const qpCache = new Map();
+function quickPredictLocal(notice){
   const store = Data.scsbid[notice.sido];
   if(!store) return null;
   if(notice.kind && notice.kind !== '공사') return null;
@@ -579,7 +648,7 @@ async function renderBids(){
     try{ await Data.loadScsbid(sido); if(Data.hasDetail(sido)) await Data.loadOpening(sido); }catch(e){ console.warn(e); }
     if(currentTab !== 'bids' || $('bSido').value !== sido) return;
   }
-  const canWin = !!(sido && Data.scsbid[sido]);
+  const canWin = !!(Model.m || (sido && Data.scsbid[sido]));
   const amtOf = (b) => b.base || b.est || 0;
   const cmp = {
     close: (a, b) => (a.close || '9999').localeCompare(b.close || '9999'),
@@ -592,7 +661,7 @@ async function renderBids(){
   const needPred = sort === 'win' || sort === 'value';
   rows.sort(cmp[needPred && !canWin ? 'close' : sort] || cmp.close);
   $('bidsInfo').innerHTML = [`${fmtNum(rows.length)}건`, infoBase,
-    !sido ? '시·도를 고르면 예상 사정율·낙찰확률이 표시됩니다' : '',
+    !sido && !Model.m ? '시·도를 고르면 예상 사정율·낙찰확률이 표시됩니다' : '',
     needPred && !canWin ? '낙찰확률·기대 수주액 정렬은 낙찰 데이터가 있는 시·도를 골라야 적용됩니다' : ''].filter(Boolean).join(' · ');
 
   const shown = rows.slice(0, bidsShown);
@@ -621,7 +690,7 @@ function bidCard(b, today){
     : days < 0 || parseKst(b.close) < new Date() ? {big:'마감', small: b.close.slice(2, 10).replace(/-/g, '.'), cls:'closed'}
     : days === 0 ? {big:'오늘', small: hh ? `${hh} 마감` : '마감', cls:'today'}
     : {big:`D-${days}`, small: `${b.close.slice(5,10).replace('-','/')} ${hh}`, cls: days <= 2 ? 'soon' : ''};
-  const qp = b.sido && Data.scsbid[b.sido] ? quickPredict(b) : null;
+  const qp = quickPredict(b);
   const amt = b.base || b.est;
   const tags = [
     `<span class="tag loc">${esc([b.sido, b.sgg].filter(Boolean).join(' ') || '지역 미상')}</span>`,
@@ -638,7 +707,7 @@ function bidCard(b, today){
         <div class="pv"><span>추천 투찰가</span><b>${qp.bid ? won(qp.bid) : '기초금액 미공개'}</b></div>
         ${qp.cnt ? `<div class="pv"><span>예상 참가</span><b>~${fmtNum(qp.cnt)}개사</b></div>` : ''}
       </div>
-      <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}${qp.value ? ` · 기대 수주액 ${eok(qp.value)}` : ''}</div>`;
+      <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.model ? ' · 추천값·낙찰확률은 전국의 경쟁 규모가 비슷한 공고 기준 · ×는 평균 업체 대비' : qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}${qp.value ? ` · 기대 수주액 ${eok(qp.value)}` : ''}</div>`;
   }else if(b.sido && !Data.hasScsbid(b.sido)){
     pred = '<div class="b-note">이 지역 낙찰 데이터 없음</div>';
   }
@@ -889,7 +958,7 @@ async function toggleWatch(id, btn){
     await WatchStore.remove(id); watchIds.delete(id);
     btn.classList.remove('on'); btn.textContent = '☆';
   }else{
-    const qp = b.sido && Data.scsbid[b.sido] ? quickPredict(b) : null;
+    const qp = quickPredict(b);
     await WatchStore.save({...pickNotice(b), savedAt: new Date().toISOString(),
       pred: qp ? {sr: qp.sr, bid: qp.bid, n: qp.n, by: '자동'} : null});
     watchIds.add(id);
@@ -1064,46 +1133,68 @@ async function runPredict(){
   const base = +$('cBase').value || 0, a = +$('cA').value || 0, floor = +$('cFloor').value || DEFAULT_FLOOR;
   const amtAt = (x) => base ? bidAmount(base, x, a, floor) : null;
 
-  // ---- 1) 추천 요약
+  // ---- 1) 추천 요약: 전국 모델(비슷한 경쟁 규모)이 있으면 우선, 없으면 이 지역 곡선
+  const nIn = +$('inCnt').value || 0;
+  const noticeLike = {...(P.notice || {}), sido: homeSido || P.notice?.sido, base: o.base || P.notice?.base || P.notice?.est,
+    rng: selRng, floor: +$('inFloor').value || P.notice?.floor};
+  const mp = modelPredict(noticeLike, nIn);
+  const rec = mp ? recFromModel(mp) : wc ? recFromLocal(wc, ec) : null;
+  P.last.rec = rec;
+  if(rec){ $('cRate').value = rec.x.toFixed(4); renderCalc(); }
   let hero, curveCard = '', tips = '';
-  if(wc){
-    const pAdj = adjustP(wc, wc.best.p, ec?.n), lift = liftOf(wc, wc.best.p);
-    const pMean = wc.at(pred.mean);
+  if(rec){
+    const lift = rec.random ? rec.p / rec.random : null;
+    const meanX = rec.meanS ?? pred.mean;
+    const V = Model.m?.validation, T = V?.total, seg = rec.nExp ? valSegment(rec.nExp) : null;
+    const net = +$('cNet').value || P.notice?.net || 0;
+    const recAmt = amtAt(rec.x);
+    const level = !rec.nExp ? '' : rec.nExp < 20 ? '<b style="color:var(--ok)">경쟁 적음 — 유리</b>' : rec.nExp < 80 ? '보통' : '<b style="color:var(--warn)">경쟁 많음</b>';
+    const check = [
+      rec.nExp ? `<li class="ok"><b>경쟁 규모</b>: 예상 참가 <b>~${fmtNum(rec.nExp)}곳</b>${rec.byInput ? '(직접 입력)' : ''} → ${level}${seg ? ` · 이런 공고의 역검증 낙찰률 <b>${(seg.near / seg.n * 100).toFixed(1)}%</b> (${fmtNum(seg.n)}건)` : ''}</li>` : '',
+      `<li class="ok"><b>추천 위치</b>: ${rec.src === 'model' ? '경쟁 규모가 비슷한 전국 과거 공고에서 가장 자주 1순위였던 투찰 사정률' : '이 지역 과거 공고에서 가장 자주 1순위였던 투찰 사정률'} <b>${pct(rec.x, 3)}</b>${T?.n ? ` · 새 달 역검증 ${fmtNum(T.n)}건에서 <b>${fmtNum(T.near)}건</b> 낙찰 (평균 사정율 방식 ${fmtNum(T.mean)}건)` : ''}</li>`,
+      `<li class="ok"><b>금액</b>: ${recAmt ? `<b>${won(recAmt)}</b>을 ` : ''}원 단위까지 그대로. 안전 범위 ${recAmt ? `${won(amtAt(rec.lo))} ~ ${won(amtAt(rec.hi))}` : `${pct(rec.lo, 3)} ~ ${pct(rec.hi, 3)}`} 안이면 확률 비슷</li>`,
+      !base ? `<li class="warn"><b>기초금액</b>을 넣어야 추천 금액이 계산됩니다</li>` : '',
+      !rec.rngKnown && rec.src === 'model' ? `<li class="warn"><b>예가범위</b>를 모르면 ±3% 기준으로 계산합니다. 공고문에서 확인해 ② 칸에 고르세요</li>` : '',
+      net && recAmt ? (recAmt < net * 0.98 ? `<li class="bad"><b>순공사원가 98% 미만</b> (${won(Math.ceil(net * 0.98))}) — 입찰 무효 위험, 금액을 올리세요</li>` : `<li class="ok"><b>순공사원가 98% 이상</b> 확인</li>`) : '',
+      `<li class="ok"><b>기록</b>: ☆ 관심공고에 저장 → 넣은 금액을 적어 두면 개찰 뒤 판정과 다음 보정값</li>`,
+    ].filter(Boolean).join('');
     hero = `<div class="card hero">
-      <div class="hero-top"><span class="hero-tag">🎯 낙찰확률 최대 추천</span>${btBadge(homeSido || sidos[0])}</div>
+      <div class="hero-top"><span class="hero-tag">🎯 추천 투찰</span>${valBadge()}</div>
       <div class="hero-main">
         <div>
           <div class="hero-label">추천 투찰금액</div>
-          <div class="hero-amt">${base ? won(amtAt(wc.best.x)) : '<span class="faint" style="font-size:18px;">기초금액을 넣으면 금액이 나옵니다</span>'}</div>
-          <div class="hero-sub">투찰 사정률 <b>${pct(wc.best.x, 3)}</b>${base ? ` · 안전 범위 ${won(amtAt(wc.safe.lo))} ~ ${won(amtAt(wc.safe.hi))}` : ` · 안전 범위 ${pct(wc.safe.lo, 3)} ~ ${pct(wc.safe.hi, 3)}`}</div>
+          <div class="hero-amt">${recAmt ? won(recAmt) : '<span class="faint" style="font-size:18px;">기초금액을 넣으면 금액이 나옵니다</span>'}</div>
+          <div class="hero-sub">투찰 사정률 <b>${pct(rec.x, 3)}</b>${recAmt ? ` · 안전 범위 ${won(amtAt(rec.lo))} ~ ${won(amtAt(rec.hi))}` : ` · 안전 범위 ${pct(rec.lo, 3)} ~ ${pct(rec.hi, 3)}`}</div>
         </div>
         <div class="hero-stats">
-          <div class="stat hl"><div class="t">예상 낙찰확률</div><div class="v">${(pAdj * 100).toFixed(2)}%</div></div>
-          <div class="stat"><div class="t">무작위 대비 (과거 재생)</div><div class="v">${lift ? '×' + lift.toFixed(2) : '-'}</div></div>
-          <div class="stat"><div class="t">예상 참가</div><div class="v">${ec?.n ? '~' + fmtNum(ec.n) + '개사' : '-'}</div></div>
-          <div class="stat"><div class="t">평균값으로 넣으면</div><div class="v">${(adjustP(wc, pMean, ec?.n) * 100).toFixed(2)}%</div></div>
+          <div class="stat hl"><div class="t">예상 낙찰확률</div><div class="v">${(rec.p * 100).toFixed(2)}%</div></div>
+          <div class="stat"><div class="t">평균 업체 대비 (과거)</div><div class="v">${lift ? '×' + lift.toFixed(2) : '-'}</div></div>
+          <div class="stat"><div class="t">예상 참가</div><div class="v">${rec.nExp ? '~' + fmtNum(rec.nExp) + '곳' : '-'}</div></div>
+          <div class="stat"><div class="t">평균 사정율로 넣으면</div><div class="v">${(rec.at(meanX) * 100).toFixed(2)}%</div></div>
         </div>
       </div>
-      <div class="meta-line">과거 공고 ${fmtNum(wc.n)}건${sampleBadge(wc.n)}을 다시 재생해 "이 금액으로 넣었으면 1순위였나"를 센 값입니다. 안전 범위 = 확률이 최대의 90% 이상인 구간. ${opening.size ? '개찰 상세가 있는 공고는 전체 순위로 정확히 계산했습니다. ' : ''}참고용이며 낙찰을 보장하지 않습니다.</div>
-      <div class="btn-row" style="margin-top:10px;"><button class="btn sm" data-use-sr="${wc.best.x}" type="button">계산기에 적용</button></div>
+      <h3>✅ 추천 체크</h3>
+      <ul class="checklist">${check}</ul>
+      <div class="meta-line">${esc(rec.note)} · 참고용이며 낙찰을 보장하지 않습니다.</div>
+      <div class="btn-row" style="margin-top:10px;"><button class="btn sm" data-use-sr="${rec.x}" type="button">계산기에 적용</button></div>
     </div>`;
 
     // ---- 2) 곡선 + 후보
-    const [vMin, vMax] = wc.view;
-    const sBins = binPts(wc.sList, vMin, vMax, (vMax - vMin) > 3 ? 0.05 : 0.02);
+    const [vMin, vMax] = rec.view;
+    const sBins = binPts(rows.map(r => [r.sr, 1]), vMin, vMax, (vMax - vMin) > 3 ? 0.05 : 0.02);
     curveCard = `<div class="card">
       <h2>투찰 사정률별 과거 낙찰확률</h2>
-      <p class="sub">선 = 그 값으로 넣었을 때 과거 낙찰확률, 옅은 막대 = 실제 사정율이 떨어진 분포. 사정율이 자주 떨어지면서 경쟁사가 덜 몰린 곳이 높게 나옵니다.</p>
+      <p class="sub">선 = 그 값으로 넣었을 때 과거 낙찰확률, 옅은 막대 = 이 지역 실제 사정율 분포. 사정율이 자주 떨어지면서 경쟁사가 덜 몰린 곳이 높게 나옵니다.</p>
       ${plot([{pts: sBins, color: 'var(--text-sub)', label: '실제 사정율 분포', bars: true},
-              {pts: curvePts(wc), color: 'var(--primary)', label: '과거 낙찰확률', fill: true}],
-        {min: vMin, max: vMax, marks: [{x: wc.best.x, color: 'var(--target)', label: `추천 ${wc.best.x.toFixed(3)}`}, {x: pred.mean, color: 'var(--text-faint)', label: `평균 ${pred.mean.toFixed(2)}`}]})}
+              {pts: rec.pts(), color: 'var(--primary)', label: '과거 낙찰확률', fill: true}],
+        {min: vMin, max: vMax, marks: [{x: rec.x, color: 'var(--target)', label: `추천 ${rec.x.toFixed(3)}`}, {x: meanX, color: 'var(--text-faint)', label: `평균 ${meanX.toFixed(2)}`}]})}
       <div class="table-wrap" style="margin-top:10px; max-height:none;"><table>
-        <thead><tr><th>후보</th><th class="num">투찰 사정률</th><th class="num">과거 낙찰확률</th><th class="num">무작위 대비</th><th class="num">투찰금액</th><th></th></tr></thead>
-        <tbody>${wc.peaks.map((c, i) => `<tr${i ? '' : ' class="hl-row"'}><td>${i + 1}${i ? '' : ' ★'}</td><td class="num">${pct(c.x, 3)}</td><td class="num">${(adjustP(wc, c.p, ec?.n) * 100).toFixed(2)}%</td>
-          <td class="num">${liftOf(wc, c.p) ? '×' + liftOf(wc, c.p).toFixed(2) : '-'}</td><td class="num">${base ? won(amtAt(c.x)) : '-'}</td>
+        <thead><tr><th>후보</th><th class="num">투찰 사정률</th><th class="num">과거 낙찰확률</th><th class="num">평균 업체 대비</th><th class="num">투찰금액</th><th></th></tr></thead>
+        <tbody>${rec.peaks.map((c, i) => `<tr${i ? '' : ' class="hl-row"'}><td>${i + 1}${i ? '' : ' ★'}</td><td class="num">${pct(c.x, 3)}</td><td class="num">${(c.p * 100).toFixed(2)}%</td>
+          <td class="num">${rec.random ? '×' + (c.p / rec.random).toFixed(2) : '-'}</td><td class="num">${base ? won(amtAt(c.x)) : '-'}</td>
           <td><button class="btn sm line" data-use-sr="${c.x}" type="button">적용</button></td></tr>`).join('')}</tbody>
       </table></div>
-      <div class="meta-line">곡선 표본: ${esc(sidos.join('·'))} 최근 24개월${curveRows === rngPool ? ` · 예가범위 ${esc(rngText(selRng))}` : selRng ? ' · 예가범위 같은 공고 부족 → 전체' : ' · 예가범위 모름 → 전체'} ${fmtNum(wc.n)}건 (면허·금액 조건은 표본을 너무 쪼개므로 곡선에는 쓰지 않고 아래 참고 분포에만 적용) · 곡선 폭 ±${wc.smooth}%p (설정 → 백테스트에서 자동 선택) · 최근 공고일수록 가중(exp(−개월/12))${homeSido ? ` · ${esc(homeSido)} 공고 ×2` : ''} · 무작위 = 평균 업체의 낙찰확률(1 ÷ 참가업체 수)</div>
+      <div class="meta-line">곡선 표본: ${esc(rec.note)} · 곡선 폭 ±0.01%p · 평균 업체 = 1 ÷ 참가업체 수</div>
     </div>`;
 
     // ---- 3) 금액·숫자 팁
@@ -1113,12 +1204,13 @@ async function runPredict(){
       <ul class="tips">
         <li><b>금액</b>: 추천 금액을 <b>원 단위까지 그대로</b> 넣으세요. 만원·천원 단위로 반올림하면 투찰 사정률이 옮겨가 확률 구간을 벗어날 수 있습니다${base ? ` (이 공고에서 1만원 ≈ 사정률 ${(1e4 / (floor / 100) / base * 100).toFixed(4)}%p)` : ''}.</li>
         <li><b>범위</b>: 안전 범위 안이면 과거 확률이 비슷했습니다. 다른 사람과 같은 금액(동가)을 피하려면 범위 안에서 끝자리를 조금 바꿔도 됩니다.</li>
-        <li><b>복수예가 번호(15개 중 2개)</b>: 수백 개사가 함께 고르기 때문에 내 선택 2개가 예정가격에 주는 영향은 거의 없습니다. 번호와 금액의 짝도 공고마다 무작위라 "잘 뽑히는 번호"는 과거 빈도가 무작위(26.7%)와 크게 다를 때만 참고하세요 (통계 탭).</li>
-        ${cal && cal.n ? `<li><b>내 투찰 기록 보정</b>: 개찰된 내 투찰 ${fmtNum(cal.n)}건 기준, 투찰 사정률을 <b>${cal.shift >= 0 ? '+' : ''}${cal.shift.toFixed(3)}%p</b> 옮겼다면 낙찰권이 ${cal.wins}건 → ${cal.best}건이었습니다${cal.n < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}. (관심공고 탭에서 내 투찰금액을 기록하면 쌓입니다)</li>` : '<li><b>내 기록</b>: 관심공고 탭에서 실제로 넣은 금액을 기록하면, 개찰 뒤 결과와 비교해 다음에 얼마나 올리거나 내릴지 알려드립니다.</li>'}
+        <li><b>공고 고르기</b>: 같은 노력이면 <b>예상 참가가 적은 공고</b>에 넣으세요. 역검증에서 예상 20곳 미만 공고의 낙찰률은 150곳 이상 공고의 10배 이상이었습니다. 입찰공고 탭 → "낙찰확률 높은 순".</li>
+        <li><b>복수예가 번호(15개 중 2개)</b>: 수백 개사가 함께 고르기 때문에 내 선택 2개가 예정가격에 주는 영향은 거의 없습니다. 통계 탭의 번호 빈도가 무작위(26.7%)와 크게 다를 때만 참고하세요.</li>
+        ${cal && cal.n ? `<li><b>내 투찰 기록 보정</b>: 개찰된 내 투찰 ${fmtNum(cal.n)}건 기준, 투찰 사정률을 <b>${cal.shift >= 0 ? '+' : ''}${cal.shift.toFixed(3)}%p</b> 옮겼다면 낙찰권이 ${cal.wins}건 → ${cal.best}건이었습니다${cal.n < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}.</li>` : '<li><b>내 기록</b>: 관심공고 탭에서 실제로 넣은 금액을 기록하면, 개찰 뒤 결과와 비교해 다음에 얼마나 올리거나 내릴지 알려드립니다.</li>'}
       </ul>
     </div>`;
   }else{
-    hero = `<div class="card"><h2>🎯 낙찰확률 최대 추천</h2><div class="empty">예정가격·1위 낙찰금액·기초금액이 함께 있는 과거 공고가 5건 미만이라 계산할 수 없습니다. 조건을 넓혀 보세요.</div></div>`;
+    hero = `<div class="card"><h2>🎯 추천 투찰</h2><div class="empty">추천을 계산할 과거 데이터가 부족합니다. 조건을 넓혀 보세요.</div></div>`;
   }
 
   // ---- 4) 참고: 사정율 분포 (기존 평균 방식)
@@ -1199,9 +1291,9 @@ function renderCalc(){
   const rng = $('pRng').value ? $('pRng').value.split(',').map(Number) : P.notice?.rng;
   const info = [];
   if(rng && rng[0] != null && rng[1] != null && (c.sr < 100 + rng[0] || c.sr > 100 + rng[1])) info.push(`적용 사정율이 공고 예가범위(${100+rng[0]}~${100+rng[1]}%) 밖입니다.`);
-  if(P.last?.wc){
-    const wc = P.last.wc;
-    info.push(`이 투찰 사정율(${c.sr}%)의 과거 낙찰확률 <b>${(wc.at(c.sr)*100).toFixed(2)}%</b> · 최대는 ${pct(wc.best.x, 2)}에서 ${(wc.best.p*100).toFixed(2)}%`);
+  if(P.last?.rec){
+    const r = P.last.rec;
+    info.push(`이 투찰 사정률(${c.sr}%)의 과거 낙찰확률 <b>${(r.at(c.sr)*100).toFixed(2)}%</b> · 추천 ${pct(r.x, 3)}에서 ${(r.p*100).toFixed(2)}%`);
   }
   if(P.last?.rows?.length){
     const above = P.last.rows.filter(r => r.sr > c.sr).length / P.last.rows.length;
@@ -1579,12 +1671,40 @@ async function renderSettings(){
   }).join('') + `<div class="meta-line">남은 ${fmtNum(d.remaining || 0)}건 · 하루 약 ${fmtNum(d.per_day || 0)}건 → ${d.remaining ? `약 ${fmtNum(d.eta_days)}일 남음` : '완료'}</div>
     <div class="meta-line">수집 대상 지역은 저장소의 scripts/regions.json 에서 바꿀 수 있습니다.</div>`
     : '<div class="empty">아직 상세 수집 기록이 없습니다.</div>';
+  $('setVal').innerHTML = renderValidation();
   $('appVersion').textContent = await getAppVersion();
   const theme = LS.get('theme', 'auto');
   $('themeSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === theme));
 }
 
+/** 매일 자동 역검증 표 (model.json 의 validation) */
+function renderValidation(){
+  const V = Model.m?.validation;
+  if(!V?.total?.n) return '<div class="empty">아직 역검증 결과가 없습니다. 데이터가 두 달 이상 쌓이면 수집 때 자동으로 계산됩니다.</div>';
+  const T = V.total, rate = (k, n) => n ? (k / n * 100).toFixed(2) + '%' : '-';
+  const d = T.mean ? (T.near / T.mean - 1) * 100 : 0;
+  return `<div class="stat-grid">
+      <div class="stat hl"><div class="t">추천값(비슷한 경쟁 규모)</div><div class="v">${fmtNum(T.near)}건 · ${rate(T.near, T.n)}</div></div>
+      <div class="stat"><div class="t">평균 사정율로 넣었다면</div><div class="v">${fmtNum(T.mean)}건 · ${rate(T.mean, T.n)}</div></div>
+      <div class="stat"><div class="t">평균 업체 기대</div><div class="v">${fmtNum(T.rand, 1)}건</div></div>
+      <div class="stat"><div class="t">추천값 vs 평균 사정율</div><div class="v" style="color:${d > 0 ? 'var(--ok)' : 'var(--warn)'}">${d >= 0 ? '+' : ''}${d.toFixed(1)}%</div></div>
+    </div>
+    <div class="meta-line">시험 공고 ${fmtNum(T.n)}건 · 추천값 95% 신뢰구간 ${(T.near_ci[0]*100).toFixed(2)}~${(T.near_ci[1]*100).toFixed(2)}% · 하한 미달 추천값 ${(T.below_near*100).toFixed(0)}% / 평균 ${(T.below_mean*100).toFixed(0)}% · ${esc(V.rule)}</div>
+    <h3>달별</h3>
+    <div class="table-wrap" style="max-height:none;"><table>
+      <thead><tr><th>시험 달</th><th class="num">공고</th><th class="num">추천값 낙찰</th><th class="num">평균 사정율 낙찰</th><th class="num">평균 업체 기대</th></tr></thead>
+      <tbody>${V.months.map(m => `<tr><td>${esc(m.m)}</td><td class="num">${fmtNum(m.n)}</td><td class="num"><b>${m.near}</b></td><td class="num">${m.mean}</td><td class="num">${fmtNum(m.rand, 1)}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <h3>예상 참가 규모별 — 공고 고르기 효과</h3>
+    <div class="table-wrap" style="max-height:none;"><table>
+      <thead><tr><th>예상 참가</th><th class="num">공고</th><th class="num">추천값 낙찰률</th><th class="num">평균 사정율 낙찰률</th><th class="num">평균 업체</th></tr></thead>
+      <tbody>${V.segments.map(s => `<tr><td>${s.k[0]}~${s.k[1] ?? ''}곳</td><td class="num">${fmtNum(s.n)}</td><td class="num"><b>${rate(s.near, s.n)}</b></td><td class="num">${rate(s.mean, s.n)}</td><td class="num">${rate(s.rand, s.n)}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <div class="meta-line">예상 참가가 적은 공고일수록 낙찰률이 크게 높습니다 → 입찰공고 탭 "낙찰확률 높은 순"으로 공고를 고르세요. 데이터 ${esc(Model.m.data.from)} ~ ${esc(Model.m.data.to)} · 모델 갱신 ${esc(Model.m.updated_at.slice(0, 16).replace('T', ' '))}</div>`;
+}
+
 function initSettings(){
+
   const keyMsg = (t) => { $('keyMsg').innerHTML = t; };
   keyMsg(LS.get('apiKey', '') ? '저장된 키 있음 (이 기기)' : '저장된 키 없음');
   $('keySave').addEventListener('click', async () => {
@@ -1791,6 +1911,7 @@ async function init(){
   prevVisit = lv ? new Date(lv) : null;
   initServiceWorker();
   await Data.loadMeta();
+  await Data.loadModel();
 
   document.querySelectorAll('.nav-item').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
   window.addEventListener('popstate', () => switchTab(location.hash.slice(1), false));

@@ -40,7 +40,7 @@ jobs:
           python-version: "3.12"
 
       - name: 의존성 설치
-        run: pip install requests
+        run: pip install requests numpy
 
       # 1차: 진행중 공고 + 최근 낙찰 → 바로 커밋해서 앱에 먼저 뜨게 한다
       - name: 빠른 수집 (공고·최근 낙찰)
@@ -49,6 +49,11 @@ jobs:
           STEPS: "공고,최근낙찰"
           MAX_MINUTES: "40"
         run: python scripts/collect.py
+
+      - name: 추천 모델·역검증 계산
+        if: always()
+        continue-on-error: true
+        run: python scripts/model.py
 
       - name: 빠른 수집 커밋
         if: always()
@@ -64,6 +69,11 @@ jobs:
           STEPS: "과거낙찰,상세"
           MAX_MINUTES: "260"
         run: python scripts/collect.py
+
+      - name: 추천 모델·역검증 다시 계산
+        if: always()
+        continue-on-error: true
+        run: python scripts/model.py
 
       - name: 전체 수집 커밋
         if: always()

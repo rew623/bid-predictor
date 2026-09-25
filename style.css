@@ -374,3 +374,13 @@ details.fold[open] > summary h2::before{content:'▾ ';}
 .kbd{display:inline-block; padding:0 7px; border-radius:6px; background:var(--primary); color:#fff; font-size:12px; font-weight:600; line-height:1.7;}
 .req{display:inline-block; font-size:11px; font-weight:600; color:var(--target); background:var(--target-soft); border-radius:5px; padding:0 6px; margin-left:4px; vertical-align:1px;}
 label .req{font-size:10.5px;}
+
+/* ---------- 추천 체크리스트 ---------- */
+.checklist{list-style:none; margin:6px 0 4px; padding:0; font-size:13px; line-height:1.6;}
+.checklist li{position:relative; padding:6px 10px 6px 30px; border-radius:9px; margin-bottom:5px; background:var(--surface);}
+.checklist li::before{position:absolute; left:9px; top:6px; font-weight:700;}
+.checklist li.ok::before{content:'✓'; color:var(--ok);}
+.checklist li.warn{background:var(--warn-soft);}
+.checklist li.warn::before{content:'!'; color:var(--warn);}
+.checklist li.bad{background:var(--target-soft); color:var(--target);}
+.checklist li.bad::before{content:'✕'; color:var(--target);}

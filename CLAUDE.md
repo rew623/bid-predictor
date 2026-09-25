@@ -27,6 +27,7 @@ icons/                아이콘 (svg, 192/512 png)
 .nojekyll             _sample_*.json 등 밑줄 파일도 Pages 에 게시되도록
 scripts/collect.py    수집기 (Actions 에서 실행)
 scripts/commit_data.sh  data/ 변경 커밋·푸시 (워크플로에서 단계마다 호출)
+scripts/model.py      전국 추천 모델·역검증 → data/model.json (수집 단계마다 실행, numpy)
 scripts/korea.py      시도·시군구 파싱, 면허 23개 + 옛 명칭 별칭표
 scripts/regions.json  개찰 상세(전체 순위·복수예가)를 수집할 시·도 목록. 예: ["강원"]
 .github/workflows/collect.yml  02:00 KST 전체 + 09·13·17시 공고만 + 수동 실행(start_date, reset_backfill, quick_only)
@@ -86,6 +87,21 @@ data/                 수집 결과 (아래)
 | url | 나라장터 상세 링크 |
 | seen | 수집기가 처음 본 시각(ISO) — 앱의 NEW 표시 기준 |
 
+### data/model.json — 전국 추천 모델 + 매일 역검증 (scripts/model.py)
+```jsonc
+{"v":1, "updated_at":"…", "data":{"from","to","rows"}, "grid":{"x0":97,"step":0.01,"n":601,"scale":1e5},
+ "band":4, "amt_edges":[7.7,8,8.3,8.6,9,9.5], "meanS":{"-3,3":99.857,"-2,2":99.996},
+ "npred":{"g":로그평균, "sd", "shrink":5, "t":{"a":{"금액대|예가범위":[로그평균,건수]}, "sa":{"시도|금액대"}, "saf":{"시도|금액대|하한율"}, "o":{"기관"}}},
+ "curves":{"-3,3":[{"k":round(10·ln 참가수)(2간격), "x":추천, "p":낙찰확률, "lo","hi":안전범위, "n":표본, "r":평균 1/참가수,
+                   "cnt":참가 중앙값, "pk":[[x,p]×3], "v":[그림 범위], "c":[601칸 ×1e5 정수]}], "-2,2":[…]},
+ "validation":{"months":[{"m","n","near","mean","rand","below_near","below_mean"}], "segments":[{"k":[하한,상한],"n","near","mean","rand"}],
+               "total":{"n","near","mean","rand","near_ci","mean_ci","below_near","below_mean"}, "rule"}}
+```
+- 참가수 예측(로그): a → sa → saf → o 순으로 `est = (n·평균 + 5·est)/(n+5)`. 앱 `predictLnN` 과 키 형식이 같아야 한다(금액대 = log10(기초금액) ≥ 경계 개수, 하한율 `%g`).
+- 곡선: 예가범위 × 예상 참가수 c 마다, 최근 24개월 전국 공고 중 참가수 c/4~c×4 (200건 미만이면 같은 예가범위 전체)로 승리 구간을 쌓아 ±0.01%p. 앱은 예상 참가수에 가장 가까운 k 를 쓴다.
+- 역검증: 최근 12개월 각 달을 그 이전 24개월로만 추천(예측 참가수 → 곡선)해 S ≤ x < W 를 센다. 비교 = 평균 사정율, 평균 업체(1/참가수).
+- 근거(2026-07~09 실데이터): 고정 위치 하나로는 오라클도 평균 업체 ×1.06이 한계. 참가수에 따라 유리한 위치가 다르다(많으면 분포 가장자리, 예: ±3% 98.42%). "비슷한 경쟁 규모로 학습"을 8월로 골라 9월에 적용 → 138건 vs 평균 사정율 124건. 예상 참가 하위 20% 공고만 넣으면 낙찰률 약 2배.
+
 ### data/scsbid/{시도}.json — 과거 낙찰 (최근 개찰 순)
 `{"sido":"강원", "v":1, "part":1, "parts":1, "items":[ … ]}` 항목: `id, no, ord, nm, org, dmd, sido, sgg, lic, base, a, net, floor, rng` (bids 와 같은 뜻) +
 | 키 | 뜻 |
@@ -130,5 +146,6 @@ data/                 수집 결과 (아래)
 - **내 투찰 기록**(관심공고): WatchStore 항목에 `myBid`(실제 넣은 금액). 개찰 뒤 `judgeBid` 로 낙찰권/하한 미달/1위보다 높음 + 차이 금액 + (상세 있으면) 예상 순위. `calibrate` = 내 기록 전체에서 투찰 사정률을 −1~+1%p 옮겼을 때 낙찰권이 가장 많았던 이동량 → `bp.myCal` 에 저장해 예측 화면 팁에 표시.
 - 입찰공고 탭은 두 모드: **실시간 검색**(조달청 `BidPublicInfoService` 의 `getBidPblancListInfo{Cnstwk|Servc|Thng|Frgcpt|Etc}PPSSrch` 를 브라우저에서 직접 호출, CORS 허용됨. 업무구분 공사·용역·물품·외자·기타, `LIVE_KINDS`. 검색조건 조회가 키 오류 외 이유로 실패하면 기본 목록 조회 + 앱에서 거르기로 대체. 예측은 공사만) / **진행중 공고**(자동 수집 bids.json). 서비스키는 설정 탭에서 입력해 `localStorage bp.apiKey` 에만 저장(저장소에 넣지 않음). 다른 기기로는 설정 탭 "폰으로 보내기 (QR)" → `앱주소#key=…` 링크를 열면 init() 이 저장하고 주소에서 지운다(# 뒤라 서버로 안 감). 키가 있으면 실시간이 기본.
   실시간 결과는 같은 공고번호의 마지막 차수만, 취소공고 제외. "이 공고로 예측" 때 `getBidPblancListInfoCnstwkBsisAmount`(inqryDiv=2, 공고번호)로 기초금액·A값·예가범위를 채운다(`enrichLive`). 검색 조건 파라미터 이름(bidNtceNm, ntceInsttNm, dminsttNm, prtcptLmtRgnNm, indstrytyNm, presmptPrceBgn/End, bidClseExcpYn)은 실제 키로 확인 전 — 안 먹히면 여기부터 확인.
-- 공고 목록 간단 예측(`quickPredict`): 같은 시도 최근 24개월 → 면허 겹침(10건 이상일 때) → 예가범위 같음(30건 이상일 때). 조건별로 결과 캐시.
+- **추천은 전국 모델 우선**(`modelPredict` → `recFromModel`): 공고의 예상 참가수(`predictLnN`, 입력값이 있으면 그 값)와 예가범위(모르면 ±3%)로 `model.curves` 에서 곡선을 골라 추천 x·안전 범위·낙찰확률. 모델이 없으면 지역 곡선(`recFromLocal`). 예측 화면 파란 카드에 "✅ 추천 체크"(경쟁 규모·추천 위치·금액·입력 누락·순공사원가·기록), 배지 = 역검증 요약(`valBadge`). 설정 탭 "역검증" = `renderValidation`.
+- 공고 목록 간단 예측(`quickPredict`): 모델이 있으면 지역 파일 없이도 추천·예상 참가·낙찰확률(정렬에 사용). 없으면 `quickPredictLocal`: 같은 시도 최근 24개월 → 면허 겹침(10건 이상일 때) → 예가범위 같음(30건 이상일 때). 조건별로 결과 캐시.
 - 경고: 투찰금액 < 낙찰하한가, 또는 < 순공사원가 × 98% → 빨간 경고.
