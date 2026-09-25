@@ -21,7 +21,7 @@ GitHub Actions(.github/workflows/collect.yml)에서 매일 실행된다.
   7) 과거낙찰  나머지 과거(3년까지)
   물품최근   물품 최근 낙찰 + 물품 기초금액(최근 60일)   → data/thng/{시도}.json
   물품과거   물품 과거 낙찰을 한 달씩 과거로 24개월까지 (진행: meta.thng_backfill), 낙찰정보 THNG_RESERVE·입찰공고 REGION_RESERVE 회는 남김
-  실제 순서: 공고 → 최근낙찰 → 상세 → 과거낙찰(24개월) → 지역보강 → 물품최근 → 물품과거 → 상세 → 과거낙찰(나머지)
+  실제 순서: 공고 → 최근낙찰 → 상세 → 물품최근 → 물품과거 → 지역보강 → 과거낙찰(24개월) → 상세 → 과거낙찰(나머지)
 
 API 필드명이 확정되지 않았으므로 모든 필드 접근은 후보 이름 목록(F_*)을 거친다.
 첫 실행 때 각 API 원본 1건을 data/_sample_{op}.json 에 저장하니 그걸 보고 후보를 고친다.
@@ -58,6 +58,7 @@ RECENT_FIRST_MONTHS = 24                    # 과거 낙찰은 이 기간을 먼
 DETAIL_MAX_TRIES = 3
 REGION_RESERVE = 250                        # 지역보강은 입찰공고 호출을 이만큼 남긴다 (뒤의 과거 수집 몫)
 THNG_RESERVE = 250                          # 물품과거는 낙찰정보 호출을 이만큼 남긴다 (뒤의 개찰 상세 몫)
+THNG_BID_RESERVE = 400                      # 물품과거는 입찰공고 호출을 이만큼 남긴다 (뒤의 지역보강·공사 과거 수집 몫)
 SCHEMA_VERSION = 1
 
 # ---------------------------------------------------------------- API 정의
@@ -1011,8 +1012,6 @@ def step_backfill(api, meta, store, now, checkpoint, horizon=None):
         for it in api.fetch_range("notice_license", bgn, end):
             if notice_id(it)[0] in month.items:
                 month.add_license(it)
-        for it in api.fetch_range("notice_region", bgn, end):
-            store.add_region(it)
         for e in month.items.values():
             finish_notice(e)
             store.enrich_by_notice(e)
@@ -1048,7 +1047,7 @@ def step_thng_backfill(api, meta, tstore, now, checkpoint):
             bf["done"], bf["cursor"] = True, None
             log("[물품과거] 완료")
             return
-        if api.remaining("scsbid") < THNG_RESERVE or api.remaining("bid") < REGION_RESERVE or api.time_left() < 20:
+        if api.remaining("scsbid") < THNG_RESERVE or api.remaining("bid") < THNG_BID_RESERVE or api.time_left() < 20:
             log(f"[물품과거] 오늘 몫 끝, 커서 {cursor}")
             return
         bgn = cur.replace(day=1, hour=0, minute=0)
@@ -1069,7 +1068,8 @@ def step_thng_backfill(api, meta, tstore, now, checkpoint):
 
 def step_region_fill(api, meta, store, now, checkpoint):
     """과거 낙찰 레코드에 참가가능지역(rgn)을 채운다. 참가수 예측에 쓰임(시·군 제한이면 참가가 적다).
-    공고 게시 달 단위로 최신 → 가장 오래된 낙찰 달까지 한 번 훑는다. 진행: meta.rgn_fill {cursor: YYYYMM, done}"""
+    공고 게시일 기준 7일 단위로 최신 → 가장 오래된 낙찰 달 앞까지 한 번 훑는다 (한 달치는 호출이 많아 하루 한도에 끊겨도 이어지게).
+    진행: meta.rgn_fill {cursor: YYYYMMDD(다음에 받을 구간의 끝 날), done}"""
     rf = meta.setdefault("rgn_fill", {})
     if rf.get("done"):
         return
@@ -1077,8 +1077,10 @@ def step_region_fill(api, meta, store, now, checkpoint):
     if not dates:
         return
     d0 = dt.date.fromisoformat(sorted(dates)[len(dates) // 500])   # 드문 아주 옛 레코드는 무시
-    oldest = (d0.replace(day=1) - dt.timedelta(days=1)).strftime("%Y%m")   # 개찰 한 달 전 게시 공고까지
-    cursor = rf.get("cursor") or now.strftime("%Y%m")
+    oldest = (d0.replace(day=1) - dt.timedelta(days=1)).replace(day=1).strftime("%Y%m%d")   # 개찰 한 달 전 게시 공고까지
+    cursor = rf.get("cursor") or now.strftime("%Y%m%d")
+    if len(cursor) == 6:   # 예전 형식(YYYYMM)
+        cursor = (dt.datetime.strptime(cursor + "01", "%Y%m%d") + dt.timedelta(days=32)).replace(day=1).strftime("%Y%m%d")
     while True:
         if cursor < oldest:
             rf["done"], rf["cursor"] = True, None
@@ -1087,14 +1089,14 @@ def step_region_fill(api, meta, store, now, checkpoint):
         if api.remaining("bid") < REGION_RESERVE or api.time_left() < 20:
             log(f"[지역보강] 오늘 몫 끝, 커서 {cursor}")
             return
-        bgn = dt.datetime.strptime(cursor + "01", "%Y%m%d").replace(tzinfo=KST)
-        end = min((bgn + dt.timedelta(days=32)).replace(day=1) - dt.timedelta(minutes=1), now)
-        log(f"[지역보강] {bgn:%Y-%m}")
+        end = min(dt.datetime.strptime(cursor, "%Y%m%d").replace(hour=23, minute=59, tzinfo=KST), now)
+        bgn = (end - dt.timedelta(days=6)).replace(hour=0, minute=0)
+        log(f"[지역보강] {bgn:%Y-%m-%d} ~ {end:%Y-%m-%d}")
         n = 0
         for it in api.fetch_range("notice_region", bgn, end):
             store.add_region(it)
             n += 1
-        cursor = rf["cursor"] = (bgn - dt.timedelta(days=1)).strftime("%Y%m")
+        cursor = rf["cursor"] = (bgn - dt.timedelta(days=1)).strftime("%Y%m%d")
         log(f"  지역 {n}행")
         checkpoint()
 
@@ -1213,10 +1215,10 @@ def main():
         ("공고", lambda: step_notices(api, meta, cache, now)),
         ("최근낙찰", lambda: step_recent_scsbid(api, meta, store, cache, now)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all, reserve=DETAIL_RESERVE)),
-        ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all, horizon)),
-        ("지역보강", lambda: step_region_fill(api, meta, store, now, save_all)),
         ("물품최근", lambda: step_thng_recent(api, meta, tstore, now)),
         ("물품과거", lambda: step_thng_backfill(api, meta, tstore, now, save_all)),
+        ("지역보강", lambda: step_region_fill(api, meta, store, now, save_all)),
+        ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all, horizon)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all)),
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all)),
     ]
