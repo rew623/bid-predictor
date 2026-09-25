@@ -121,6 +121,7 @@ lic_map 의 면허에는 23개로 못 바꾼 참가자격 원문도 들어간다
 lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits`(renderLive 뒤 10건씩 반복)가 ① 공고 게시일~다음날 등록분 전체(`limitsForDay`, inqryDiv=1, 날짜별 한 번) ② 그 공고가 없으면 공고번호(inqryDiv=2)로 `getBidPblancListInfoLicenseLimit`·`…PrtcptPsblRgn` 조회. 끝내 모르면(`limTried`) "참가 가능한 공고만"에서 뺀다 → `b.reqLic`, `b.rgn`([] = 지역 제한 없음), `b.limOk`(면허 제한 없음이면 참가 가능). 같은 함수가 기초금액 없는 카드는 bids.json 값 → 없으면 `enrichLive` 로 기초금액·A값·예가범위를 채워 목록에서 바로 추천 투찰가를 보여 준다.
 실시간 공고 `corr`(ntceKindNm 정정)·`sui`(cntrctCnclsMthdNm 수의) → 카드 태그. 면허제한은 대업종(4991·4992 등) 단위로 온다(2026-09 최근 60일 확인) — 주력분야는 적격심사 실적 평가용. 카드에는 `licTags` = "요구 면허" + 우리 면허는 ✓. 모델 참가수 예측도 실시간 공고는 licOf 를 쓴다.
 한계: 면허제한 그룹(lmtGrpNo, 그룹 안은 모두 필요·그룹끼리는 택일)을 구분하지 않고 하나라도 겹치면 가능으로 본다.
+주력분야: 면허제한 API 의 `indstrytyMfrcFldList`(예: 금속구조물ㆍ창호ㆍ온실공사) → 수집기 `mf_list` → lic_map `mfn`/`mf`, 실시간은 `b.reqMf`. 우리 업체 `mf` {대업종: [주력분야]} 와 `MFRC`(대업종→주력분야 표)로 `mfPass` — 공고가 그 대업종의 주력분야를 걸었는데 우리 주력분야가 없으면 '주력분야 불일치'. 비교는 문장부호·끝의 (사)업을 뗀 뒤 포함 여부('석공사' ⊃ '석공'). 수집기는 처음 한 번 30일치 면허제한을 다시 받는다(`meta.mf_scan`).
 
 ### data/scsbid/{시도}.json — 과거 낙찰 (최근 개찰 순)
 `{"sido":"강원", "v":1, "part":1, "parts":1, "items":[ … ]}` 항목: `id, no, ord, nm, org, dmd, sido, sgg, lic, rgn, base, a, net, floor, rng` (bids 와 같은 뜻, rgn 은 지역보강 전이면 없음) +

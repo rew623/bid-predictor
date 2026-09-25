@@ -112,6 +112,7 @@ F_A_PARTS = [  # A값 = 국민연금 + 건강보험 + 노인장기요양 + 퇴�
 ]
 F_NET = ["pureCnstrctCst", "pureCnstrtnCst", "netCnstrctCst", "cnstrtnAbsltPrc", "pureCnstcst"]
 F_LIC = ["lcnsLmtNm", "indstrytyNm", "permsnIndstrytyList"]
+F_MFRC = ["indstrytyMfrcFldList"]   # 면허제한의 주력분야 (예: 금속구조물ㆍ창호ㆍ온실공사) — 대업종 안에서 더 좁힌 제한
 F_RGN = ["prtcptPsblRgnNm", "rgnNm"]
 F_AMT = ["sucsfbidAmt", "scsbdAmt"]
 F_RATE = ["sucsfbidRate", "scsbdRate"]
@@ -558,6 +559,11 @@ class NoticeCache:
             lst = e.setdefault("lic_list", [])
             if raw not in lst:
                 lst.append(raw)
+        mf = str(pick(it, F_MFRC) or "").strip()
+        if mf:
+            lst = e.setdefault("mf_list", [])
+            if mf not in lst:
+                lst.append(mf)
 
     def add_region(self, it):
         id_, _, _ = notice_id(it)
@@ -611,10 +617,11 @@ def other_quals(e):
 
 def write_lic_map(cache):
     """앱 실시간 검색용: 최근 60일 공사 공고별 면허제한·참가가능지역 → data/lic_map.json
-    {"v":1, "lic":[면허명…], "items":{공고ID:[면허 번호…]}, "rg":[지역 원문…], "rgn":{공고ID:[지역 번호…]}}
+    {"v":1, "lic":[면허명…], "items":{공고ID:[면허 번호…]}, "rg":[지역 원문…], "rgn":{공고ID:[지역 번호…]}, "mfn":[주력분야 원문…], "mf":{공고ID:[번호…]}}
     (조달청 검색조건의 업종 필터가 0건을 돌려주는 문제 대신 + 실시간 공고엔 면허제한·참가가능지역이 없어 '참가 가능' 판정에 씀)"""
     names, index, items = [], {}, {}
     rnames, rindex, rgns = [], {}, {}
+    mnames, mindex, mfs = [], {}, {}
 
     def ids(values, nm, ix):
         out = []
@@ -633,7 +640,10 @@ def write_lic_map(cache):
             items[id_] = ids(lic, names, index)
         if e.get("rgn"):
             rgns[id_] = ids(e["rgn"], rnames, rindex)
-    return write_if_changed(DATA / "lic_map.json", dumps({"v": SCHEMA_VERSION, "lic": names, "items": items, "rg": rnames, "rgn": rgns}))
+        if e.get("mf_list"):
+            mfs[id_] = ids(e["mf_list"], mnames, mindex)
+    return write_if_changed(DATA / "lic_map.json", dumps({"v": SCHEMA_VERSION, "lic": names, "items": items, "rg": rnames, "rgn": rgns,
+                                                          "mfn": mnames, "mf": mfs}))
 
 
 def finish_notice(e):
@@ -954,6 +964,7 @@ class OpeningStore:
 def step_notices(api, meta, cache, now):
     last = parse_dt((meta.get("notice_last") or "")[:16].replace("T", " "))
     days = 30 if not cache.items or not last else min(30, max(2, (now - last).days + 2))
+    lic_days = days if meta.get("mf_scan") else 30   # 주력분야(mf_list)를 처음 받을 때 한 번은 30일치 면허제한을 다시
     bgn = now - dt.timedelta(days=days)
     seen = now.isoformat(timespec="minutes")
     log(f"[공고] 최근 {days}일")
@@ -961,8 +972,9 @@ def step_notices(api, meta, cache, now):
         cache.add_notice(it, seen)
     for it in api.fetch_range("notice_bsis", now - dt.timedelta(days=max(days, 14)), now):
         cache.add_bsis(it)
-    for it in api.fetch_range("notice_license", bgn, now):
+    for it in api.fetch_range("notice_license", now - dt.timedelta(days=lic_days), now):
         cache.add_license(it)
+    meta["mf_scan"] = True
     for it in api.fetch_range("notice_region", bgn, now):
         cache.add_region(it)
     cache.finalize(now)

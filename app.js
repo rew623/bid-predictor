@@ -165,7 +165,8 @@ const Data = {
         const j = await this.fetchJson('lic_map.json');
         this.licMap = new Map(Object.entries(j.items || {}).map(([id, idx]) => [id, idx.map(i => j.lic[i])]));
         this.rgnMap = new Map(Object.entries(j.rgn || {}).map(([id, idx]) => [id, idx.map(i => j.rg[i])]));
-      }catch(e){ this.licMap = new Map(); this.rgnMap = new Map(); }
+        this.mfMap = new Map(Object.entries(j.mf || {}).map(([id, idx]) => [id, idx.map(i => j.mfn[i])]));
+      }catch(e){ this.licMap = new Map(); this.rgnMap = new Map(); this.mfMap = new Map(); }
       return this.licMap;
     });
   },
@@ -771,7 +772,9 @@ function licTags(b){
   const lics = licOf(b);
   if(lics.length){
     const mine = new Set(Company.isSet() ? Company.get().lics : []);
-    return [`<span class="tag">요구 면허</span>`, ...lics.map(l => `<span class="tag${!mine.size ? ' lic' : mine.has(l) ? ' lic mine' : ''}">${mine.has(l) ? '✓ ' : ''}${esc(l)}</span>`)];
+    const mf = mfOf(b);
+    return [`<span class="tag">요구 면허</span>`, ...lics.map(l => `<span class="tag${!mine.size ? ' lic' : mine.has(l) ? ' lic mine' : ''}">${mine.has(l) ? '✓ ' : ''}${esc(l)}</span>`),
+      ...(mf.length ? [`<span class="tag" title="면허제한의 주력분야">주력: ${esc(mf.join(', '))}</span>`] : [])];
   }
   if(!b.live) return [];
   if(b.limOk) return ['<span class="tag">면허 제한 없음</span>'];
@@ -1140,11 +1143,30 @@ const pickNotice = (b) => ({id:b.id, no:b.no, ord:b.ord, nm:b.nm, org:b.org, dmd
 
 // ============================================================ 우리 업체 (소재지·보유 면허·사업자번호 — 이 기기에만 저장)
 const Company = {
-  get(){ return {sido: '', sgg: '', lics: [], biz: '', caps: {}, ...LS.get('company', {})}; },
+  get(){ return {sido: '', sgg: '', lics: [], biz: '', caps: {}, mf: {}, ...LS.get('company', {})}; },
   set(c){ LS.set('company', c); qpCache.clear(); },
   isSet(){ const c = this.get(); return !!(c.sido || c.lics.length); },
 };
 /** 이 공고에 우리 업체가 참가할 수 있나. 참가가능지역(rgn)·면허(lic) 기준. 정보가 없으면 '확인 필요' */
+// 대업종 → 주력분야 (2022 전문건설 업종 개편). 공고 면허제한의 주력분야(indstrytyMfrcFldList)와 비교
+const MFRC = {
+  '금속창호·지붕건축물조성': ['금속구조물·창호·온실', '지붕판금·건축물조립'],
+  '도장·습식·방수·석공': ['도장', '습식·방수', '석공'],
+  '조경식재·시설물': ['조경식재', '조경시설물'],
+  '지반조성·포장': ['토공', '포장', '보링·그라우팅·파일'],
+};
+const mfKey = (s) => String(s).split('/')[0].replace(/[·ㆍ.,\s()\[\]]/g, '').replace(/(사업|업)$/, '');   // '석공사'에서 '공사'를 떼면 '석'이 되므로 뒤의 (사)업만 떼고 포함 여부로 비교
+/** 공고가 제한한 주력분야 원문 목록 */
+const mfOf = (b) => Data.mfMap?.get(b.id) || b.reqMf || [];
+/** 우리 면허 l 로 이 공고의 주력분야 제한을 통과하나 (우리 주력분야를 안 골랐거나 공고가 주력분야를 안 걸면 통과) */
+function mfPass(b, l, c){
+  const group = MFRC[l];
+  const mine = (c.mf?.[l] || []).map(mfKey);
+  if(!group || !mine.length) return true;
+  const raw = mfOf(b).map(mfKey);
+  const need = group.map(mfKey).filter(k => raw.some(r => r.includes(k)));
+  return !need.length || need.some(k => mine.includes(k));
+}
 /** 공고의 면허제한: 수집된 면허제한(lic_map) 우선. 실시간 공고의 b.lic 는 주공종·부대공종이라 제한 면허가 아니다 */
 function licOf(b){
   const m = Data.licMap?.get(b.id);
@@ -1165,8 +1187,9 @@ async function fetchLiveLimits(rows){
   if(!need.length && !todo.length) return bsis.length > 0;
   await Promise.all([...todo.map(b => enrichLive(b)), ...need.map(async b => {
     b.limTried = true;
-    const setLim = (lics, rgns) => {
+    const setLim = (lics, rgns, mfs = []) => {
       b.reqLic = [...new Set(lics.flatMap(normLic))];
+      b.reqMf = [...new Set(mfs)];
       b.rgn = [...new Set(rgns)];   // [] = 지역 제한 없음
       b.limOk = true;
     };
@@ -1175,7 +1198,7 @@ async function fetchLiveLimits(rows){
     if(day){
       try{
         const d = await limitsForDay(day);
-        if(d.lic.has(b.id)){ setLim(d.lic.get(b.id), d.rgn.get(b.id) || []); return; }   // 없으면 제한 없음인지 누락인지 몰라 공고번호로 다시
+        if(d.lic.has(b.id)){ setLim(d.lic.get(b.id), d.rgn.get(b.id) || [], d.mf.get(b.id) || []); return; }   // 없으면 제한 없음인지 누락인지 몰라 공고번호로 다시
       }
       catch(e){ console.warn('면허제한 하루 조회', day, e); }
     }
@@ -1184,7 +1207,8 @@ async function fetchLiveLimits(rows){
       const q = {inqryDiv: '2', bidNtceNo: b.no, numOfRows: 100, pageNo: 1};
       const [l, r] = await Promise.all([liveCall('getBidPblancListInfoLicenseLimit', q), liveCall('getBidPblancListInfoPrtcptPsblRgn', q)]);
       const mine = (it) => String(it.bidNtceOrd ?? b.ord) === b.ord;
-      setLim(l.items.filter(mine).map(it => pickF(it, 'lcnsLmtNm')).filter(Boolean), r.items.filter(mine).map(it => pickF(it, 'prtcptPsblRgnNm')).filter(Boolean));
+      setLim(l.items.filter(mine).map(it => pickF(it, 'lcnsLmtNm')).filter(Boolean), r.items.filter(mine).map(it => pickF(it, 'prtcptPsblRgnNm')).filter(Boolean),
+        l.items.filter(mine).map(it => pickF(it, 'indstrytyMfrcFldList')).filter(Boolean));
     }catch(e){ console.warn('면허제한 조회', b.no, e); }
   })]);
   return true;
@@ -1195,7 +1219,8 @@ function limitsForDay(day){
   if(!limDays.has(day)){
     const p = (async () => {
       const d0 = day.replace(/-/g, ''), d1 = kstDay(new Date(Date.parse(day) + 86400000)).replace(/-/g, '');
-      const out = {lic: new Map(), rgn: new Map()};
+      const out = {lic: new Map(), rgn: new Map(), mf: new Map()};
+      const add = (map, id, v) => { if(!map.has(id)) map.set(id, []); if(!map.get(id).includes(v)) map.get(id).push(v); };
       for(const [op, field, map] of [['getBidPblancListInfoLicenseLimit', 'lcnsLmtNm', out.lic], ['getBidPblancListInfoPrtcptPsblRgn', 'prtcptPsblRgnNm', out.rgn]]){
         for(let page = 1; page <= 15; page++){
           const {items, total} = await liveCall(op, {inqryDiv: '1', inqryBgnDt: d0 + '0000', inqryEndDt: d1 + '2359', numOfRows: 999, pageNo: page});
@@ -1203,8 +1228,9 @@ function limitsForDay(day){
             const v = pickF(it, field);
             if(!v) continue;
             const id = `${String(it.bidNtceNo || '').trim()}-${String(it.bidNtceOrd ?? '000').trim()}`;
-            if(!map.has(id)) map.set(id, []);
-            if(!map.get(id).includes(v)) map.get(id).push(v);
+            add(map, id, v);
+            const mf = map === out.lic && pickF(it, 'indstrytyMfrcFldList');
+            if(mf) add(out.mf, id, String(mf).trim());
           }
           if(!items.length || page * 999 >= total) break;
         }
@@ -1246,9 +1272,11 @@ function eligibility(b){
   const out = {ok: true, lic: null, rgn: null, cap: null};
   const lics = licOf(b), rgn = rgnOf(b);
   if(c.lics.length){
+    const held = lics.filter(l => c.lics.includes(l));
     if(!lics.length) out.lic = b.limOk ? 'ok' : 'unknown';   // limOk: 조달청 조회 결과 면허 제한 없음
-    else if(lics.some(l => c.lics.includes(l))) out.lic = 'ok';
-    else { out.lic = 'no'; out.ok = false; }
+    else if(!held.length){ out.lic = 'no'; out.ok = false; }
+    else if(held.some(l => mfPass(b, l, c))) out.lic = 'ok';
+    else { out.lic = 'mf'; out.ok = false; }
   }
   if(c.sido && rgn?.length){
     const hit = rgn.some(t => {
@@ -1268,7 +1296,7 @@ function eligibility(b){
 function eligTag(b){
   if(!Company.isSet()) return '';
   const e = eligibility(b);
-  if(!e.ok) return `<span class="tag bad">참가 불가 · ${e.rgn === 'no' ? '지역 제한' : e.cap === 'no' ? '실적 한도 초과' : '면허 불일치'}</span>`;
+  if(!e.ok) return `<span class="tag bad">참가 불가 · ${e.rgn === 'no' ? '지역 제한' : e.cap === 'no' ? '실적 한도 초과' : e.lic === 'mf' ? '주력분야 불일치' : '면허 불일치'}</span>`;
   if(e.cap === 'check') return '<span class="tag warn" title="추정가격이 지자체 3년 실적 한도는 넘고 5년 한도 안 — 공고문의 실적 기간 확인">실적 확인 (지자체 5년 기준만 가능)</span>';
   if(e.lic === 'unknown') return '<span class="tag warn">면허 확인 필요</span>';
   return '<span class="tag okc">참가 가능</span>';
@@ -1308,12 +1336,28 @@ function initCompany(){
       || '<p class="faint">보유 면허를 먼저 고르세요.</p>';
     $('coCaps').querySelectorAll('input[data-cap]').forEach(el => { const [l, f] = el.dataset.cap.split('|'); if(caps[l]?.[f]) setMoney(el, caps[l][f]); });
   };
-  buildChips($('coLics'), LICENSES, lics, renderCaps);
+  const mfSel = Object.fromEntries(Object.entries(c.mf || {}).map(([l, v]) => [l, new Set(v)]));
+  const renderMf = () => {
+    const ls = [...lics].filter(l => MFRC[l]);
+    $('coMfWrap').hidden = !ls.length;
+    $('coMf').innerHTML = '';
+    ls.forEach(l => {
+      mfSel[l] = mfSel[l] || new Set();
+      const row = document.createElement('div');
+      row.className = 'cap-row';
+      row.innerHTML = `<b>${esc(l)}</b><div class="chip-group" style="margin-top:4px;"></div>`;
+      $('coMf').appendChild(row);
+      buildChips(row.querySelector('.chip-group'), MFRC[l], mfSel[l], null);
+    });
+  };
+  buildChips($('coLics'), LICENSES, lics, () => { renderCaps(); renderMf(); });
   renderCaps();
+  renderMf();
   $('coSave').addEventListener('click', () => {
     readCaps();
     const keep = Object.fromEntries(Object.entries(caps).filter(([l, v]) => lics.has(l) && Object.keys(v).length));
-    Company.set({sido: $('coSido').value, sgg: $('coSgg').value, lics: [...lics], biz: $('coBiz').value.replace(/\D/g, ''), caps: keep});
+    const mf = Object.fromEntries(Object.entries(mfSel).filter(([l, v]) => lics.has(l) && v.size).map(([l, v]) => [l, [...v]]));
+    Company.set({sido: $('coSido').value, sgg: $('coSgg').value, lics: [...lics], biz: $('coBiz').value.replace(/\D/g, ''), caps: keep, mf});
     $('coMsg').innerHTML = '<span class="badge ok">저장됨</span> 입찰공고에서 "참가 가능한 공고만"을 켜면 적용됩니다';
     LS.set('bidsFilter', {...LS.get('bidsFilter', {}), elig: true});
     $('bElig').checked = true; $('lElig').checked = true;
