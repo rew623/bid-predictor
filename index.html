@@ -105,57 +105,92 @@
 
   <!-- ===================== 예측분석 ===================== -->
   <section id="view-predict" hidden>
+    <details class="card guide fold" id="pGuide">
+      <summary><h2>📖 사용법 — 3단계면 끝</h2><span class="meta-line" style="margin:0;">눌러서 열고 닫기</span></summary>
+      <ol class="steps">
+        <li>
+          <b>공고 고르기</b> — <b>입찰공고</b> 탭에서 공고 카드의 <span class="kbd">이 공고로 예측</span>을 누르세요.
+          지역·예가범위·기초금액·A값·하한율이 <b>자동으로 채워지고 바로 계산</b>됩니다. (직접 넣으려면 아래 ①②를 채우고 <span class="kbd">예측 실행</span>)
+        </li>
+        <li>
+          <b>맨 위 파란 카드의 "추천 투찰금액"을 보세요</b> — 과거 공고를 하나하나 다시 따져 봤을 때 <b>가장 자주 1순위였을 금액</b>입니다.
+          <b>원 단위까지 그대로</b> 넣는 게 기본이고, <b>안전 범위</b> 안이면 확률이 거의 같습니다.
+        </li>
+        <li>
+          <b>넣은 금액을 기록하세요</b> — 공고에 ☆를 눌러 <b>관심공고</b>에 저장하고 "내가 넣은 투찰금액"을 적어 두면,
+          개찰 뒤 낙찰권/하한 미달/1위보다 높음을 판정하고 <b>다음엔 얼마나 올리거나 내릴지</b> 알려 줍니다.
+        </li>
+      </ol>
+      <h3>무엇이 유리한가요?</h3>
+      <ul class="tips">
+        <li><b>평균 사정율 그대로 넣기는 오히려 불리할 수 있어요.</b> 사정율이 자주 오는 곳엔 경쟁사도 가장 많이 몰립니다. 추천 금액은 "사정율은 자주 오는데 경쟁사가 덜 몰린" 곳을 찾습니다.</li>
+        <li><b>공고 고르기가 금액만큼 중요해요.</b> 입찰공고 탭을 <b>"기대 수주액 순"</b>이나 <b>"낙찰확률 높은 순"</b>으로 정렬하면 이길 확률 높은 공고부터 보입니다. 참가 업체가 적은 공고일수록 유리합니다.</li>
+        <li><b>파란 카드의 배지를 확인하세요.</b> <span class="badge ok">백테스트 우위 확인</span>이면 과거 검증에서 효과가 있었던 것, <span class="badge warn">뚜렷한 우위 없음</span>이면 참고만 하세요. (설정 탭 → 백테스트로 검증)</li>
+        <li><b>빨간 경고가 뜨면 금액을 다시 보세요.</b> 낙찰하한가 미만이거나 순공사원가 98% 미만이면 무효·탈락 위험입니다.</li>
+        <li><b>한 번에 이기는 방법은 없어요.</b> 낙찰확률은 공고당 보통 1% 안팎입니다. 유리한 금액으로 <b>여러 공고에 꾸준히</b> 넣을 때 차이가 납니다.</li>
+      </ul>
+    </details>
+
     <p class="disclaimer">⚠️ 모든 예측은 과거 데이터 통계에 따른 <b>참고용이며 낙찰을 보장하지 않습니다.</b> 표본이 30건 미만이면 "참고 부족"으로 표시합니다.</p>
 
     <div class="card" id="pBidCard" hidden></div>
 
     <div class="card">
-      <h2>지역 선택</h2>
-      <p class="sub">시·도를 고르면 해당 지역 낙찰 데이터만 불러옵니다. 시·군을 고르면 더 좁힙니다. (복수 선택)</p>
+      <h2>① 지역 <span class="req">필수</span></h2>
+      <p class="sub">입찰할 공사 현장의 시·도를 고르세요. 이 지역 과거 낙찰로 추천 금액을 계산합니다. (여러 개 선택 가능)</p>
       <div class="chip-group" id="pSidoChips"></div>
-      <div class="chip-group" id="pSggChips" style="margin-top:10px;"></div>
     </div>
 
     <div class="card">
-      <h2>면허 선택</h2>
-      <p class="sub">공고의 면허 제한 기준입니다. 비우면 전체. (복수 선택)</p>
-      <div class="chip-group" id="pLicChips"></div>
-    </div>
-
-    <div class="card">
-      <h2>예측에 반영할 항목</h2>
-      <p class="sub">체크한 항목만 이번 예측에 반영됩니다.</p>
-      <div class="field-list">
-        <div class="field-item">
-          <input type="checkbox" id="fBase">
-          <div><label for="fBase">기초금액 유사도 (±40%)</label><div class="desc">아래 기초금액과 비슷한 규모의 공고만 반영</div></div>
-        </div>
-        <div class="field-item">
-          <input type="checkbox" id="fRecent" checked>
-          <div><label for="fRecent">최근 12개월만</label><div class="desc">개찰일이 최근 12개월 이내인 공고만 반영</div></div>
-        </div>
-        <div class="field-item">
-          <input type="checkbox" id="fRng" checked>
-          <div><label for="fRng">예가범위 같은 공고만 (공고 선택 시)</label><div class="desc">±2%·±3% 등 예가범위가 다르면 사정율 분포 폭이 달라집니다. 같은 범위 표본이 30건 미만이면 자동으로 빼고 계산</div></div>
-        </div>
-        <div class="field-item">
-          <input type="checkbox" id="fOrg">
-          <div><label for="fOrg">같은 발주기관만 (공고 선택 시)</label><div class="desc">선택한 공고의 발주기관 과거 공고만 반영</div></div>
-        </div>
-        <div class="field-item">
-          <input type="checkbox" id="fCnt">
-          <div><label for="fCnt">참가업체 수 유사도 (±2)</label><div class="desc">아래 참가업체 수와 ±2개사 이내인 공고만 반영</div></div>
-        </div>
+      <h2>② 이번 공고 정보</h2>
+      <p class="sub">공고문(나라장터 공고 원문)에 있는 값입니다. <b>기초금액을 넣어야 추천 "금액"이 나옵니다.</b> 모르는 칸은 비워 두세요.</p>
+      <div class="inline-inputs" style="margin-top:0;">
+        <div><label for="inBase">기초금액(원) <span class="req">금액 계산에 필요</span></label><input type="number" id="inBase" inputmode="numeric" placeholder="예: 300000000"></div>
+        <div><label for="pRng">예가범위</label>
+          <select id="pRng"><option value="">모름</option><option value="-2,2">±2% (조달청·국가기관 대부분)</option><option value="-3,3">±3% (지자체 대부분)</option></select></div>
       </div>
       <div class="inline-inputs">
-        <div><label for="inBase">이번 공고 기초금액(원)</label><input type="number" id="inBase" inputmode="numeric" placeholder="예: 300000000"></div>
-        <div><label for="inCnt">예상 참가업체 수</label><input type="number" id="inCnt" inputmode="numeric" placeholder="예: 150"></div>
+        <div><label for="inA">A값(원, 없으면 비움)</label><input type="number" id="inA" inputmode="numeric" placeholder="0"></div>
+        <div><label for="inFloor">낙찰하한율(%)</label><input type="number" id="inFloor" step="0.001" placeholder="87.745"></div>
+        <div><label for="inCnt">예상 참가업체 수 (모르면 비움)</label><input type="number" id="inCnt" inputmode="numeric" placeholder="자동 추정"></div>
       </div>
       <div class="btn-row" style="margin-top:16px;">
         <button class="btn" id="runPredict" type="button">예측 실행</button>
         <span class="meta-line" id="matchCount"></span>
       </div>
     </div>
+
+    <details class="card fold">
+      <summary><h2>고급: 참고 분포 조건</h2><span class="meta-line" style="margin:0;">추천 금액에는 영향 없음 · 보통은 그대로 두세요</span></summary>
+      <p class="sub" style="margin-top:12px;">아래 조건은 결과 맨 아래 <b>"참고: 사정율 분포"</b>와 근거 공고 목록에만 쓰입니다. 추천 금액은 표본을 넓게(지역 24개월 전체) 써야 우연한 값에 휘둘리지 않기 때문에 이 조건으로 쪼개지 않습니다.</p>
+      <h3>시·군 (선택)</h3>
+      <div class="chip-group" id="pSggChips"></div>
+      <h3>면허 (선택)</h3>
+      <div class="chip-group" id="pLicChips"></div>
+      <h3>조건</h3>
+      <div class="field-list">
+        <div class="field-item">
+          <input type="checkbox" id="fRecent" checked>
+          <div><label for="fRecent">최근 12개월만</label><div class="desc">개찰일이 최근 12개월 이내인 공고만</div></div>
+        </div>
+        <div class="field-item">
+          <input type="checkbox" id="fRng" checked>
+          <div><label for="fRng">예가범위 같은 공고만</label><div class="desc">② 예가범위와 같은 공고만. 같은 범위 표본이 30건 미만이면 자동으로 빼고 계산</div></div>
+        </div>
+        <div class="field-item">
+          <input type="checkbox" id="fBase">
+          <div><label for="fBase">기초금액 비슷한 공고만 (±40%)</label><div class="desc">② 기초금액과 비슷한 규모의 공고만</div></div>
+        </div>
+        <div class="field-item">
+          <input type="checkbox" id="fOrg">
+          <div><label for="fOrg">같은 발주기관만 (공고 선택 시)</label><div class="desc">선택한 공고의 발주기관 과거 공고만</div></div>
+        </div>
+        <div class="field-item">
+          <input type="checkbox" id="fCnt">
+          <div><label for="fCnt">참가업체 수 비슷한 공고만 (±2)</label><div class="desc">② 예상 참가업체 수와 ±2개사 이내인 공고만</div></div>
+        </div>
+      </div>
+    </details>
 
     <div id="predictResult"></div>
 

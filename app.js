@@ -913,6 +913,12 @@ function initPredict(){
     (s) => Data.hasScsbid(s) ? '' : '데이터 없음');
   buildChips($('pLicChips'), LICENSES, P.lics, () => LS.set('pLics', [...P.lics]));
   $('runPredict').addEventListener('click', runPredict);
+  // ② 이번 공고 정보 → 투찰가 계산기로 같이 채움
+  [['inBase', 'cBase'], ['inA', 'cA'], ['inFloor', 'cFloor']].forEach(([from, to]) =>
+    $(from).addEventListener('input', () => { $(to).value = $(from).value || (to === 'cFloor' ? DEFAULT_FLOOR : ''); renderCalc(); }));
+  // 사용법은 처음엔 펼쳐 두고, 한 번 닫으면 닫힌 채로 기억
+  $('pGuide').open = !LS.get('guideClosed', false);
+  $('pGuide').addEventListener('toggle', () => LS.set('guideClosed', !$('pGuide').open));
   ['cBase','cA','cFloor','cRate','cNet','cManual'].forEach(id => $(id).addEventListener('input', renderCalc));
   $('simRun').addEventListener('click', runSimulation);
   fillSelect($('orgSido'), SIDOS.map(s => [s, s + (Data.hasDetail(s) ? '' : ' (상세 미수집)')]), {all:'시·도 선택', value: [...P.sidos][0] || ''});
@@ -989,6 +995,10 @@ async function predictWithNotice(id){
   P.lics = new Set(b.lic || []); LS.set('pLics', [...P.lics]);
   syncChips($('pSidoChips'), P.sidos); syncChips($('pLicChips'), P.lics);
   $('inBase').value = b.base || b.est || '';
+  $('inA').value = b.a || '';
+  $('inFloor').value = b.floor || '';
+  $('inCnt').value = '';
+  $('pRng').value = b.rng && [2, 3].includes(b.rng[1]) && b.rng[0] === -b.rng[1] ? `${b.rng[0]},${b.rng[1]}` : '';
   $('fBase').checked = !!(b.base || b.est);
   $('cBase').value = b.base || '';
   $('cA').value = b.a || '';
@@ -1025,10 +1035,11 @@ async function runPredict(){
     recs = await Data.loadScsbidMany(sidos);
     for(const s of sidos.filter(s => Data.hasDetail(s))) for(const [id, b] of (await Data.loadOpening(s)).bids) opening.set(id, b);
   }catch(e){ out.innerHTML = `<div class="card"><div class="empty">데이터를 불러오지 못했습니다. (${esc(e.message)})</div></div>`; return; }
+  const selRng = $('pRng').value ? $('pRng').value.split(',').map(Number) : (P.notice?.rng || null);
   const o = {sggs: P.sggs, lics: P.lics, recent: $('fRecent').checked,
     useBase: $('fBase').checked, base: +$('inBase').value || 0,
     useCnt: $('fCnt').checked, cnt: +$('inCnt').value || 0,
-    rng: $('fRng').checked ? P.notice?.rng : null,
+    rng: $('fRng').checked ? selRng : null,
     org: $('fOrg').checked && P.notice ? recOrg(P.notice) : ''};
   let rows = filterRecords(recs, o);
   const notes = [];
@@ -1038,7 +1049,7 @@ async function runPredict(){
   const homeSido = P.notice?.sido || (sidos.length === 1 ? sidos[0] : null);
   // 곡선은 넓은 표본으로: 선택 지역 최근 24개월 + 예가범위 같음(30건↑). 면허·금액으로 쪼개면 우연한 봉우리가 생긴다(설계 문서 3-4)
   const recent24 = recs.filter(r => (r.date || '') >= monthsAgo(24));
-  const rngPool = P.notice?.rng ? recent24.filter(r => sameRng(r.rng, P.notice.rng)) : [];
+  const rngPool = selRng ? recent24.filter(r => sameRng(r.rng, selRng)) : [];
   const curveRows = rngPool.length >= MIN_SAMPLE ? rngPool : recent24;
   const wc = pred ? winCurve(curveRows, {sido: homeSido, opening}) : null;
   // 이 공고의 예상 참가업체 수: 입력값 → 비슷한 과거 공고 중앙값
@@ -1092,7 +1103,7 @@ async function runPredict(){
           <td class="num">${liftOf(wc, c.p) ? '×' + liftOf(wc, c.p).toFixed(2) : '-'}</td><td class="num">${base ? won(amtAt(c.x)) : '-'}</td>
           <td><button class="btn sm line" data-use-sr="${c.x}" type="button">적용</button></td></tr>`).join('')}</tbody>
       </table></div>
-      <div class="meta-line">곡선 표본: ${esc(sidos.join('·'))} 최근 24개월${curveRows === rngPool ? ` · 예가범위 ${esc(rngText(P.notice.rng))}` : ''} ${fmtNum(wc.n)}건 (면허·금액 조건은 표본을 너무 쪼개므로 곡선에는 쓰지 않고 아래 참고 분포에만 적용) · 곡선 폭 ±${wc.smooth}%p (설정 → 백테스트에서 자동 선택) · 최근 공고일수록 가중(exp(−개월/12))${homeSido ? ` · ${esc(homeSido)} 공고 ×2` : ''} · 무작위 = 평균 업체의 낙찰확률(1 ÷ 참가업체 수)</div>
+      <div class="meta-line">곡선 표본: ${esc(sidos.join('·'))} 최근 24개월${curveRows === rngPool ? ` · 예가범위 ${esc(rngText(selRng))}` : selRng ? ' · 예가범위 같은 공고 부족 → 전체' : ' · 예가범위 모름 → 전체'} ${fmtNum(wc.n)}건 (면허·금액 조건은 표본을 너무 쪼개므로 곡선에는 쓰지 않고 아래 참고 분포에만 적용) · 곡선 폭 ±${wc.smooth}%p (설정 → 백테스트에서 자동 선택) · 최근 공고일수록 가중(exp(−개월/12))${homeSido ? ` · ${esc(homeSido)} 공고 ×2` : ''} · 무작위 = 평균 업체의 낙찰확률(1 ÷ 참가업체 수)</div>
     </div>`;
 
     // ---- 3) 금액·숫자 팁
@@ -1185,7 +1196,7 @@ function renderCalc(){
   const warns = [];
   if(c.manual && c.manual < c.computed) warns.push(`투찰금액이 적용 사정율 기준 낙찰하한가(${won(c.computed)})보다 ${won(c.computed - c.manual)} 낮습니다 — 낙찰하한가 미만`);
   if(c.net && c.final < c.net * 0.98) warns.push(`투찰금액이 순공사원가 × 98% (${won(Math.ceil(c.net*0.98))}) 미만입니다 — 입찰 무효 위험`);
-  const rng = P.notice?.rng;
+  const rng = $('pRng').value ? $('pRng').value.split(',').map(Number) : P.notice?.rng;
   const info = [];
   if(rng && rng[0] != null && rng[1] != null && (c.sr < 100 + rng[0] || c.sr > 100 + rng[1])) info.push(`적용 사정율이 공고 예가범위(${100+rng[0]}~${100+rng[1]}%) 밖입니다.`);
   if(P.last?.wc){
