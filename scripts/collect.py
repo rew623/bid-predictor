@@ -596,20 +596,29 @@ class NoticeCache:
 
 
 def write_lic_map(cache):
-    """앱 실시간 검색의 업종 거르기용: 최근 60일 공사 공고별 면허제한 → data/lic_map.json
-    {"v":1, "lic":[면허명…], "items":{공고ID:[면허 번호…]}} (조달청 검색조건의 업종 필터가 0건을 돌려주는 문제 대신)"""
+    """앱 실시간 검색용: 최근 60일 공사 공고별 면허제한·참가가능지역 → data/lic_map.json
+    {"v":1, "lic":[면허명…], "items":{공고ID:[면허 번호…]}, "rg":[지역 원문…], "rgn":{공고ID:[지역 번호…]}}
+    (조달청 검색조건의 업종 필터가 0건을 돌려주는 문제 대신 + 실시간 공고엔 면허제한·참가가능지역이 없어 '참가 가능' 판정에 씀)"""
     names, index, items = [], {}, {}
+    rnames, rindex, rgns = [], {}, {}
+
+    def ids(values, nm, ix):
+        out = []
+        for v in values:
+            if v not in ix:
+                ix[v] = len(nm)
+                nm.append(v)
+            out.append(ix[v])
+        return out
+
     for id_, e in sorted(cache.items.items()):
-        if not e.get("nm") or not e.get("lic"):
+        if not e.get("nm"):
             continue
-        idx = []
-        for l in e["lic"]:
-            if l not in index:
-                index[l] = len(names)
-                names.append(l)
-            idx.append(index[l])
-        items[id_] = idx
-    return write_if_changed(DATA / "lic_map.json", dumps({"v": SCHEMA_VERSION, "lic": names, "items": items}))
+        if e.get("lic"):
+            items[id_] = ids(e["lic"], names, index)
+        if e.get("rgn"):
+            rgns[id_] = ids(e["rgn"], rnames, rindex)
+    return write_if_changed(DATA / "lic_map.json", dumps({"v": SCHEMA_VERSION, "lic": names, "items": items, "rg": rnames, "rgn": rgns}))
 
 
 def finish_notice(e):

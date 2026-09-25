@@ -158,13 +158,14 @@ const Data = {
     this.meta.files = this.meta.files || {scsbid:{}, opening:{}};
     return this.meta;
   },
-  /** 수집기가 만든 공고별 면허제한 (최근 60일, 공사) → Map(공고ID → [면허]) */
+  /** 수집기가 만든 공고별 면허제한·참가가능지역 (최근 60일, 공사) → Map(공고ID → [면허]), Map(공고ID → [지역 원문]) */
   loadLicMap(){
     return this.once('licmap', async () => {
       try{
         const j = await this.fetchJson('lic_map.json');
         this.licMap = new Map(Object.entries(j.items || {}).map(([id, idx]) => [id, idx.map(i => j.lic[i])]));
-      }catch(e){ this.licMap = new Map(); }
+        this.rgnMap = new Map(Object.entries(j.rgn || {}).map(([id, idx]) => [id, idx.map(i => j.rg[i])]));
+      }catch(e){ this.licMap = new Map(); this.rgnMap = new Map(); }
       return this.licMap;
     });
   },
@@ -417,6 +418,8 @@ function rgnScope(rgn){
 let bidRgn = null;
 function rgnOf(n){
   if(n.rgn) return n.rgn;
+  const m = Data.rgnMap?.get(n.id);
+  if(m) return m;
   if(!Data.bids?.length) return null;
   if(!bidRgn || bidRgn.src !== Data.bids) bidRgn = {src: Data.bids, map: new Map(Data.bids.map(b => [b.id, b.rgn]))};
   return bidRgn.map.get(n.id) || null;
@@ -938,7 +941,7 @@ function initLive(){
   ['lQuery', 'lOrg', 'lDmd'].forEach(id => $(id).addEventListener('keydown', (e) => { if(e.key === 'Enter') liveSearch(); }));
   $('liveMore').addEventListener('click', () => liveSearch(true));
   $('lElig').checked = LS.get('bidsFilter', {}).elig ?? Company.isSet();
-  $('lElig').addEventListener('change', async () => { if(!Live.params) return; renderLive(); if(liveRows().length < 30 && !liveDone()) await liveSearch(true); });
+  $('lElig').addEventListener('change', async () => { if(!Live.params) return; await Data.loadLicMap(); renderLive(); if(liveRows().length < 30 && !liveDone()) await liveSearch(true); });
   $('bMode').addEventListener('click', (e) => {
     const v = e.target.dataset?.v; if(!v) return;
     bidsMode = v; LS.set('bidsMode', v); renderBidsTab();
@@ -1054,7 +1057,7 @@ async function liveSearch(more=false){
   if(!more){
     Object.assign(Live, {params: liveParams(), items: [], raw: 0, kind: $('lKind').value, fallback: false,
       wins: liveWindows($('lFrom').value, $('lTo').value), wi: 0, page: 0, totals: [], rows: liveClientFilter() ? 999 : LIVE_ROWS});
-    if($('lLic').value) await Data.loadLicMap();
+    if($('lLic').value || ($('lElig').checked && Company.isSet())) await Data.loadLicMap();
     list.innerHTML = loadingHtml('나라장터에서 조회 중…');
     $('liveMore').hidden = true;
   }
@@ -1122,16 +1125,22 @@ const Company = {
   isSet(){ const c = this.get(); return !!(c.sido || c.lics.length); },
 };
 /** 이 공고에 우리 업체가 참가할 수 있나. 참가가능지역(rgn)·면허(lic) 기준. 정보가 없으면 '확인 필요' */
+/** 공고의 면허제한: 수집된 면허제한(lic_map) 우선. 실시간 공고의 b.lic 는 주공종·부대공종이라 제한 면허가 아니다 */
+function licOf(b){
+  const m = Data.licMap?.get(b.id);
+  return m?.length ? m : (b.live ? [] : b.lic || []);
+}
 function eligibility(b){
   const c = Company.get();
   const out = {ok: true, lic: null, rgn: null};
+  const lics = licOf(b), rgn = rgnOf(b);
   if(c.lics.length){
-    if(!b.lic?.length) out.lic = 'unknown';
-    else if(b.lic.some(l => c.lics.includes(l))) out.lic = 'ok';
+    if(!lics.length) out.lic = 'unknown';
+    else if(lics.some(l => c.lics.includes(l))) out.lic = 'ok';
     else { out.lic = 'no'; out.ok = false; }
   }
-  if(c.sido && b.rgn?.length){
-    const hit = b.rgn.some(t => {
+  if(c.sido && rgn?.length){
+    const hit = rgn.some(t => {
       if(/전국/.test(t)) return true;
       const r = parseRegion(t);
       return r.sido === c.sido && (!r.sgg || !c.sgg || r.sgg === c.sgg);
