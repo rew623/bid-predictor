@@ -260,6 +260,7 @@ tr.click:hover td{background:var(--bg);}
 .tag{display:inline-block; font-size:11.5px; padding:2px 8px; border-radius:6px; background:var(--bg); color:var(--text-sub); border:1px solid var(--border); white-space:nowrap;}
 .tag.loc{background:var(--primary-soft); color:var(--primary-dark); border-color:transparent;}
 .tag.lic{background:var(--ok-soft); color:var(--ok); border-color:transparent;}
+.tag.lic.mine{font-weight:700;}
 .b-side{display:flex; flex-direction:column; align-items:flex-end; justify-content:space-between; gap:6px; min-width:74px;}
 .b-amt{text-align:right;}
 .b-amt span{display:block; font-size:11px; color:var(--text-faint);}

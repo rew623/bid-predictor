@@ -110,7 +110,9 @@ data/                 수집 결과 (아래)
 
 ### data/lic_map.json — 공고별 면허제한·참가가능지역 (수집기 `write_lic_map`, 최근 60일 공사)
 `{"v":1, "lic":[면허명…], "items":{"공고ID":[lic 번호…]}, "rg":[지역 원문…], "rgn":{"공고ID":[rg 번호…]}}` — 실시간 검색의 업종 거르기 + "참가 가능한 공고만" 판정용.
-실시간 공고의 `lic` 는 주공종·부대공종이라 면허제한이 아니다 → `eligibility` 는 `licOf`(lic_map 우선, 실시간 공고는 없으면 '확인 필요')·`rgnOf`(lic_map → bids.json)로 판정.
+실시간 공고의 `lic` 는 주공종·부대공종이라 면허제한이 아니다 → `eligibility` 는 `licOf`(lic_map → `b.reqLic`, 없으면 '확인 필요')·`rgnOf`(b.rgn → lic_map → bids.json)로 판정.
+lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits` 가 `getBidPblancListInfoLicenseLimit`·`…PrtcptPsblRgn`(inqryDiv=2, 공고번호)으로 20건씩 바로 조회 → `b.reqLic`, `b.rgn`([] = 지역 제한 없음), `b.limOk`(면허 제한 없음이면 참가 가능). 카드에는 `licTags` = "요구 면허" + 우리 면허는 ✓. 모델 참가수 예측도 실시간 공고는 licOf 를 쓴다.
+한계: 면허제한 그룹(lmtGrpNo, 그룹 안은 모두 필요·그룹끼리는 택일)을 구분하지 않고 하나라도 겹치면 가능으로 본다.
 
 ### data/scsbid/{시도}.json — 과거 낙찰 (최근 개찰 순)
 `{"sido":"강원", "v":1, "part":1, "parts":1, "items":[ … ]}` 항목: `id, no, ord, nm, org, dmd, sido, sgg, lic, rgn, base, a, net, floor, rng` (bids 와 같은 뜻, rgn 은 지역보강 전이면 없음) +

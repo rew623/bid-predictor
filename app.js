@@ -427,6 +427,7 @@ function rgnOf(n){
 /** 공고 → 모델 추천. cnt 를 주면 예상 참가수 대신 그 값을 쓴다 */
 function modelPredict(n, cnt){
   if(!Model.m || (n.kind && n.kind !== '공사')) return null;
+  if(n.live && licOf(n).length) n = {...n, lic: licOf(n)};   // 모델은 면허제한으로 학습 — 실시간 공고의 lic 는 주공종
   const rngKnown = rngKeyOf(n.rng) in Model.m.curves;
   const rng = rngKnown ? n.rng : [-3, 3];
   const ln = cnt ? Math.log(cnt) : predictLnN(n);
@@ -764,6 +765,17 @@ async function renderBids(){
   $('bidsMore').textContent = `더 보기 (${fmtNum(rows.length - bidsShown)}건 남음)`;
 }
 
+/** 카드의 면허 태그: 공고가 요구하는 면허(면허제한). 실시간 공고는 수집된 값 또는 조달청 직접 조회 값 */
+function licTags(b){
+  const lics = licOf(b);
+  if(lics.length){
+    const mine = new Set(Company.isSet() ? Company.get().lics : []);
+    return [`<span class="tag">요구 면허</span>`, ...lics.map(l => `<span class="tag${!mine.size ? ' lic' : mine.has(l) ? ' lic mine' : ''}">${mine.has(l) ? '✓ ' : ''}${esc(l)}</span>`)];
+  }
+  if(!b.live) return [];
+  if(b.limOk) return ['<span class="tag">면허 제한 없음</span>'];
+  return [b.limTried ? '<span class="tag">요구 면허 조회 실패</span>' : '<span class="tag">요구 면허 조회 중…</span>'];
+}
 function bidCard(b, today){
   const days = closeDays(b, today);
   const hh = b.close?.length > 10 ? b.close.slice(11, 16) : '';
@@ -775,7 +787,7 @@ function bidCard(b, today){
   const amt = b.base || b.est;
   const tags = [
     `<span class="tag loc">${esc([b.sido, b.sgg].filter(Boolean).join(' ') || '지역 미상')}</span>`,
-    ...(b.lic || []).map(l => `<span class="tag lic">${esc(l)}</span>`),
+    ...licTags(b),
     b.rng ? `<span class="tag">예가 ${esc(rngText(b.rng))}</span>` : '',
     b.floor ? `<span class="tag">하한 ${b.floor}%</span>` : '',
     eligTag(b),
@@ -991,7 +1003,7 @@ const liveDone = () => Live.wi >= Live.wins.length;
 /** 앱에서 거르는 조건(시·군, 참가 가능, 기본 목록 대체 조회)이 있나 — 있으면 충분히 모일 때까지 더 받는다 */
 const liveClientFilter = () => !!($('lSgg').value || $('lLic').value || ($('lElig').checked && Company.isSet()) || Live.fallback);
 /** 공고에 이 면허가 걸려 있나: 주공종·부대공종 또는 수집된 면허제한 */
-const liveHasLic = (b, lic) => (b.lic || []).includes(lic) || (Data.licMap?.get(b.id) || []).includes(lic);
+const liveHasLic = (b, lic) => (b.lic || []).includes(lic) || licOf(b).includes(lic);
 function liveRows(){
   const maxOrd = {};
   Live.items.forEach(b => { if(!maxOrd[b.no] || b.ord > maxOrd[b.no]) maxOrd[b.no] = b.ord; });   // 변경공고는 마지막 차수만
@@ -1099,6 +1111,8 @@ async function renderLive(){
   list.innerHTML = rows.length ? rows.map(b => bidCard(b, today)).join('') : `<div class="empty card">${liveDone() ? '조건에 맞는 공고가 없습니다.' : '아직 조건에 맞는 공고를 못 찾았습니다. "더 보기"로 이전 기간을 이어서 조회하세요.'}</div>`;
   $('liveMore').hidden = liveDone();
   $('liveMore').textContent = '더 보기 (이어서 조회)';
+  const token = Live.token;
+  if(await fetchLiveLimits(rows) && token === Live.token) renderLive();   // 요구 면허·지역을 받은 뒤 다시 거르고 그림
 }
 
 async function toggleWatch(id, btn){
@@ -1116,7 +1130,7 @@ async function toggleWatch(id, btn){
   }
 }
 const pickNotice = (b) => ({id:b.id, no:b.no, ord:b.ord, nm:b.nm, org:b.org, dmd:b.dmd, sido:b.sido, sgg:b.sgg,
-  lic:b.lic, rgn:b.rgn, base:b.base, est:b.est, a:b.a, floor:b.floor, net:b.net, rng:b.rng, close:b.close, open:b.open, url:b.url});
+  lic:licOf(b).length ? licOf(b) : b.lic, rgn:b.rgn, base:b.base, est:b.est, a:b.a, floor:b.floor, net:b.net, rng:b.rng, close:b.close, open:b.open, url:b.url});
 
 // ============================================================ 우리 업체 (소재지·보유 면허·사업자번호 — 이 기기에만 저장)
 const Company = {
@@ -1128,14 +1142,31 @@ const Company = {
 /** 공고의 면허제한: 수집된 면허제한(lic_map) 우선. 실시간 공고의 b.lic 는 주공종·부대공종이라 제한 면허가 아니다 */
 function licOf(b){
   const m = Data.licMap?.get(b.id);
-  return m?.length ? m : (b.live ? [] : b.lic || []);
+  return m?.length ? m : b.reqLic?.length ? b.reqLic : (b.live ? [] : b.lic || []);
+}
+/** 실시간 공고 중 수집된 면허제한이 없는 것은 조달청에서 공고번호로 면허제한·참가가능지역을 바로 조회 (공고당 한 번, 20건씩) */
+async function fetchLiveLimits(rows){
+  const need = rows.filter(b => b.live && b.kind === '공사' && !b.limTried && !Data.licMap?.get(b.id)?.length).slice(0, 20);
+  if(!need.length || !apiKey()) return false;
+  await Promise.all(need.map(async b => {
+    b.limTried = true;
+    try{
+      const q = {inqryDiv: '2', bidNtceNo: b.no, numOfRows: 100, pageNo: 1};
+      const [l, r] = await Promise.all([liveCall('getBidPblancListInfoLicenseLimit', q), liveCall('getBidPblancListInfoPrtcptPsblRgn', q)]);
+      const mine = (it) => String(it.bidNtceOrd ?? b.ord) === b.ord;
+      b.reqLic = [...new Set(l.items.filter(mine).map(it => pickF(it, 'lcnsLmtNm')).filter(Boolean).flatMap(normLic))];
+      b.rgn = [...new Set(r.items.filter(mine).map(it => pickF(it, 'prtcptPsblRgnNm')).filter(Boolean))];   // [] = 지역 제한 없음
+      b.limOk = true;
+    }catch(e){ console.warn('면허제한 조회', b.no, e); }
+  }));
+  return true;
 }
 function eligibility(b){
   const c = Company.get();
   const out = {ok: true, lic: null, rgn: null};
   const lics = licOf(b), rgn = rgnOf(b);
   if(c.lics.length){
-    if(!lics.length) out.lic = 'unknown';
+    if(!lics.length) out.lic = b.limOk ? 'ok' : 'unknown';   // limOk: 조달청 조회 결과 면허 제한 없음
     else if(lics.some(l => c.lics.includes(l))) out.lic = 'ok';
     else { out.lic = 'no'; out.ok = false; }
   }
