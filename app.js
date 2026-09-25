@@ -1014,7 +1014,9 @@ function liveRows(){
   const sgg = $('lSgg').value;
   const inSgg = (b) => !sgg || b.sgg === sgg || (b.rgn || []).some(t => parseRegion(t).sgg === sgg);
   const lic = $('lLic').value;
-  return Live.items.filter(b => b.ord === maxOrd[b.no] && !b.cancel && (!elig || eligibility(b).ok) && inSgg(b) && (!lic || liveHasLic(b, lic)));
+  // 참가 가능만: 요구 면허를 끝내 알 수 없는 공고(조회 실패)는 뺀다. 아직 조회 전인 공고는 조회되도록 잠깐 남긴다
+  const eligOk = (b) => { const e = eligibility(b); return e.ok && !(e.lic === 'unknown' && b.limTried); };
+  return Live.items.filter(b => b.ord === maxOrd[b.no] && !b.cancel && (!elig || eligOk(b)) && inSgg(b) && (!lic || liveHasLic(b, lic)));
 }
 /** 현재 구간의 다음 쪽 1번 호출 */
 async function liveFetchOne(){
