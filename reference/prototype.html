@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>낙찰가 예측 도우미</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F4F6FA; --surface:#FFFFFF; --border:#E4E8F0;
+    --text:#1B2430; --text-sub:#6B7684; --text-faint:#9AA3B2;
+    --primary:#2F6FED; --primary-dark:#1D56C9; --primary-soft:#EAF1FF;
+    --target:#F04438; --target-soft:#FDEAE8;
+    --radius:14px;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+    box-sizing:border-box;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#12151C; --surface:#1A1F2A; --border:#2A303C;
+      --text:#EDEFF3; --text-sub:#9AA3B2; --text-faint:#6B7280;
+      --primary:#5B8DEF; --primary-dark:#7CA5F5; --primary-soft:#1E2A44;
+      --target:#F97066; --target-soft:#3A1F1D;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#12151C; --surface:#1A1F2A; --border:#2A303C;
+    --text:#EDEFF3; --text-sub:#9AA3B2; --text-faint:#6B7280;
+    --primary:#5B8DEF; --primary-dark:#7CA5F5; --primary-soft:#1E2A44;
+    --target:#F97066; --target-soft:#3A1F1D;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-padding-top:env(safe-area-inset-top,0px);}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+    display:flex; min-height:100%;
+  }
+  .sidebar{
+    width:220px; flex:0 0 220px; background:var(--surface); border-right:1px solid var(--border);
+    padding:20px 14px; min-height:100vh;
+  }
+  .brand{display:flex; align-items:center; gap:8px; padding:6px 8px 20px; font-weight:700; font-size:15px;}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--primary);}
+  .nav-item{
+    padding:10px 12px; border-radius:10px; font-size:14px; color:var(--text-sub);
+    margin-bottom:4px; cursor:default; display:flex; align-items:center; gap:8px;
+  }
+  .nav-item.active{background:var(--primary-soft); color:var(--primary-dark); font-weight:600;}
+  .main{flex:1; padding:28px 32px 60px; max-width:1120px;}
+  .topbar{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:20px;}
+  .topbar h1{font-size:22px; margin:0;}
+  .topbar .date{color:var(--text-faint); font-size:13px;}
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:20px 22px; margin-bottom:18px;
+  }
+  .card h2{font-size:15px; margin:0 0 4px; font-weight:600;}
+  .card .sub{color:var(--text-sub); font-size:12.5px; margin:0 0 14px;}
+  .chip-group{display:flex; flex-wrap:wrap; gap:8px;}
+  .chip{
+    border:1px solid var(--border); background:var(--bg); color:var(--text-sub);
+    padding:7px 13px; border-radius:999px; font-size:13px; cursor:pointer; user-select:none;
+    transition:background .12s, color .12s, border-color .12s;
+  }
+  .chip.selected{background:var(--primary); border-color:var(--primary); color:#fff;}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  @media (max-width:720px){ .row2{grid-template-columns:1fr;} .sidebar{display:none;} }
+  .field-list{display:flex; flex-direction:column; gap:10px;}
+  .field-item{
+    display:flex; align-items:flex-start; gap:10px; padding:10px 12px;
+    border:1px solid var(--border); border-radius:10px; background:var(--bg);
+  }
+  .field-item input{margin-top:3px; accent-color:var(--primary);}
+  .field-item label{font-size:13.5px; font-weight:500; cursor:pointer;}
+  .field-item .desc{font-size:12px; color:var(--text-sub); margin-top:2px;}
+  .field-item.disabled{opacity:.55;}
+  .inline-inputs{display:flex; gap:12px; margin-top:10px; flex-wrap:wrap;}
+  .inline-inputs > div{flex:1; min-width:140px;}
+  .inline-inputs label{font-size:12px; color:var(--text-sub); display:block; margin-bottom:5px;}
+  .inline-inputs input, .inline-inputs select{
+    width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border);
+    background:var(--surface); color:var(--text); font-size:13.5px;
+  }
+  .btn{
+    background:var(--primary); color:#fff; border:none; border-radius:10px;
+    padding:12px 22px; font-size:14.5px; font-weight:600; cursor:pointer;
+  }
+  .btn:hover{background:var(--primary-dark);}
+  .result-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px;}
+  @media (max-width:820px){ .result-grid{grid-template-columns:1fr;} }
+  .big-number{font-size:38px; font-weight:700; color:var(--primary-dark); line-height:1;}
+  .big-number small{font-size:15px; font-weight:500; color:var(--text-sub); margin-left:6px;}
+  .meta-line{font-size:12.5px; color:var(--text-sub); margin-top:6px;}
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  th,td{text-align:left; padding:7px 8px; border-bottom:1px solid var(--border); white-space:nowrap;}
+  th{color:var(--text-faint); font-weight:600;}
+  .empty{color:var(--text-faint); font-size:13px; padding:24px 0; text-align:center;}
+  .badge{display:inline-block; padding:2px 8px; border-radius:6px; background:var(--target-soft); color:var(--target); font-size:11.5px; font-weight:600;}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="brand"><span class="dot"></span>낙찰가 예측 도우미</div>
+  <div class="nav-item" id="nav-bids" onclick="switchTab('bids')">📋 입찰공고</div>
+  <div class="nav-item active" id="nav-predict" onclick="switchTab('predict')">🔍 예측 분석</div>
+  <div class="nav-item" id="nav-watch" onclick="switchTab('watch')">⭐ 관심공고</div>
+  <div class="nav-item" id="nav-stats" onclick="switchTab('stats')">📊 사정율 통계</div>
+  <div class="nav-item" id="nav-collect" onclick="switchTab('collect')">📥 데이터 수집</div>
+  <div class="nav-item" id="nav-settings" onclick="switchTab('settings')">⚙️ 설정</div>
+</div>
+
+<div class="main">
+  <div class="topbar">
+    <h1>낙찰가 예측 분석</h1>
+    <div class="date" id="todayLabel"></div>
+  </div>
+
+  <div id="view-bids" style="display:none;">
+    <div class="card">
+      <h2>입찰공고 검색</h2>
+      <p class="sub">지역 → 면허 → 공고명 순으로 좁혀서 찾아보세요.</p>
+      <div class="inline-inputs">
+        <div>
+          <label>지역</label>
+          <select id="bidsRegion" onchange="renderBidsTab()"></select>
+        </div>
+        <div>
+          <label>면허</label>
+          <select id="bidsLicense" onchange="renderBidsTab()"></select>
+        </div>
+        <div>
+          <label>공고명 검색</label>
+          <input type="text" id="bidsSearch" placeholder="예: 교량, 도로 등" oninput="renderBidsTab()">
+        </div>
+      </div>
+      <div id="bidsList" style="margin-top:14px;"></div>
+    </div>
+  </div>
+
+  <div id="view-watch" style="display:none;">
+    <div class="card">
+      <h2>관심공고</h2>
+      <p class="sub">입찰공고 탭에서 ☆ 눌러 등록한 공고 목록입니다.</p>
+      <div id="watchListArea"></div>
+    </div>
+  </div>
+
+  <div id="view-stats" style="display:none;">
+    <div class="card">
+      <h2>사정율 통계</h2>
+      <p class="sub">발주기관별·업종별 사정율 분포를 모아보는 화면입니다.</p>
+      <div class="empty">실제 데이터가 쌓이면 이 화면에 통계를 채울 예정입니다.</div>
+    </div>
+  </div>
+
+  <div id="view-collect" style="display:none;">
+    <div class="card">
+      <h2>데이터 수집</h2>
+      <p class="sub">나라장터 API 수집 스크립트의 실행 현황을 관리하는 화면입니다.</p>
+      <div class="empty">API 연동 후 수집 이력이 여기 표시될 예정입니다.</div>
+    </div>
+  </div>
+
+  <div id="view-settings" style="display:none;">
+    <div class="card">
+      <h2>설정</h2>
+      <p class="sub">서비스키, 텔레그램 알림 채널 등을 관리하는 화면입니다.</p>
+      <div class="empty">다음 단계에서 연동 설정 항목을 추가할 예정입니다.</div>
+    </div>
+  </div>
+
+  <div id="view-predict">
+  <div class="card">
+    <h2>지역 선택</h2>
+    <p class="sub">발주기관 소재 지역으로 과거 낙찰 데이터를 좁힙니다. (복수 선택 가능)</p>
+    <div class="chip-group" id="regionChips"></div>
+  </div>
+
+  <div class="card">
+    <h2>업종(면허) 선택</h2>
+    <p class="sub">참여 가능한 면허 종류로 좁힙니다. (복수 선택 가능)</p>
+    <div class="chip-group" id="licenseChips"></div>
+  </div>
+
+  <div class="card">
+    <h2>예측에 사용할 데이터 항목</h2>
+    <p class="sub">체크한 항목만 이번 예측 계산에 반영됩니다.</p>
+    <div class="field-list">
+      <div class="field-item disabled">
+        <input type="checkbox" checked disabled>
+        <div><label>낙찰율(사정율)</label><div class="desc">예측의 기준값 — 항상 포함</div></div>
+      </div>
+      <div class="field-item">
+        <input type="checkbox" id="fPrice">
+        <div><label for="fPrice">추정가격 유사도</label><div class="desc">아래 입력한 추정가격과 비슷한 규모의 건만 반영</div></div>
+      </div>
+      <div class="field-item">
+        <input type="checkbox" id="fRecent">
+        <div><label for="fRecent">최근 데이터 우선</label><div class="desc">최근 12개월 이내 개찰 건에 가중치 부여</div></div>
+      </div>
+      <div class="field-item">
+        <input type="checkbox" id="fParticipants">
+        <div><label for="fParticipants">참가업체 수 유사도</label><div class="desc">아래 입력한 참가업체 수와 비슷한 건만 반영</div></div>
+      </div>
+    </div>
+    <div class="inline-inputs">
+      <div><label>이번 입찰 추정가격(원)</label><input type="number" id="inPrice" placeholder="예: 250000000"></div>
+      <div><label>예상 참가업체 수</label><input type="number" id="inParticipants" placeholder="예: 5"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>투찰가 계산기</h2>
+    <p class="sub">기초금액·A값·낙찰하한율을 넣으면 적용 사정율 기준 투찰금액을 계산합니다. (예측 실행 시 사정율 자동 채움)</p>
+    <div class="inline-inputs">
+      <div><label>기초금액(원)</label><input type="number" id="calcBase" placeholder="예: 300000000"></div>
+      <div><label>A값(원, 없으면 비워두기)</label><input type="number" id="calcA" placeholder="예: 12000000"></div>
+      <div><label>낙찰하한율(%)</label><input type="number" id="calcFloor" value="87.745" step="0.001"></div>
+      <div><label>적용 사정율(%)</label><input type="number" id="calcRate" step="0.01" placeholder="예: 87.90"></div>
+    </div>
+    <button class="btn" style="margin-top:12px;" onclick="calcBidPrice()">투찰금액 계산</button>
+    <div id="calcResult" class="meta-line" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>복수예비가격 시뮬레이터</h2>
+    <p class="sub">위 기초금액 기준 ±2~3% 범위에서 예비가격 15개를 생성해 예정가격 산정 구조를 참고용으로 재현합니다. 낙찰을 보장하지 않습니다.</p>
+    <button class="btn" onclick="simulatePreliminary()">예비가격 15개 생성</button>
+    <div id="simResult" style="margin-top:12px;"></div>
+  </div>
+
+  <div style="margin-bottom:22px;">
+    <button class="btn" onclick="runPredict()">예측 실행</button>
+    <span class="meta-line" id="matchCount" style="margin-left:12px;"></span>
+  </div>
+
+  <div id="resultArea"></div>
+  </div>
+</div>
+
+<script>
+document.getElementById('todayLabel').textContent =
+  new Date().toLocaleDateString('ko-KR', {year:'numeric', month:'long', day:'numeric'});
+
+const REGIONS = ['춘천','원주','강릉','홍천','화천','철원','인제','양구','속초','동해','삼척','태백','영월','정선','평창','횡성'];
+const LICENSES = [
+  '토목공사업','건축공사업','토목건축공사업','산업환경설비공사업','조경공사업',
+  '지반조성·포장공사업','실내건축공사업','금속창호·지붕건축물조성공사업','도장·습식·방수·석공사업',
+  '조경식재·시설물공사업','철근·콘크리트공사업','구조물해체·비계공사업','상하수도설비공사업',
+  '보링·그라우팅공사업','철도·궤도공사업','철강구조물공사업','수중·준설공사업','승강기·삭도공사업',
+  '전기공사업','정보통신공사업','소방시설공사업','기계설비공사업','가스시설시공업'
+];
+const TARGET_RATE = 87.745;
+
+// ---- 샘플(가상) 데이터 생성 ----
+function randNormal(mean, std){
+  let u=1-Math.random(), v=Math.random();
+  return mean + std * Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v);
+}
+function genData(n){
+  const rows=[];
+  for(let i=0;i<n;i++){
+    const region = REGIONS[Math.floor(Math.random()*REGIONS.length)];
+    const license = LICENSES[Math.floor(Math.random()*LICENSES.length)];
+    const monthsAgo = Math.floor(Math.random()*24);
+    const price = Math.round((50 + Math.random()*750) * 1_000_000 / 100000)*100000;
+    const participants = 2 + Math.floor(Math.random()*8);
+    let rate = randNormal(TARGET_RATE, 3.3);
+    rate = Math.max(80, Math.min(98, rate));
+    const d = new Date(); d.setMonth(d.getMonth()-monthsAgo);
+    rows.push({
+      region, license, price, participants,
+      rate: Math.round(rate*100)/100,
+      date: d,
+      org: region + (Math.random()<0.5 ? '교육지원청' : '시청'),
+      name: region + ' ' + license.slice(0,4) + ' 공사 (' + (1000+i) + ')'
+    });
+  }
+  return rows;
+}
+const DATA = genData(160);
+
+// ---- 필터 UI ----
+const selRegions = new Set();
+const selLicenses = new Set();
+
+function buildChips(container, items, set){
+  const el = document.getElementById(container);
+  items.forEach(v=>{
+    const c = document.createElement('div');
+    c.className='chip'; c.textContent=v;
+    c.onclick=()=>{
+      set.has(v)?set.delete(v):set.add(v);
+      c.classList.toggle('selected');
+    };
+    el.appendChild(c);
+  });
+}
+buildChips('regionChips', REGIONS, selRegions);
+buildChips('licenseChips', LICENSES, selLicenses);
+
+// ---- 탭 전환 ----
+let currentTab = 'predict';
+function switchTab(tab){
+  currentTab = tab;
+  ['bids','predict','watch','stats','collect','settings'].forEach(v=>{
+    document.getElementById('view-'+v).style.display = (v===tab) ? '' : 'none';
+    document.getElementById('nav-'+v).classList.toggle('active', v===tab);
+  });
+  if(tab==='bids') renderBidsTab();
+  if(tab==='watch') renderWatchTab();
+}
+
+// ---- 진행중 입찰공고(가상) ----
+function genUpcoming(n){
+  const rows=[];
+  for(let i=0;i<n;i++){
+    const region = REGIONS[Math.floor(Math.random()*REGIONS.length)];
+    const license = LICENSES[Math.floor(Math.random()*LICENSES.length)];
+    const price = Math.round((50 + Math.random()*750)*1_000_000/100000)*100000;
+    const dday = 1 + Math.floor(Math.random()*20);
+    rows.push({
+      id: 'bid-'+i,
+      name: region + ' ' + license.slice(0,4) + ' 공사(' + (2027000+i) + ')',
+      org: region + (Math.random()<0.5 ? '교육지원청' : '시청'),
+      region, license, price, dday
+    });
+  }
+  return rows.sort((a,b)=>a.dday-b.dday);
+}
+const UPCOMING = genUpcoming(24);
+const watchList = new Set();
+
+function fillSelect(id, items){
+  const el = document.getElementById(id);
+  el.innerHTML = '<option value="">전체</option>' + items.map(v=>`<option value="${v}">${v}</option>`).join('');
+}
+fillSelect('bidsRegion', REGIONS);
+fillSelect('bidsLicense', LICENSES);
+
+function renderBidsTab(){
+  const region = document.getElementById('bidsRegion').value;
+  const license = document.getElementById('bidsLicense').value;
+  const keyword = document.getElementById('bidsSearch').value.trim();
+  const filtered = UPCOMING.filter(b =>
+    (!region || b.region===region) &&
+    (!license || b.license===license) &&
+    (!keyword || b.name.includes(keyword))
+  );
+  const el = document.getElementById('bidsList');
+  if(!filtered.length){ el.innerHTML = '<div class="empty">조건에 맞는 공고가 없습니다.</div>'; return; }
+  el.innerHTML = filtered.map(b=>`
+    <div class="field-item" style="justify-content:space-between; align-items:center;">
+      <div>
+        <label style="font-weight:600;">${b.name}</label>
+        <div class="desc">${b.org} · ${b.region} · ${b.license} · 추정가격 ${b.price.toLocaleString()}원 · 마감 D-${b.dday}</div>
+      </div>
+      <button class="chip ${watchList.has(b.id)?'selected':''}" onclick="toggleWatch('${b.id}', this)">${watchList.has(b.id)?'★ 등록됨':'☆ 관심등록'}</button>
+    </div>
+  `).join('');
+}
+function toggleWatch(id, btn){
+  if(watchList.has(id)){ watchList.delete(id); btn.textContent='☆ 관심등록'; btn.classList.remove('selected'); }
+  else{ watchList.add(id); btn.textContent='★ 등록됨'; btn.classList.add('selected'); }
+}
+function renderWatchTab(){
+  const el = document.getElementById('watchListArea');
+  const items = UPCOMING.filter(b=>watchList.has(b.id));
+  if(!items.length){ el.innerHTML = '<div class="empty">아직 등록한 관심공고가 없습니다. 입찰공고 탭에서 ☆를 눌러보세요.</div>'; return; }
+  el.innerHTML = items.map(b=>`
+    <div class="field-item">
+      <div><label style="font-weight:600;">${b.name}</label><div class="desc">${b.org} · 마감 D-${b.dday}</div></div>
+    </div>
+  `).join('');
+}
+
+function runPredict(){
+  let rows = DATA.filter(r =>
+    (selRegions.size===0 || selRegions.has(r.region)) &&
+    (selLicenses.size===0 || selLicenses.has(r.license))
+  );
+
+  const useRecent = document.getElementById('fRecent').checked;
+  const usePrice = document.getElementById('fPrice').checked;
+  const useParticipants = document.getElementById('fParticipants').checked;
+  const inPrice = parseFloat(document.getElementById('inPrice').value);
+  const inParticipants = parseFloat(document.getElementById('inParticipants').value);
+
+  if(useRecent){
+    const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth()-12);
+    rows = rows.filter(r=>r.date >= cutoff);
+  }
+  if(usePrice && !isNaN(inPrice)){
+    rows = rows.filter(r => Math.abs(r.price-inPrice) <= inPrice*0.4);
+  }
+  if(useParticipants && !isNaN(inParticipants)){
+    rows = rows.filter(r => Math.abs(r.participants-inParticipants) <= 2);
+  }
+
+  document.getElementById('matchCount').textContent = rows.length + '건의 과거 데이터로 계산';
+
+  const out = document.getElementById('resultArea');
+  if(rows.length < 3){
+    out.innerHTML = '<div class="card"><div class="empty">일치하는 데이터가 너무 적습니다. 필터를 조금 넓혀보세요.</div></div>';
+    return;
+  }
+
+  const mean = rows.reduce((a,r)=>a+r.rate,0)/rows.length;
+  const variance = rows.reduce((a,r)=>a+Math.pow(r.rate-mean,2),0)/rows.length;
+  const std = Math.sqrt(variance);
+  const diff = mean - TARGET_RATE;
+  const conservative = mean + std*0.3;
+  const aggressive = mean - std*0.3;
+  const confidence = Math.max(50, Math.min(95, 95 - std*4 + Math.min(rows.length,100)*0.15));
+
+  const sorted = [...rows].sort((a,b)=>Math.abs(a.rate-TARGET_RATE)-Math.abs(b.rate-TARGET_RATE)).slice(0,8);
+  lastMatched = sorted;
+  document.getElementById('calcRate').value = mean.toFixed(2);
+
+  out.innerHTML = `
+    <div class="card">
+      <h2>예측 결과</h2>
+      <p class="sub">선택한 조건의 과거 낙찰율 분포 기준 추정치입니다.</p>
+      <div class="result-grid">
+        <div>
+          <div class="big-number">${mean.toFixed(2)}<small>%</small></div>
+          <div class="meta-line">예측 사정율 평균 · 표준편차 ±${std.toFixed(2)}%p</div>
+          <div class="meta-line">낙찰하한율(${TARGET_RATE}%)과의 차이 <span class="badge">${diff>=0?'+':''}${diff.toFixed(2)}%p</span></div>
+          <div class="meta-line">추천 구간 · 보수 ${conservative.toFixed(2)}% · 추천 ${mean.toFixed(2)}% · 공격 ${aggressive.toFixed(2)}%</div>
+          <div class="meta-line">신뢰도 ${confidence.toFixed(0)}% (표본 ${rows.length}건 기준)</div>
+        </div>
+        <div>${drawHistogram(rows)}</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>낙찰하한율에 가장 가까웠던 사례</h2>
+      <button class="btn" style="margin-bottom:12px;" onclick="exportCSV()">CSV 내보내기</button>
+      <table>
+        <thead><tr><th>공고명</th><th>지역</th><th>업종</th><th>발주기관</th><th>낙찰율</th><th>참가업체</th><th>개찰월</th></tr></thead>
+        <tbody>
+          ${sorted.map(r=>`<tr>
+            <td>${r.name}</td><td>${r.region}</td><td>${r.license}</td><td>${r.org}</td>
+            <td>${r.rate.toFixed(2)}%</td><td>${r.participants}개사</td>
+            <td>${r.date.getFullYear()}.${String(r.date.getMonth()+1).padStart(2,'0')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+let lastMatched = [];
+function exportCSV(){
+  if(!lastMatched.length) return;
+  const header = ['공고명','지역','업종','발주기관','낙찰율','참가업체','개찰월'];
+  const lines = [header.join(',')].concat(lastMatched.map(r=>[
+    r.name, r.region, r.license, r.org, r.rate.toFixed(2), r.participants,
+    `${r.date.getFullYear()}.${String(r.date.getMonth()+1).padStart(2,'0')}`
+  ].join(',')));
+  const blob = new Blob(['\uFEFF'+lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = '낙찰_유사사례.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function calcBidPrice(){
+  const base = parseFloat(document.getElementById('calcBase').value);
+  const aVal = parseFloat(document.getElementById('calcA').value) || 0;
+  const floorRate = parseFloat(document.getElementById('calcFloor').value) / 100;
+  const rate = parseFloat(document.getElementById('calcRate').value) / 100;
+  const out = document.getElementById('calcResult');
+  if(isNaN(base) || isNaN(rate)){
+    out.textContent = '기초금액과 적용 사정율을 입력해주세요.';
+    return;
+  }
+  const expectedPrice = base * rate;
+  const bidAmount = (expectedPrice - aVal) * floorRate + aVal;
+  out.innerHTML = `예정가격 약 <b>${Math.round(expectedPrice).toLocaleString()}원</b> · 예상 투찰금액 약 <b>${Math.round(bidAmount).toLocaleString()}원</b>`;
+}
+
+function simulatePreliminary(){
+  const base = parseFloat(document.getElementById('calcBase').value);
+  const out = document.getElementById('simResult');
+  if(isNaN(base)){ out.textContent = '기초금액을 먼저 입력해주세요.'; return; }
+  const range = 0.02 + Math.random()*0.01;
+  const prices = Array.from({length:15}, ()=> base * (1 + (Math.random()*2-1)*range));
+  const picked = [...prices].sort(()=>Math.random()-0.5).slice(0,4);
+  const avg = picked.reduce((a,b)=>a+b,0)/4;
+  out.innerHTML = `
+    <div class="meta-line">무작위 4개 평균 예정가격(예시): <b>${Math.round(avg).toLocaleString()}원</b> (사정율 ${(avg/base*100).toFixed(2)}%)</div>
+    <div style="font-size:11.5px; color:var(--text-faint); margin-top:6px;">${prices.map(p=>Math.round(p).toLocaleString()).join(' · ')}</div>
+  `;
+}
+
+function drawHistogram(rows){
+  const min=80, max=98, bins=14;
+  const w=340, h=110, barW = w/bins;
+  const counts = new Array(bins).fill(0);
+  rows.forEach(r=>{
+    let idx = Math.floor((r.rate-min)/(max-min)*bins);
+    idx = Math.max(0, Math.min(bins-1, idx));
+    counts[idx]++;
+  });
+  const maxC = Math.max(...counts,1);
+  const bars = counts.map((c,i)=>{
+    const bh = (c/maxC)*(h-10);
+    return `<rect x="${i*barW+1}" y="${h-bh}" width="${barW-2}" height="${bh}" fill="var(--primary)" opacity="0.85" rx="2"></rect>`;
+  }).join('');
+  const targetX = ((TARGET_RATE-min)/(max-min))*w;
+  return `<svg viewBox="0 0 ${w} ${h+18}" width="100%" height="${h+18}">
+    ${bars}
+    <line x1="${targetX}" y1="0" x2="${targetX}" y2="${h}" stroke="var(--target)" stroke-width="2" stroke-dasharray="3,3"></line>
+    <text x="${targetX}" y="${h+14}" font-size="10" fill="var(--target)" text-anchor="middle">낙찰하한율 ${TARGET_RATE}%</text>
+  </svg>`;
+}
+</script>
+</body>
+</html>
