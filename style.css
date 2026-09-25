@@ -392,3 +392,5 @@ label .req{font-size:10.5px;}
 details.ranks{margin-top:8px; font-size:12.5px;}
 details.ranks summary{cursor:pointer; color:var(--primary-dark);}
 .tool + .tool{margin-top:18px; padding-top:14px; border-top:1px dashed var(--border);}
+.filter-row.five{grid-template-columns:repeat(5, minmax(0,1fr));}
+@media (max-width:900px){ .filter-row.five{grid-template-columns:1fr 1fr;} }

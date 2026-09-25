@@ -858,7 +858,12 @@ async function enrichLive(b){
 }
 
 function initLive(){
-  fillSelect($('lRgn'), SIDOS, {all:'지역 전체'});
+  fillSelect($('lRgn'), SIDOS, {all:'시·도 전체'});
+  const fillLSgg = () => { fillSelect($('lSgg'), sggsOf($('lRgn').value), {all:'시·군 전체'}); $('lSgg').disabled = !$('lRgn').value; };
+  fillLSgg();
+  Data.loadBids().then(fillLSgg);
+  $('lRgn').addEventListener('change', fillLSgg);
+  $('lSgg').addEventListener('change', () => { if(Live.params) renderLive(); });
   fillSelect($('lLic'), LICENSES, {all:'업종 전체'});
   fillSelect($('lAmt'), AMT_RANGES, {all:'추정가격 전체'});
   const setPeriod = (days) => { const t = new Date(); $('lTo').value = kstDay(t); $('lFrom').value = kstDay(new Date(t - days * 86400000)); };
@@ -969,11 +974,14 @@ async function renderLive(){
   const maxOrd = {};
   Live.items.forEach(b => { if(!maxOrd[b.no] || b.ord > maxOrd[b.no]) maxOrd[b.no] = b.ord; });
   const elig = $('lElig').checked && Company.isSet();
-  const rows = Live.items.filter(b => b.ord === maxOrd[b.no] && !b.cancel && (!elig || eligibility(b).ok));
+  const sgg = $('lSgg').value;
+  const inSgg = (b) => !sgg || b.sgg === sgg || (b.rgn || []).some(t => parseRegion(t).sgg === sgg);
+  const rows = Live.items.filter(b => b.ord === maxOrd[b.no] && !b.cancel && (!elig || eligibility(b).ok) && inSgg(b));
   const today = kstDay(new Date());
-  $('liveInfo').innerHTML = [`나라장터 실시간 ${esc(Live.kind)} ${fmtNum(Live.total)}건 중 ${fmtNum(Math.min(Live.total, Live.page * LIVE_ROWS))}건 조회${Live.fallback ? `(조건은 앱에서 거름 → ${fmtNum(rows.length)}건)` : ''}`,
+  $('liveInfo').innerHTML = [`나라장터 실시간 ${esc(Live.kind)} ${fmtNum(Live.total)}건 중 ${fmtNum(Math.min(Live.total, Live.page * LIVE_ROWS))}건 조회${Live.fallback || sgg || elig ? ` → 조건에 맞는 ${fmtNum(rows.length)}건` : ''}`,
+    sgg ? `시·군(${esc(sgg)})은 공사 현장·참가가능지역 기준으로 앱에서 거름` : '',
     Live.kind !== '공사' ? '예측은 공사만 제공' : '',
-    !sido ? '지역을 고르면 예상 사정율·낙찰확률도 표시됩니다' : ''].filter(Boolean).join(' · ');
+    !sido && !Model.m ? '지역을 고르면 예상 사정율·낙찰확률도 표시됩니다' : ''].filter(Boolean).join(' · ');
   list.innerHTML = rows.length ? rows.map(b => bidCard(b, today)).join('') : '<div class="empty card">조건에 맞는 공고가 없습니다.</div>';
   const left = Math.max(0, Live.total - Live.page * LIVE_ROWS);
   $('liveMore').hidden = !left;
@@ -1031,17 +1039,21 @@ function eligTag(b){
   return '<span class="tag okc">참가 가능</span>';
 }
 
+/** 이 시·도의 시·군 목록 — 진행중 공고의 현장 지역과 참가가능지역에서 모은다 */
+function sggsOf(sido){
+  const set = new Set();
+  (Data.bids || []).forEach(b => {
+    if(b.sido === sido && b.sgg) set.add(b.sgg);
+    (b.rgn || []).forEach(t => { const r = parseRegion(t); if(r.sido === sido && r.sgg) set.add(r.sgg); });
+  });
+  return [...set].sort();
+}
 function initCompany(){
   const c = Company.get();
   fillSelect($('coSido'), SIDOS, {all: '선택 안 함', value: c.sido});
   const fillSgg = (value) => {
     const sido = $('coSido').value;
-    const set = new Set();
-    (Data.bids || []).forEach(b => {
-      if(b.sido === sido && b.sgg) set.add(b.sgg);
-      (b.rgn || []).forEach(t => { const r = parseRegion(t); if(r.sido === sido && r.sgg) set.add(r.sgg); });
-    });
-    fillSelect($('coSgg'), [...set].sort(), {all: '시·군 전체', value});
+    fillSelect($('coSgg'), sggsOf(sido), {all: '시·군 전체', value});
     $('coSgg').disabled = !sido;
   };
   Data.loadBids().then(() => fillSgg(c.sgg));
