@@ -66,7 +66,7 @@ jobs:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
           START_DATE: ${{ inputs.start_date }}
           RESET_BACKFILL: ${{ inputs.reset_backfill }}
-          STEPS: "과거낙찰,지역보강,상세"
+          STEPS: "과거낙찰,지역보강,물품최근,물품과거,상세"
           MAX_MINUTES: "260"
         run: python scripts/collect.py
 

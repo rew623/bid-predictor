@@ -39,8 +39,9 @@ data/                 수집 결과 (아래)
 - API: 공공데이터포털 조달청 나라장터 `낙찰정보서비스`(ScsbidInfoService), `입찰공고정보서비스`(BidPublicInfoService).
   엔드포인트 후보는 `SERVICES`, 오퍼레이션은 `OPS`, 필드 이름 후보는 `F_*` 목록. 첫 성공 응답 1건을 `data/_sample_{op}.json` 에 저장하므로 필드명이 다르면 그걸 보고 `F_*` 를 고친다.
 - 단계(이름): ① `공고` 진행중 공고(최근 공고·기초금액·면허제한·참가가능지역) ② `최근낙찰` 최근 40일 낙찰 목록 ③ `과거낙찰` 과거 낙찰 목록을 한 달씩 과거로, 최근 24개월(`RECENT_FIRST_MONTHS`)까지 먼저 ④ `상세` regions.json 지역의 개찰 전체 순위·복수예가(공고 1건당 2회 이상 호출, 최신 개찰부터; 첫 상세는 `DETAIL_RESERVE` 250회를 과거 수집 몫으로 남김) ⑤ `과거낙찰` 24개월까지 ⑥ `상세` 남은 한도 ⑦ `과거낙찰` 나머지(기본 3년, `meta.backfill.cursor`). 실제 순서는 ①②④⑤ `지역보강` ⑥⑦ (상세를 과거 수집 앞으로).
+- 물품(2026-09 추가, 앱·모델은 데이터가 쌓인 뒤): `물품최근` = `getScsbidListSttusThng` 최근 40일 + `getBidPblancListInfoThngBsisAmount` 최근 60일로 기초금액·예가범위 보강, `물품과거` = 한 달씩 24개월까지(`meta.thng_backfill`), 낙찰정보 `THNG_RESERVE`(250)·입찰공고 250회는 남김 → `data/thng/{시도}.json`. 실제 순서: 공고 → 최근낙찰 → 상세 → 과거낙찰(24개월) → 지역보강 → 물품최근 → 물품과거 → 상세 → 과거낙찰(나머지).
 - `지역보강`: 과거 낙찰 레코드에 참가가능지역(`rgn`)을 채운다. 공고 게시 달 단위로 최신→가장 오래된 낙찰 달까지 한 번(`meta.rgn_fill` {cursor: YYYYMM, done}), 입찰공고 호출 `REGION_RESERVE`(250)회는 남김. 과거낙찰 단계도 달마다 참가가능지역을 같이 받는다. 최근낙찰은 notice_cache 의 rgn 으로 보강.
-- 환경변수 `STEPS` 로 단계를 골라 실행. 워크플로는 1차 `공고,최근낙찰`(MAX_MINUTES 40) → 커밋 → 2차 `과거낙찰,지역보강,상세` → 커밋 순서라 공고는 몇 분 안에 앱에 뜬다. 09·13·17시 예약 실행과 `quick_only` 수동 실행은 1차만.
+- 환경변수 `STEPS` 로 단계를 골라 실행. 워크플로는 1차 `공고,최근낙찰`(MAX_MINUTES 40) → 커밋 → 2차 `과거낙찰,지역보강,물품최근,물품과거,상세` → 커밋 순서라 공고는 몇 분 안에 앱에 뜬다. 09·13·17시 예약 실행과 `quick_only` 수동 실행은 1차만.
 - 하루 호출 한도: 서비스별 `API_DAILY_LIMIT`(기본 950). 호출 수는 `meta.api.calls` 에 날짜별로 기록, 넘으면 저장 후 다음 날 이어서.
 - 예정가격이 없으면 `낙찰금액 ÷ 낙찰률` 로 역산, 사정율 `sr = 예정가격 ÷ 기초금액 × 100` (80~120 벗어나면 버림).
 - 공고번호-차수(`id`)로 중복 병합. 워크플로는 meta.json 외 파일이 바뀐 경우에만 커밋.
@@ -54,11 +55,13 @@ data/                 수집 결과 (아래)
 {
   "updated_at": "2026-09-26T02:05:11+09:00",   // 데이터가 마지막으로 바뀐 시각 (앱 캐시 키 ?v= 로 사용)
   "v": 1,
-  "counts": {"bids": 1234, "scsbid": {"강원": 9000, ...}, "scsbid_total": 150000, "opening": {"강원": 3000}},
+  "counts": {"bids": 1234, "scsbid": {"강원": 9000, ...}, "scsbid_total": 150000, "opening": {"강원": 3000}, "thng": {"서울": 5000, ...}, "thng_total": 80000},
   "files": {
     "scsbid": {"강원": ["scsbid/강원.json"], "경기": ["scsbid/경기.json", "scsbid/경기_2.json"]},
-    "opening": {"강원": {"2025": ["opening/강원/2025.json"], "2026": ["opening/강원/2026.json"]}}
+    "opening": {"강원": {"2025": ["opening/강원/2025.json"], "2026": ["opening/강원/2026.json"]}},
+    "thng": {"서울": ["thng/서울.json"]}
   },
+  "thng_backfill": {"cursor": "20260731", "oldest": "20260801", "done": false},
   "backfill": {"target_start": "20230926", "cursor": "20250831", "oldest": "20250901", "done": false, "months_done": 13},
   "detail": {"regions": ["강원"], "강원": {"total": 9000, "done": 3000, "failed": 2},
              "remaining": 6000, "per_day": 430, "eta_days": 14, "history": [430, 425]},
@@ -129,6 +132,9 @@ lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits`(renderLive 뒤 1
 | sr | 사정율(%) = 예정가격 ÷ 기초금액 × 100 |
 
 시도를 알 수 없는 레코드는 `scsbid/기타.json`.
+
+### data/thng/{시도}.json — 물품 과거 낙찰
+scsbid 와 같은 형식(`ThngStore`). A값·면허·순공사원가·rgn 은 없다(투찰 사정률 = 금액 ÷ 하한율 ÷ 기초금액). 시도는 수요·공고기관 이름으로.
 
 ### data/opening/{시도}/{연도}.json — 개찰 전체 순위 + 복수예가 (regions.json 지역만)
 ```jsonc

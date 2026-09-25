@@ -19,6 +19,9 @@ GitHub Actions(.github/workflows/collect.yml)에서 매일 실행된다.
   5) 상세      남은 한도로 이어서
   6) 지역보강  과거 낙찰 레코드에 참가가능지역(rgn) 채우기 — 달 단위로 최신부터, 입찰공고 호출 REGION_RESERVE 회는 남김
   7) 과거낙찰  나머지 과거(3년까지)
+  물품최근   물품 최근 낙찰 + 물품 기초금액(최근 60일)   → data/thng/{시도}.json
+  물품과거   물품 과거 낙찰을 한 달씩 과거로 24개월까지 (진행: meta.thng_backfill), 낙찰정보 THNG_RESERVE·입찰공고 REGION_RESERVE 회는 남김
+  실제 순서: 공고 → 최근낙찰 → 상세 → 과거낙찰(24개월) → 지역보강 → 물품최근 → 물품과거 → 상세 → 과거낙찰(나머지)
 
 API 필드명이 확정되지 않았으므로 모든 필드 접근은 후보 이름 목록(F_*)을 거친다.
 첫 실행 때 각 API 원본 1건을 data/_sample_{op}.json 에 저장하니 그걸 보고 후보를 고친다.
@@ -54,6 +57,7 @@ DETAIL_RESERVE = 250                        # 첫 상세 단계는 낙찰정보 
 RECENT_FIRST_MONTHS = 24                    # 과거 낙찰은 이 기간을 먼저 채운 뒤 상세 → 나머지 과거 순으로
 DETAIL_MAX_TRIES = 3
 REGION_RESERVE = 250                        # 지역보강은 입찰공고 호출을 이만큼 남긴다 (뒤의 과거 수집 몫)
+THNG_RESERVE = 250                          # 물품과거는 낙찰정보 호출을 이만큼 남긴다 (뒤의 개찰 상세 몫)
 SCHEMA_VERSION = 1
 
 # ---------------------------------------------------------------- API 정의
@@ -77,6 +81,8 @@ OPS = {
     "notice_bsis": ("bid", "getBidPblancListInfoCnstwkBsisAmount", "1"),  # 기초금액·A값
     "notice_license": ("bid", "getBidPblancListInfoLicenseLimit", "1"),   # 면허제한
     "notice_region": ("bid", "getBidPblancListInfoPrtcptPsblRgn", "1"),   # 참가가능지역
+    "thng_list": ("scsbid", "getScsbidListSttusThng", "1"),               # 물품 낙찰 목록
+    "thng_bsis": ("bid", "getBidPblancListInfoThngBsisAmount", "1"),      # 물품 기초금액·예가범위
 }
 
 # ---------------------------------------------------------------- 필드 후보 (앞쪽 우선)
@@ -757,6 +763,21 @@ class ScsbidStore:
         return files, counts
 
 
+class ThngStore(ScsbidStore):
+    """물품 낙찰 → data/thng/{시도}.json (항목 형식은 scsbid 와 같음, A값·면허·순공사원가 없음)"""
+    dir = DATA / "thng"
+
+
+def enrich_thng(store, it):
+    """물품 기초금액 API 한 행 → 같은 공고의 낙찰 레코드에 기초금액·예가범위"""
+    _, no, ord_ = notice_id(it)
+    if no not in store.by_no:
+        return
+    n = clean({"no": no, "ord": ord_, "base": to_int(pick(it, F_BASE)), "rng": price_range(it)})
+    if n.get("base"):
+        store.enrich_by_notice(n)
+
+
 # ---------------------------------------------------------------- 개찰 상세 (전체 순위 + 복수예가)
 class OpeningStore:
     """data/opening/{시도}/{연도}.json
@@ -995,6 +1016,50 @@ def step_backfill(api, meta, store, now, checkpoint, horizon=None):
         checkpoint()
 
 
+def step_thng_recent(api, meta, tstore, now):
+    """물품 최근 낙찰 + 최근 60일 물품 기초금액으로 보강"""
+    log(f"[물품] 최근 {RECENT_SCSBID_DAYS}일")
+    n = 0
+    for it in api.fetch_range("thng_list", now - dt.timedelta(days=RECENT_SCSBID_DAYS), now):
+        tstore.merge(it, None)
+        n += 1
+    for it in api.fetch_range("thng_bsis", now - dt.timedelta(days=NOTICE_CACHE_DAYS), now):
+        enrich_thng(tstore, it)
+    log(f"  물품 낙찰 {n}건 조회")
+
+
+def step_thng_backfill(api, meta, tstore, now, checkpoint):
+    """물품 과거 낙찰을 한 달씩 과거로 (기본 24개월). 진행: meta.thng_backfill {cursor, oldest, done}"""
+    bf = meta.setdefault("thng_backfill", {})
+    if bf.get("done"):
+        return
+    target = (now - dt.timedelta(days=round(30.44 * RECENT_FIRST_MONTHS))).strftime("%Y%m01")
+    cursor = bf.get("cursor") or now.strftime("%Y%m%d")
+    while True:
+        cur = dt.datetime.strptime(cursor, "%Y%m%d").replace(tzinfo=KST)
+        if cursor < target:
+            bf["done"], bf["cursor"] = True, None
+            log("[물품과거] 완료")
+            return
+        if api.remaining("scsbid") < THNG_RESERVE or api.remaining("bid") < REGION_RESERVE or api.time_left() < 20:
+            log(f"[물품과거] 오늘 몫 끝, 커서 {cursor}")
+            return
+        bgn = cur.replace(day=1, hour=0, minute=0)
+        end = cur.replace(hour=23, minute=59)
+        log(f"[물품과거] {bgn:%Y-%m-%d} ~ {end:%Y-%m-%d}")
+        cnt = 0
+        for it in api.fetch_range("thng_list", bgn, end):
+            tstore.merge(it, None)
+            cnt += 1
+        # 기초금액은 공고 쪽이라 개찰보다 먼저 올라온다 — 과거로 가며 다음 달 처리 때 앞 달 개찰분도 채워진다
+        for it in api.fetch_range("thng_bsis", bgn, end):
+            enrich_thng(tstore, it)
+        cursor = bf["cursor"] = (bgn - dt.timedelta(days=1)).strftime("%Y%m%d")
+        bf["oldest"] = bgn.strftime("%Y%m%d")
+        log(f"  물품 낙찰 {cnt}건")
+        checkpoint()
+
+
 def step_region_fill(api, meta, store, now, checkpoint):
     """과거 낙찰 레코드에 참가가능지역(rgn)을 채운다. 참가수 예측에 쓰임(시·군 제한이면 참가가 적다).
     공고 게시 달 단위로 최신 → 가장 오래된 낙찰 달까지 한 번 훑는다. 진행: meta.rgn_fill {cursor: YYYYMM, done}"""
@@ -1106,6 +1171,7 @@ def main():
     api = Api(key, meta, started + MAX_MINUTES * 60)
     cache = NoticeCache()
     store = ScsbidStore()
+    tstore = ThngStore()
     ostore = OpeningStore()
     errors = []
 
@@ -1113,22 +1179,23 @@ def main():
         cache.save()
         ostore.save()
         files_s, counts_s = store.save()
+        files_t, counts_t = tstore.save()
         files_o, counts_o = ostore.files()
         bids = cache.bids(now)
         changed = write_if_changed(DATA / "bids.json", dumps({"items": bids, "v": SCHEMA_VERSION}))
         changed = write_lic_map(cache) or changed
         old_files = meta.get("files", {})
-        meta["files"] = {"scsbid": files_s, "opening": files_o}
+        meta["files"] = {"scsbid": files_s, "opening": files_o, "thng": files_t}
         meta["counts"] = {"bids": len(bids), "scsbid": counts_s, "opening": counts_o,
-                          "scsbid_total": sum(counts_s.values())}
+                          "scsbid_total": sum(counts_s.values()), "thng": counts_t, "thng_total": sum(counts_t.values())}
         meta["v"] = SCHEMA_VERSION
-        if changed or store.dirty or ostore.dirty or old_files != meta["files"]:
+        if changed or store.dirty or tstore.dirty or ostore.dirty or old_files != meta["files"]:
             meta["updated_at"] = now_kst().isoformat(timespec="seconds")
         meta["last_run"] = {"at": now_kst().isoformat(timespec="seconds"),
                             "minutes": round((time.time() - started) / 60, 1),
                             "calls": dict(api.calls), "errors": errors[-20:]}
         write_if_changed(DATA / "meta.json", json.dumps(meta, ensure_ascii=False, indent=1, sort_keys=True))
-        store.dirty = False
+        store.dirty = tstore.dirty = False
         if final:
             log(f"저장 완료: 공고 {len(bids)}건, 낙찰 {sum(counts_s.values())}건, 상세 {sum(counts_o.values())}건")
 
@@ -1141,6 +1208,8 @@ def main():
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all, reserve=DETAIL_RESERVE)),
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all, horizon)),
         ("지역보강", lambda: step_region_fill(api, meta, store, now, save_all)),
+        ("물품최근", lambda: step_thng_recent(api, meta, tstore, now)),
+        ("물품과거", lambda: step_thng_backfill(api, meta, tstore, now, save_all)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all)),
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all)),
     ]
