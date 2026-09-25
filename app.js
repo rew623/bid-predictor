@@ -177,12 +177,17 @@ const Data = {
 // ============================================================ 예측
 function recOrg(r){ return r.org || r.dmd || ''; }
 
+const sameRng = (a, b) => !!(a && b && a[0] === b[0] && a[1] === b[1]);
+const rngText = (rng) => !rng ? '' : (rng[0] != null && rng[1] != null && -rng[0] === rng[1]) ? `±${rng[1]}%` : `${rng[0] ?? '?'}~+${rng[1] ?? '?'}%`;
+
 function filterRecords(recs, o){
   const cut = o.recent ? monthsAgo(12) : '';
   return recs.filter(r =>
     r.sr != null &&
     (!o.sggs?.size || o.sggs.has(r.sgg)) &&
     (!o.lics?.size || (r.lic || []).some(l => o.lics.has(l))) &&
+    (!o.rng || sameRng(r.rng, o.rng)) &&
+    (!o.org || recOrg(r) === o.org) &&
     (!cut || (r.date || '') >= cut) &&
     (!o.useBase || !o.base || (r.base && Math.abs(r.base - o.base) <= o.base * 0.4)) &&
     (!o.useCnt || !o.cnt || (r.cnt != null && Math.abs(r.cnt - o.cnt) <= 2))
@@ -212,22 +217,157 @@ function predictFrom(rows){
   };
 }
 
-/** 공고 목록용 간단 예측: 같은 시도 + 면허 겹침, 최근 24개월. 표본이 적으면 면허 무관으로 넓힌다. */
+// ---------- 낙찰확률 (투찰 사정률 기준) — 설계: CLAUDE.md "낙찰확률 곡선"
+/** 투찰금액 → 투찰 사정률 x = ((투찰금액 − A) ÷ 낙찰하한율 + A) ÷ 기초금액 × 100.
+ *  x ≥ 실제 사정율 S ⟺ 투찰금액 ≥ 낙찰하한가. bidAmount 의 역함수. */
+function bidToSr(amt, base, a, floor){
+  if(!amt || !base) return null;
+  a = a || 0; floor = floor || DEFAULT_FLOOR;
+  const x = ((amt - a) / (floor / 100) + a) / base * 100;
+  return x > 90 && x < 110 ? x : null;
+}
+
+/** 공고 한 건의 승리 구간 [S, W): 내가 투찰 사정률 x 로 썼다면 S ≤ x < W 일 때 낙찰(다른 업체는 그대로라고 가정).
+ *  S = 예정가격 ÷ 기초금액, W = 실제 낙찰자의 투찰 사정률.
+ *  개찰 상세(op)가 있으면 정확한 예정가격과 "x ≥ S 인 투찰 중 최소"를 W 로 쓴다 (적격심사 탈락한 1순위 보정). */
+function winWindow(r, op){
+  const base = op?.base || r.base, plan = op?.plan || r.plan;
+  if(!base || !plan) return null;
+  const S = plan / base * 100;
+  const a = r.a || 0, floor = r.floor || DEFAULT_FLOOR;
+  let W = null;
+  if(op?.r?.length){
+    for(const row of op.r){
+      const x = bidToSr(row[2], base, a, floor);
+      if(x != null && x >= S && (W == null || x < W)) W = x;
+    }
+  }
+  if(W == null && r.amt) W = bidToSr(r.amt, base, a, floor);
+  if(W == null || !(W - S >= 0 && W - S < 1)) return null;
+  return {S, W};
+}
+
+const MONTH_MS = 2629746000;
+/** 가중치: 최근일수록 exp(−경과개월/12), 기준 시·도와 같으면 ×2 */
+function recWeight(r, now, sido){
+  const age = Math.max(0, (now - (parseKst(r.date)?.getTime() ?? now)) / MONTH_MS);
+  return Math.exp(-age / 12) * (sido && r.sido === sido ? 2 : 1);
+}
+const median = (vals) => { const s = vals.filter(v => v != null && isFinite(v)).sort((a, b) => a - b); return s.length ? quantile(s, .5) : null; };
+
+// 97.000 ~ 103.000% 를 0.001 간격(6,001칸)으로 본다
+const G0 = 97, GS = 0.001, GN = 6000;
+const gIdx = (x) => Math.round((x - G0) / GS);
+const gX = (i) => +(G0 + i * GS).toFixed(3);
+const curveSmooth = () => LS.get('curveSmooth', 0.01);
+
+/** 낙찰확률 곡선. 과거 공고마다 승리 구간 [S, W) 를 차분 배열로 쌓고 누적합 ÷ 가중치 합 = 그 x 의 과거 낙찰 확률.
+ *  ±smooth %p 이동평균으로 잡음을 줄여 최대점(추천 x*)을 고른다. */
+function winCurve(rows, {now=Date.now(), sido=null, opening=null, smooth=curveSmooth()}={}){
+  const diff = new Float64Array(GN + 2);
+  let total = 0, n = 0, rnd = 0, rndW = 0;
+  const cnts = [], sList = [];
+  for(const r of rows){
+    const w = winWindow(r, opening?.get(r.id));
+    if(!w) continue;
+    const wt = recWeight(r, now, sido);
+    const i0 = Math.max(0, Math.ceil((w.S - G0) / GS - 1e-9));
+    const i1 = Math.min(GN + 1, Math.ceil((w.W - G0) / GS - 1e-9));   // S ≤ x_i < W 인 칸
+    if(i1 > i0){ diff[i0] += wt; diff[i1] -= wt; }
+    total += wt; n++;
+    sList.push([w.S, wt]);
+    if(r.cnt){ rnd += wt / r.cnt; rndW += wt; cnts.push(r.cnt); }
+  }
+  if(n < 5) return null;
+  const raw = new Float64Array(GN + 1);
+  for(let i = 0, c = 0; i <= GN; i++){ c += diff[i]; raw[i] = c / total; }
+  const k = Math.max(0, Math.round(smooth / GS));
+  const pre = new Float64Array(GN + 2);
+  for(let i = 0; i <= GN; i++) pre[i + 1] = pre[i] + raw[i];
+  const sm = new Float64Array(GN + 1);
+  for(let i = 0; i <= GN; i++){ const lo = Math.max(0, i - k), hi = Math.min(GN, i + k); sm[i] = (pre[hi + 1] - pre[lo]) / (hi - lo + 1); }
+  let bi = 0;
+  for(let i = 1; i <= GN; i++) if(sm[i] > sm[bi]) bi = i;
+  const at = (x) => { const i = gIdx(x); return i >= 0 && i <= GN ? sm[i] : 0; };
+  // 서로 0.05%p 이상 떨어진 상위 봉우리
+  const gap = Math.max(50, 3 * k);
+  const order = [...sm.keys()].sort((a, b) => sm[b] - sm[a]);
+  const peaks = [];
+  for(const i of order){
+    if(sm[i] <= 0 || peaks.length >= 3) break;
+    if(peaks.every(p => Math.abs(p - i) > gap)) peaks.push(i);
+  }
+  // 안전 범위: 최대점 주변에서 확률이 최대의 90% 이상인 연속 구간
+  let lo = bi, hi = bi;
+  while(lo > 0 && sm[lo - 1] >= sm[bi] * 0.9) lo--;
+  while(hi < GN && sm[hi + 1] >= sm[bi] * 0.9) hi++;
+  // 그림 범위: S 분포 1~99% 와 최대점을 포함
+  const sSorted = sList.map(v => v[0]).sort((a, b) => a - b);
+  const vMin = Math.max(G0, Math.floor(Math.min(quantile(sSorted, .01), gX(bi) - 0.3) * 10) / 10);
+  const vMax = Math.min(G0 + GN * GS, Math.ceil(Math.max(quantile(sSorted, .99), gX(bi) + 0.3) * 10) / 10);
+  const random = rndW ? rnd / rndW : null;   // 아무 전략 없는 평균 업체의 낙찰 확률 (1 / 참가업체 수)
+  return {n, total, smooth, at, raw, sm, random, cntMedian: median(cnts), sList, view: [vMin, vMax],
+    best: {x: gX(bi), p: sm[bi]}, peaks: peaks.map(i => ({x: gX(i), p: sm[i]})), safe: {lo: gX(lo), hi: gX(hi)}};
+}
+/** 곡선의 확률은 표본 공고들의 참가업체 수 기준 → 이 공고의 예상 참가업체 수로 보정 (승리 구간 폭 ≈ 1/참가수) */
+const adjustP = (wc, p, nExp) => (wc?.cntMedian && nExp) ? p * wc.cntMedian / nExp : p;
+const liftOf = (wc, p) => wc?.random ? p / wc.random : null;
+
+/** 예상 참가업체 수 = 비슷한 과거 공고 cnt 중앙값 (같은 발주기관 → 같은 면허·비슷한 금액 → 같은 지역 순, 5건 이상인 첫 단계) */
+function expectedCnt(pool, notice){
+  const amt = notice.base || notice.est;
+  const lic = new Set(notice.lic || []);
+  const org = recOrg(notice);
+  const steps = [
+    (r) => org && recOrg(r) === org,
+    (r) => (!lic.size || (r.lic || []).some(l => lic.has(l))) && (!amt || (r.base && r.base >= amt / 2 && r.base <= amt * 2)),
+    () => true,
+  ];
+  for(const f of steps){
+    const c = pool.filter(r => r.cnt && f(r)).map(r => r.cnt);
+    if(c.length >= 5) return {n: median(c), k: c.length};
+  }
+  return null;
+}
+
+/** 공고 목록용 간단 예측. 평균 사정율: 같은 시도 최근 24개월 → 면허 겹침(10건↑) → 예가범위 같음(30건↑).
+ *  낙찰확률 곡선: 같은 시도 최근 24개월 → 예가범위 같음(30건↑) (면허로는 쪼개지 않음). 조건별 결과는 재사용 */
+const qpCache = new Map();
 function quickPredict(notice){
   const store = Data.scsbid[notice.sido];
   if(!store) return null;
-  const cut = monthsAgo(24);
-  const pool = store.recs.filter(r => r.sr != null && (r.date||'') >= cut);
-  let rows = pool;
-  let note = '';
-  if(notice.lic?.length){
-    const lic = new Set(notice.lic);
-    const withLic = pool.filter(r => (r.lic||[]).some(l => lic.has(l)));
-    if(withLic.length >= 10) rows = withLic; else note = '면허 무관';
+  if(notice.kind && notice.kind !== '공사') return null;
+  const lics = [...(notice.lic || [])].sort();
+  const key = [notice.sido, lics.join(','), (notice.rng || []).join(','), curveSmooth()].join('|');
+  if(!qpCache.has(key)){
+    const cut = monthsAgo(24);
+    const pool = store.recs.filter(r => r.sr != null && (r.date||'') >= cut);
+    let rows = pool;
+    const notes = [];
+    if(lics.length){
+      const lic = new Set(lics);
+      const withLic = rows.filter(r => (r.lic||[]).some(l => lic.has(l)));
+      if(withLic.length >= 10) rows = withLic; else notes.push('면허 무관');
+    }
+    if(notice.rng){
+      const withRng = rows.filter(r => sameRng(r.rng, notice.rng));
+      if(withRng.length >= MIN_SAMPLE) rows = withRng;
+    }
+    const p = predictFrom(rows);
+    const op = Data.opening[notice.sido]?.bids;
+    const rngPool = notice.rng ? pool.filter(r => sameRng(r.rng, notice.rng)) : [];
+    const curveRows = rngPool.length >= MIN_SAMPLE ? rngPool : pool;   // 곡선은 면허로 쪼개지 않는다
+    qpCache.set(key, p ? {sr: p.mean, n: p.n, note: notes.join(' · '), pool, wc: winCurve(curveRows, {sido: notice.sido, opening: op})} : null);
   }
-  const p = predictFrom(rows);
-  if(!p) return null;
-  return {sr: p.mean, n: p.n, note, bid: bidAmount(notice.base, p.mean, notice.a, notice.floor)};
+  const q = qpCache.get(key);
+  if(!q) return null;
+  const ec = expectedCnt(q.pool, notice);
+  const x = q.wc?.best.x;
+  const winP = q.wc ? adjustP(q.wc, q.wc.best.p, ec?.n) : null;
+  const amt = notice.base || notice.est;
+  return {...q, bestSr: x, winP, lift: q.wc ? liftOf(q.wc, q.wc.best.p) : null, cnt: ec?.n,
+    value: winP != null && amt ? winP * amt : null,
+    bid: bidAmount(notice.base, x ?? q.sr, notice.a, notice.floor)};
 }
 
 // ============================================================ 차트 (SVG)
@@ -270,6 +410,46 @@ function catBars(items, {h=130, valueFmt=(v)=>v, refLine=null, labelEvery=1}){
   return `<div class="chart"><svg viewBox="0 0 ${W} ${H+16}" role="img"><line x1="0" y1="${H}" x2="${W}" y2="${H}" stroke="var(--border)"/>${bars}${ref}</svg></div>`;
 }
 
+/** 여러 계열을 같은 가로축에 겹쳐 그린다. 계열마다 자기 최댓값 기준으로 높이를 맞춘다(모양 비교용).
+ *  series: [{pts:[{x, y}], color, label, fill, bars}], marks: [{x, color, label}] */
+function plot(series, {min, max, h=150, marks=[], xLabel=(x)=>x.toFixed(2)}){
+  const W = 360, H = h, X = (x) => (x - min) / (max - min || 1) * W;
+  const body = series.filter(s => s.pts.length).map(s => {
+    const my = Math.max(maxOf(s.pts.map(p => p.y)), 1e-12);
+    const Y = (y) => H - y / my * (H - 26);
+    if(s.bars){
+      const bw = s.pts.length > 1 ? X(s.pts[1].x) - X(s.pts[0].x) : 4;
+      return s.pts.map(p => p.y ? `<rect x="${X(p.x).toFixed(1)}" y="${Y(p.y).toFixed(1)}" width="${Math.max(bw - 0.6, 0.8).toFixed(1)}" height="${(H - Y(p.y)).toFixed(1)}" fill="${s.color}" opacity=".22"/>` : '').join('');
+    }
+    const d = s.pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join('');
+    return (s.fill ? `<path d="${d}L${X(s.pts.at(-1).x).toFixed(1)},${H}L${X(s.pts[0].x).toFixed(1)},${H}Z" fill="${s.color}" opacity=".12"/>` : '') +
+      `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.8" stroke-linejoin="round"/>`;
+  }).join('');
+  const ms = marks.filter(m => m.x >= min && m.x <= max).map((m, i) => {
+    const x = X(m.x).toFixed(1);
+    const anchor = X(m.x) > W*0.8 ? 'end' : X(m.x) < W*0.2 ? 'start' : 'middle';
+    return `<line x1="${x}" y1="${12 + i*11}" x2="${x}" y2="${H}" stroke="${m.color}" stroke-width="1.5" stroke-dasharray="3,3"/>
+      <text x="${x}" y="${9 + i*11}" font-size="9.5" fill="${m.color}" text-anchor="${anchor}" font-weight="600">${esc(m.label)}</text>`;
+  }).join('');
+  const ticks = [min, (min + max) / 2, max].map((t, i) =>
+    `<text x="${X(t).toFixed(1)}" y="${H + 13}" font-size="9.5" fill="var(--text-faint)" text-anchor="${['start','middle','end'][i]}">${xLabel(t)}</text>`).join('');
+  const legend = series.filter(s => s.label).map(s => `<span><i style="background:${s.color};${s.bars ? 'opacity:.35' : ''}"></i>${esc(s.label)}</span>`).join('');
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H + 16}" role="img"><line x1="0" y1="${H}" x2="${W}" y2="${H}" stroke="var(--border)"/>${body}${ms}${ticks}</svg></div>
+    ${legend ? `<div class="legend">${legend}</div>` : ''}`;
+}
+/** [값, 가중치] 목록 → 구간별 합 (막대/밀도용) */
+function binPts(pairs, min, max, step){
+  const n = Math.max(1, Math.round((max - min) / step)), out = Array.from({length: n}, (_, i) => ({x: min + i * step, y: 0}));
+  for(const [v, w] of pairs){ if(v >= min && v < max) out[Math.min(n - 1, Math.floor((v - min) / step + 1e-9))].y += (w ?? 1); }
+  return out;
+}
+/** 곡선 → 그림용 점 (0.01%p 간격) */
+function curvePts(wc){
+  const [a, b] = wc.view, out = [];
+  for(let i = gIdx(a); i <= gIdx(b); i += 10) out.push({x: gX(i), y: wc.sm[i]});
+  return out;
+}
+
 const loadingHtml = (t='불러오는 중…') => `<div class="loading"><span class="spinner"></span>${esc(t)}</div>`;
 const noDetailHtml = (sido) => `<div class="empty">이 지역(${esc(sido)})은 상세 데이터 미수집</div>`;
 
@@ -285,7 +465,7 @@ function switchTab(tab, push=true){
   $('pageTitle').textContent = TAB_TITLES[tab];
   if(push && location.hash !== '#' + tab) history.pushState(null, '', '#' + tab);
   window.scrollTo(0, 0);
-  ({bids: renderBids, predict: renderPredictTab, watch: renderWatch, stats: renderStats, settings: renderSettings})[tab]();
+  ({bids: renderBidsTab, predict: renderPredictTab, watch: renderWatch, stats: renderStats, settings: renderSettings})[tab]();
 }
 
 // ============================================================ 입찰공고
@@ -302,26 +482,52 @@ function updateNewBadge(){
   el.hidden = !n;
 }
 
+const AMT_RANGES = [['0-1','1억 미만'], ['1-3','1~3억'], ['3-10','3~10억'], ['10-50','10~50억'], ['50-','50억 이상']];
+const BID_SORTS = [['close','마감 임박순'], ['new','최신 공고순'], ['amtDesc','금액 큰 순'], ['amtAsc','금액 작은 순'], ['win','낙찰확률 높은 순'], ['value','기대 수주액 순']];
+const QUICKS = [['all','진행중'], ['today','오늘 마감'], ['d3','3일 이내'], ['new','NEW'], ['watch','관심']];
+const WEEKDAYS = ['일','월','화','수','목','금','토'];
+let bidsQuick = LS.get('bidsFilter', {}).quick || 'all';
+
+const kstDay = (d) => new Date(d.getTime() + 9 * 3600000).toISOString().slice(0, 10);
+/** 오늘(KST) 기준 마감까지 남은 날짜 수 (달력 기준). 마감일 없으면 null */
+function closeDays(b, today){
+  if(!b.close) return null;
+  return Math.round((Date.parse(b.close.slice(0, 10)) - Date.parse(today)) / 86400000);
+}
+function groupLabel(days, close){
+  if(days == null) return '마감일 미정';
+  const d = new Date(close.slice(0, 10) + 'T00:00:00');
+  const md = `${d.getMonth() + 1}/${d.getDate()} (${WEEKDAYS[d.getDay()]})`;
+  return days === 0 ? `오늘 마감 · ${md}` : days === 1 ? `내일 마감 · ${md}` : `D-${days} · ${md}`;
+}
+
 function initBidsFilters(){
   const saved = LS.get('bidsFilter', {});
   const defSido = saved.sido ?? (Data.meta.detail?.regions?.[0] || '');
-  fillSelect($('bSido'), SIDOS, {value: defSido});
-  fillSelect($('bLic'), LICENSES, {value: saved.lic || ''});
+  fillSelect($('bSido'), SIDOS, {all:'시·도 전체', value: defSido});
+  fillSelect($('bLic'), LICENSES, {all:'면허 전체', value: saved.lic || ''});
+  fillSelect($('bAmt'), AMT_RANGES, {all:'금액 전체', value: saved.amt || ''});
+  fillSelect($('bSort'), BID_SORTS, {all:null, value: saved.sort || 'close'});
   fillBidsSgg(saved.sgg || '');
-  const onChange = () => {
-    LS.set('bidsFilter', {sido: $('bSido').value, sgg: $('bSgg').value, lic: $('bLic').value});
-    bidsShown = PAGE_SIZE; renderBids();
-  };
+  const onChange = () => { saveBidsFilter(); bidsShown = PAGE_SIZE; renderBids(); };
   $('bSido').addEventListener('change', () => { fillBidsSgg(''); onChange(); });
-  $('bSgg').addEventListener('change', onChange);
-  $('bLic').addEventListener('change', onChange);
+  ['bSgg','bLic','bAmt','bSort'].forEach(id => $(id).addEventListener('change', onChange));
   let t; $('bQuery').addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { bidsShown = PAGE_SIZE; renderBids(); }, 200); });
   $('bidsMore').addEventListener('click', () => { bidsShown += PAGE_SIZE; renderBids(); });
+  $('bidsKpis').addEventListener('click', (e) => {
+    const k = e.target.closest('[data-quick]');
+    if(!k) return;
+    bidsQuick = k.dataset.quick; onChange();
+  });
+}
+function saveBidsFilter(){
+  LS.set('bidsFilter', {sido: $('bSido').value, sgg: $('bSgg').value, lic: $('bLic').value,
+    amt: $('bAmt').value, sort: $('bSort').value, quick: bidsQuick});
 }
 function fillBidsSgg(value){
   const sido = $('bSido').value;
   const sggs = [...new Set((Data.bids||[]).filter(b => b.sido === sido && b.sgg).map(b => b.sgg))].sort();
-  fillSelect($('bSgg'), sggs, {value});
+  fillSelect($('bSgg'), sggs, {all:'시·군·구 전체', value});
   $('bSgg').disabled = !sido;
 }
 
@@ -329,67 +535,355 @@ let watchIds = new Set();
 async function renderBids(){
   const list = $('bidsList');
   if(!Data.bids){ list.innerHTML = loadingHtml(); await Data.loadBids(); fillBidsSgg(LS.get('bidsFilter', {}).sgg || ''); }
-  const sido = $('bSido').value, sgg = $('bSgg').value, lic = $('bLic').value;
+  const sido = $('bSido').value, sgg = $('bSgg').value, lic = $('bLic').value, sort = $('bSort').value;
+  const [aLo, aHi] = ($('bAmt').value || '-').split('-').map(v => v === '' ? null : +v * 1e8);
   const q = $('bQuery').value.trim().toLowerCase();
-  const now = new Date();
-  const rows = Data.bids.filter(b =>
-    (!sido || b.sido === sido) && (!sgg || b.sgg === sgg) &&
-    (!lic || (b.lic||[]).includes(lic)) &&
-    (!q || (b.nm||'').toLowerCase().includes(q) || (b.org||'').toLowerCase().includes(q)) &&
-    (!b.close || parseKst(b.close) >= now)
-  );
-  const newCount = rows.filter(isNew).length;
-  $('bidsInfo').innerHTML = `${fmtNum(rows.length)}건${newCount ? ` · <span class="new">NEW</span>${newCount}건` : ''}` +
-    (Data.meta.updated_at ? ` · 데이터 ${esc(Data.meta.updated_at.slice(0,16).replace('T',' '))} 기준` : '') +
-    (!sido ? ' · 시·도를 고르면 예상 사정율이 표시됩니다' : '');
+  const now = new Date(), today = kstDay(now);
+  watchIds = new Set((await WatchStore.list()).map(w => w.id));
+  const base = Data.bids.filter(b => {
+    const amt = b.base || b.est;
+    return (!sido || b.sido === sido) && (!sgg || b.sgg === sgg) &&
+      (!lic || (b.lic||[]).includes(lic)) &&
+      (aLo == null || (amt && amt >= aLo)) && (aHi == null || (amt && amt < aHi)) &&
+      (!q || (b.nm||'').toLowerCase().includes(q) || (b.org||'').toLowerCase().includes(q) || (b.dmd||'').toLowerCase().includes(q)) &&
+      (!b.close || parseKst(b.close) >= now);
+  });
+  const quickFn = {
+    all: () => true,
+    today: (b) => closeDays(b, today) === 0,
+    d3: (b) => { const d = closeDays(b, today); return d != null && d <= 3; },
+    new: isNew,
+    watch: (b) => watchIds.has(b.id),
+  };
+  if(!quickFn[bidsQuick]) bidsQuick = 'all';
+  $('bidsKpis').innerHTML = QUICKS.map(([k, label]) => {
+    const n = base.filter(quickFn[k]).length;
+    return `<button class="kpi ${k === bidsQuick ? 'on' : ''} ${k === 'today' && n ? 'red' : ''}" data-quick="${k}" type="button">
+      <span class="t">${label}</span><span class="v">${fmtNum(n)}</span></button>`;
+  }).join('');
+  const rows = base.filter(quickFn[bidsQuick]);
   // 방문 기록
   LS.set('lastVisit', now.toISOString());
   LS.set('bidsSeenAt', Date.now());
   $('newBadge').hidden = true;
 
+  const infoBase = Data.meta.updated_at ? `데이터 ${esc(Data.meta.updated_at.slice(0,16).replace('T',' '))} 기준` : '';
   if(!rows.length){
-    list.innerHTML = `<div class="empty">${Data.bids.length ? '조건에 맞는 진행중 공고가 없습니다.' : '아직 수집된 공고가 없습니다. 데이터 수집이 실행되면 표시됩니다.'}</div>`;
+    $('bidsInfo').innerHTML = infoBase;
+    list.innerHTML = `<div class="empty card">${Data.bids.length ? '조건에 맞는 진행중 공고가 없습니다.' : '아직 수집된 공고가 없습니다. 데이터 수집이 실행되면 표시됩니다.'}</div>`;
     $('bidsMore').hidden = true;
     return;
   }
   if(sido && Data.hasScsbid(sido) && !Data.scsbid[sido]){
     list.innerHTML = loadingHtml(`${sido} 낙찰 데이터 불러오는 중…`);
-    try{ await Data.loadScsbid(sido); }catch(e){ console.warn(e); }
+    try{ await Data.loadScsbid(sido); if(Data.hasDetail(sido)) await Data.loadOpening(sido); }catch(e){ console.warn(e); }
     if(currentTab !== 'bids' || $('bSido').value !== sido) return;
   }
-  watchIds = new Set((await WatchStore.list()).map(w => w.id));
+  const canWin = !!(sido && Data.scsbid[sido]);
+  const amtOf = (b) => b.base || b.est || 0;
+  const cmp = {
+    close: (a, b) => (a.close || '9999').localeCompare(b.close || '9999'),
+    new: (a, b) => (b.ntce || b.seen || '').localeCompare(a.ntce || a.seen || ''),
+    amtDesc: (a, b) => amtOf(b) - amtOf(a),
+    amtAsc: (a, b) => (amtOf(a) || Infinity) - (amtOf(b) || Infinity),
+    win: (a, b) => (quickPredict(b)?.winP ?? -1) - (quickPredict(a)?.winP ?? -1),
+    value: (a, b) => (quickPredict(b)?.value ?? -1) - (quickPredict(a)?.value ?? -1),
+  };
+  const needPred = sort === 'win' || sort === 'value';
+  rows.sort(cmp[needPred && !canWin ? 'close' : sort] || cmp.close);
+  $('bidsInfo').innerHTML = [`${fmtNum(rows.length)}건`, infoBase,
+    !sido ? '시·도를 고르면 예상 사정율·낙찰확률이 표시됩니다' : '',
+    needPred && !canWin ? '낙찰확률·기대 수주액 정렬은 낙찰 데이터가 있는 시·도를 골라야 적용됩니다' : ''].filter(Boolean).join(' · ');
+
   const shown = rows.slice(0, bidsShown);
-  list.innerHTML = shown.map(bidCard).join('');
+  const groupCount = {};
+  if(sort === 'close') rows.forEach(x => { const g = groupLabel(closeDays(x, today), x.close); groupCount[g] = (groupCount[g] || 0) + 1; });
+  let html = '', lastGroup = null;
+  for(const b of shown){
+    if(sort === 'close'){
+      const g = groupLabel(closeDays(b, today), b.close);
+      if(g !== lastGroup){
+        html += `<div class="b-group"><span>${esc(g)}</span><span class="cnt">${fmtNum(groupCount[g])}건</span></div>`;
+        lastGroup = g;
+      }
+    }
+    html += bidCard(b, today);
+  }
+  list.innerHTML = html;
   $('bidsMore').hidden = rows.length <= bidsShown;
+  $('bidsMore').textContent = `더 보기 (${fmtNum(rows.length - bidsShown)}건 남음)`;
 }
 
-function bidCard(b){
-  const dd = ddayLabel(b.close);
+function bidCard(b, today){
+  const days = closeDays(b, today);
+  const hh = b.close?.length > 10 ? b.close.slice(11, 16) : '';
+  const dd = days == null ? {big:'-', small:'마감 미정', cls:''}
+    : days < 0 || parseKst(b.close) < new Date() ? {big:'마감', small: b.close.slice(2, 10).replace(/-/g, '.'), cls:'closed'}
+    : days === 0 ? {big:'오늘', small: hh ? `${hh} 마감` : '마감', cls:'today'}
+    : {big:`D-${days}`, small: `${b.close.slice(5,10).replace('-','/')} ${hh}`, cls: days <= 2 ? 'soon' : ''};
   const qp = b.sido && Data.scsbid[b.sido] ? quickPredict(b) : null;
-  const price = b.base ? `기초 ${eok(b.base)}` : (b.est ? `추정 ${eok(b.est)}` : '');
-  const pred = qp
-    ? `<span>예상 사정율 <b>${pct(qp.sr, 3)}</b></span>
-       <span>추천 투찰가 <b>${qp.bid ? won(qp.bid) : '기초금액 미공개'}</b></span>
-       <span class="meta-line" style="margin:0;">${sampleText(qp.n)}${qp.note ? ` · ${qp.note}` : ''}</span>`
-    : (b.sido && !Data.hasScsbid(b.sido) ? '<span class="meta-line" style="margin:0;">이 지역 낙찰 데이터 없음</span>' : '');
-  return `<div class="bid">
-    <div class="bid-top">
-      <div>
-        <div class="bid-title">${isNew(b) ? '<span class="new">NEW</span>' : ''}${esc(b.nm)}</div>
-        <div class="bid-sub">${esc(b.org || b.dmd || '')} · ${esc([b.sido, b.sgg].filter(Boolean).join(' ') || '지역 미상')}${b.lic?.length ? ' · ' + esc(b.lic.join(', ')) : ''}${price ? ' · ' + price : ''}</div>
+  const amt = b.base || b.est;
+  const tags = [
+    `<span class="tag loc">${esc([b.sido, b.sgg].filter(Boolean).join(' ') || '지역 미상')}</span>`,
+    ...(b.lic || []).map(l => `<span class="tag lic">${esc(l)}</span>`),
+    b.rng ? `<span class="tag">예가 ${esc(rngText(b.rng))}</span>` : '',
+    b.floor ? `<span class="tag">하한 ${b.floor}%</span>` : '',
+  ].join('');
+  let pred = '';
+  if(qp){
+    pred = `<div class="b-pred">
+        <div class="pv"><span>예상 사정율</span><b>${pct(qp.sr, 3)}</b></div>
+        ${qp.bestSr != null ? `<div class="pv hl"><span>추천 투찰 사정률</span><b>${pct(qp.bestSr, 3)}</b></div>
+        <div class="pv"><span>예상 낙찰확률</span><b>${(qp.winP * 100).toFixed(2)}%${qp.lift ? ` <small class="lift">×${qp.lift.toFixed(1)}</small>` : ''}</b></div>` : ''}
+        <div class="pv"><span>추천 투찰가</span><b>${qp.bid ? won(qp.bid) : '기초금액 미공개'}</b></div>
+        ${qp.cnt ? `<div class="pv"><span>예상 참가</span><b>~${fmtNum(qp.cnt)}개사</b></div>` : ''}
       </div>
-      <button class="star ${watchIds.has(b.id) ? 'on' : ''}" data-watch="${esc(b.id)}" title="관심공고" type="button">${watchIds.has(b.id) ? '★' : '☆'}</button>
+      <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}${qp.value ? ` · 기대 수주액 ${eok(qp.value)}` : ''}</div>`;
+  }else if(b.sido && !Data.hasScsbid(b.sido)){
+    pred = '<div class="b-note">이 지역 낙찰 데이터 없음</div>';
+  }
+  const res = b.sido ? Data.scsbid[b.sido]?.byId.get(b.id) : null;
+  if(res?.amt) pred += `<div class="b-note result">개찰 결과 · ${res.sr != null ? `사정율 <b>${pct(res.sr, 3)}</b> · ` : ''}1위 ${esc(res.win || '-')} ${won(res.amt)}${res.rate ? ` (${pct(res.rate)})` : ''}${res.cnt ? ` · ${fmtNum(res.cnt)}개사 참가` : ''}</div>`;
+  const open = b.open ? `개찰 ${b.open.slice(5, 16).replace('-', '/')}` : '';
+  return `<article class="bcard ${dd.cls}">
+    <div class="b-dday"><b>${dd.big}</b><span>${esc(dd.small)}</span></div>
+    <div class="b-main">
+      <div class="b-title">${isNew(b) ? '<span class="new">NEW</span>' : ''}${esc(b.nm)}</div>
+      <div class="b-org">${esc(b.org || b.dmd || '')}${b.dmd && b.org && b.dmd !== b.org ? ` <span class="faint">· 수요 ${esc(b.dmd)}</span>` : ''}</div>
+      <div class="b-tags">${tags}</div>
     </div>
-    <div class="bid-pred"><span class="dday ${dd.urgent ? 'urgent' : ''}">${esc(dd.text)}</span>${pred}</div>
-    <div class="bid-actions">
+    <div class="b-side">
+      <button class="star ${watchIds.has(b.id) ? 'on' : ''}" data-watch="${esc(b.id)}" title="관심공고" type="button">${watchIds.has(b.id) ? '★' : '☆'}</button>
+      <div class="b-amt"><span>${b.base ? '기초금액' : b.est ? '추정가격' : ''}</span><b>${amt ? eok(amt) : '미공개'}</b></div>
+    </div>
+    ${pred}
+    <div class="b-actions">
       <button class="btn sm" data-predict="${esc(b.id)}" type="button">이 공고로 예측</button>
       ${b.url ? `<a class="btn line sm" href="${esc(b.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}
+      <span class="b-meta">${esc([b.no ? `${b.no}-${b.ord}` : '', open].filter(Boolean).join(' · '))}</span>
     </div>
-  </div>`;
+  </article>`;
+}
+
+// ============================================================ 실시간 공고 검색 (조달청 API 를 브라우저에서 직접 호출, 서비스키는 이 기기에만 저장)
+const LIVE_BASE = 'https://apis.data.go.kr/1230000/ad/BidPublicInfoService';
+const LIVE_ROWS = 100;
+// 업무구분별 오퍼레이션: [나라장터 검색조건 조회, 기본 목록 조회(검색조건이 안 될 때 대신), 기초금액 조회]
+const LIVE_KINDS = {
+  '공사': ['getBidPblancListInfoCnstwkPPSSrch', 'getBidPblancListInfoCnstwk', 'getBidPblancListInfoCnstwkBsisAmount'],
+  '용역': ['getBidPblancListInfoServcPPSSrch', 'getBidPblancListInfoServc', 'getBidPblancListInfoServcBsisAmount'],
+  '물품': ['getBidPblancListInfoThngPPSSrch', 'getBidPblancListInfoThng', 'getBidPblancListInfoThngBsisAmount'],
+  '외자': ['getBidPblancListInfoFrgcptPPSSrch', 'getBidPblancListInfoFrgcpt', null],
+  '기타': ['getBidPblancListInfoEtcPPSSrch', 'getBidPblancListInfoEtc', null],
+};
+const Live = {items: [], total: 0, page: 0, params: null, token: 0, kind: '공사', fallback: false};
+let bidsMode = LS.get('bidsMode', null);
+function apiKey(){
+  const k = String(LS.get('apiKey', '') || '').trim();
+  try{ return k.includes('%') ? decodeURIComponent(k) : k; }catch(e){ return k; }   // 인코딩 키를 넣어도 동작
+}
+const findNotice = (id) => Data.bids?.find(x => x.id === id) || Live.items.find(x => x.id === id);
+
+async function liveCall(op, params){
+  const q = new URLSearchParams({serviceKey: apiKey(), type: 'json', ...params});
+  const r = await fetch(`${LIVE_BASE}/${op}?${q}`);
+  const text = await r.text();
+  let j;
+  try{ j = JSON.parse(text); }
+  catch(e){
+    const m = text.match(/<returnAuthMsg>(.*?)<\/returnAuthMsg>|<resultMsg>(.*?)<\/resultMsg>/);
+    throw new Error(m ? (m[1] || m[2]) : `HTTP ${r.status}`);
+  }
+  const auth = j.OpenAPI_ServiceResponse?.cmmMsgHeader;
+  if(auth) throw new Error(auth.returnAuthMsg || auth.errMsg || '서비스키 오류');
+  const root = j.response || j, code = String(root.header?.resultCode ?? '00');
+  if(['03', 'INFO-200'].includes(code)) return {items: [], total: 0};
+  if(!['00', '0', '000', 'INFO-000'].includes(code)) throw new Error(`${root.header?.resultMsg || '조회 오류'} (${code})`);
+  let items = root.body?.items;
+  if(items && !Array.isArray(items)) items = items.item ?? items;
+  if(items && !Array.isArray(items)) items = [items];
+  return {items: (items || []).filter(x => x && typeof x === 'object'), total: +(root.body?.totalCount || 0)};
+}
+
+// API 응답 → 공고 항목 (scripts/collect.py 의 F_* 후보와 같은 이름들)
+const pickF = (it, ...ks) => { for(const k of ks){ const v = it[k]; if(v != null && String(v).trim() !== '') return v; } return null; };
+const numF = (v) => { if(v == null || String(v).trim() === '') return null; const n = +String(v).replace(/[,%원\s]/g, ''); return isFinite(n) ? n : null; };
+function normDt(v){
+  const d = String(v || '').replace(/\D/g, '');
+  return d.length >= 12 ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)} ${d.slice(8,10)}:${d.slice(10,12)}`
+    : d.length >= 8 ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}` : null;
+}
+const SIDO_PREFIX = [['서울','서울'],['부산','부산'],['대구','대구'],['인천','인천'],['광주','광주'],['대전','대전'],['울산','울산'],['세종','세종'],
+  ['경기','경기'],['강원','강원'],['충청북','충북'],['충북','충북'],['충청남','충남'],['충남','충남'],['전라북','전북'],['전북','전북'],
+  ['전라남','전남'],['전남','전남'],['경상북','경북'],['경북','경북'],['경상남','경남'],['경남','경남'],['제주','제주']];
+function parseRegion(...texts){
+  for(const t of texts){
+    const s = String(t || '').trim();
+    const hit = SIDO_PREFIX.find(([k]) => s.startsWith(k));
+    if(hit) return {sido: hit[1], sgg: (s.split(/\s+/)[1] || '').match(/^\S+[시군구]$/)?.[0]};
+  }
+  return {};
+}
+function normLic(raw){
+  if(!raw) return undefined;
+  const s = String(raw).trim().replace(/공사업$|업$/, '');
+  return [LICENSES.includes(s) ? s : String(raw).trim()];
+}
+function liveNotice(it){
+  const no = String(pickF(it, 'bidNtceNo') || '').trim(), ord = String(pickF(it, 'bidNtceOrd') ?? '000').trim();
+  const org = pickF(it, 'ntceInsttNm'), dmd = pickF(it, 'dminsttNm');
+  const {sido, sgg} = parseRegion(pickF(it, 'cnstrtsiteRgnNm', 'cnstrtSiteRgnNm', 'cnstwkSiteRgnNm'), dmd, org);
+  const b = {id: `${no}-${ord}`, no, ord, nm: String(pickF(it, 'bidNtceNm', 'cnstwkNm') || '').trim(), org, dmd, sido, sgg,
+    lic: normLic(pickF(it, 'mainCnsttyNm')), est: numF(pickF(it, 'presmptPrce', 'presmptPrc')), base: numF(pickF(it, 'bssamt', 'bsisAmt')),
+    floor: numF(pickF(it, 'sucsfbidLwltRate', 'scsbdLwltRate')), ntce: normDt(pickF(it, 'bidNtceDt', 'rgstDt')),
+    close: normDt(pickF(it, 'bidClseDt')), open: normDt(pickF(it, 'opengDt', 'rlOpengDt')),
+    url: pickF(it, 'bidNtceDtlUrl', 'bidNtceUrl'), cancel: /취소/.test(pickF(it, 'ntceKindNm') || ''), live: true, kind: Live.kind};
+  Object.keys(b).forEach(k => { if(b[k] == null || b[k] === '') delete b[k]; });
+  return b;
+}
+/** 목록 API 에는 기초금액·A값이 없어서, 예측할 때 공고번호로 한 번 더 조회해 채운다 */
+async function enrichLive(b){
+  const op = LIVE_KINDS[b.kind || '공사']?.[2];
+  if(!b.live || b.bsisTried || !apiKey() || !op) return;
+  b.bsisTried = true;
+  try{
+    const {items} = await liveCall(op, {inqryDiv: '2', bidNtceNo: b.no, numOfRows: 10, pageNo: 1});
+    const it = items.find(x => String(x.bidNtceOrd ?? '') === b.ord) || items[0];
+    if(!it) return;
+    const base = numF(pickF(it, 'bssamt', 'bsisAmt', 'bssAmt'));
+    if(base) b.base = base;
+    const aTotal = numF(pickF(it, 'aValue', 'aVal', 'aAmt'));
+    const parts = ['npnInsrprm', 'mrfnHealthInsrprm', 'odsnLngtrmrcprInsrprm', 'rtrfundNon', 'sftyMngcst', 'sftyChckMngcst', 'qltyMngcst'].map(k => numF(it[k])).filter(v => v != null);
+    if(aTotal != null || parts.length) b.a = aTotal ?? parts.reduce((x, y) => x + y, 0);
+    const net = numF(pickF(it, 'pureCnstrctCst', 'pureCnstrtnCst', 'netCnstrctCst', 'cnstrtnAbsltPrc', 'pureCnstcst'));
+    if(net) b.net = net;
+    let lo = numF(pickF(it, 'rsrvtnPrceRngBgnRate', 'rsrvtnPrceRngBgnRt')), hi = numF(pickF(it, 'rsrvtnPrceRngEndRate', 'rsrvtnPrceRngEndRt'));
+    if(lo != null || hi != null){ if(lo > 0) lo = -lo; b.rng = [lo, hi]; }
+  }catch(e){ console.warn('기초금액 조회 실패', e); }
+}
+
+function initLive(){
+  fillSelect($('lRgn'), SIDOS, {all:'지역 전체'});
+  fillSelect($('lLic'), LICENSES, {all:'업종 전체'});
+  fillSelect($('lAmt'), AMT_RANGES, {all:'추정가격 전체'});
+  const setPeriod = (days) => { const t = new Date(); $('lTo').value = kstDay(t); $('lFrom').value = kstDay(new Date(t - days * 86400000)); };
+  setPeriod(7);
+  $('lPeriod').addEventListener('click', (e) => {
+    const d = e.target.dataset?.d; if(!d) return;
+    setPeriod(+d);
+    $('lPeriod').querySelectorAll('button').forEach(b => b.classList.toggle('on', b === e.target));
+  });
+  ['lFrom', 'lTo'].forEach(id => $(id).addEventListener('change', () => $('lPeriod').querySelectorAll('button').forEach(b => b.classList.remove('on'))));
+  fillSelect($('lKind'), Object.keys(LIVE_KINDS), {all:null, value:'공사'});
+  $('lKind').addEventListener('change', () => { $('lLic').disabled = $('lKind').value !== '공사'; if($('lLic').disabled) $('lLic').value = ''; });
+  $('lSearch').addEventListener('click', () => liveSearch());
+  ['lQuery', 'lOrg', 'lDmd'].forEach(id => $(id).addEventListener('keydown', (e) => { if(e.key === 'Enter') liveSearch(); }));
+  $('liveMore').addEventListener('click', () => liveSearch(true));
+  $('bMode').addEventListener('click', (e) => {
+    const v = e.target.dataset?.v; if(!v) return;
+    bidsMode = v; LS.set('bidsMode', v); renderBidsTab();
+  });
+}
+function renderBidsTab(){
+  const mode = bidsMode || (apiKey() ? 'live' : 'saved');
+  $('bMode').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
+  $('bidsSaved').hidden = mode !== 'saved';
+  $('bidsLive').hidden = mode !== 'live';
+  if(mode === 'saved') return renderBids();
+  $('liveKeyHint').hidden = !!apiKey();
+  if(apiKey() && !Live.params) liveSearch();
+}
+
+function liveParams(){
+  const [aLo, aHi] = ($('lAmt').value || '-').split('-').map(v => v === '' ? null : +v * 1e8);
+  const p = {inqryDiv: $('lDiv').value, inqryBgnDt: $('lFrom').value.replace(/-/g, '') + '0000', inqryEndDt: $('lTo').value.replace(/-/g, '') + '2359'};
+  const set = (k, v) => { if(v != null && v !== '') p[k] = v; };
+  set('bidNtceNm', $('lQuery').value.trim());
+  set('ntceInsttNm', $('lOrg').value.trim());
+  set('dminsttNm', $('lDmd').value.trim());
+  set('prtcptLmtRgnNm', $('lRgn').value);
+  set('indstrytyNm', $('lLic').value);
+  set('presmptPrceBgn', aLo);
+  set('presmptPrceEnd', aHi);
+  if($('lOpen').checked) p.bidClseExcpYn = 'Y';
+  return p;
+}
+async function liveSearch(more=false){
+  const list = $('liveList');
+  if(!apiKey()){ $('liveKeyHint').hidden = false; return; }
+  if(!$('lFrom').value || !$('lTo').value || $('lFrom').value > $('lTo').value){
+    $('liveInfo').textContent = '조회 기간을 확인하세요.'; return;
+  }
+  const token = ++Live.token;
+  if(!more){
+    Live.params = liveParams(); Live.items = []; Live.page = 0; Live.total = 0; Live.kind = $('lKind').value; Live.fallback = false;
+    list.innerHTML = loadingHtml('나라장터에서 조회 중…');
+    $('liveMore').hidden = true;
+  }
+  $('liveMore').disabled = true;
+  try{
+    const [srchOp, listOp] = LIVE_KINDS[Live.kind];
+    const page = {numOfRows: LIVE_ROWS, pageNo: Live.page + 1};
+    let res;
+    if(!Live.fallback){
+      try{ res = await liveCall(srchOp, {...Live.params, ...page}); }
+      catch(e){
+        if(/서비스키|SERVICE_KEY|SERVICE ACCESS|ACCESS_DENIED|UNREGISTERED|등록되지/.test(e.message)) throw e;
+        Live.fallback = true;   // 검색조건 조회가 안 되면 기본 목록 조회 + 앱에서 거르기
+      }
+    }
+    if(Live.fallback){
+      const {inqryDiv, inqryBgnDt, inqryEndDt} = Live.params;
+      res = await liveCall(listOp, {inqryDiv, inqryBgnDt, inqryEndDt, ...page});
+    }
+    if(token !== Live.token) return;
+    Live.page++; Live.total = res.total;
+    const have = new Set(Live.items.map(b => b.id));
+    const P2 = Live.params, low = (v) => String(v || '').toLowerCase();
+    const keep = (n) => !Live.fallback || (
+      (!P2.bidNtceNm || low(n.nm).includes(low(P2.bidNtceNm))) &&
+      (!P2.ntceInsttNm || low(n.org).includes(low(P2.ntceInsttNm))) &&
+      (!P2.dminsttNm || low(n.dmd).includes(low(P2.dminsttNm))) &&
+      (!P2.prtcptLmtRgnNm || n.sido === P2.prtcptLmtRgnNm) &&
+      (!P2.indstrytyNm || (n.lic || []).includes(P2.indstrytyNm)) &&
+      (!P2.presmptPrceBgn || (n.est || 0) >= P2.presmptPrceBgn) &&
+      (!P2.presmptPrceEnd || (n.est || Infinity) < P2.presmptPrceEnd) &&
+      (!P2.bidClseExcpYn || !n.close || parseKst(n.close) >= new Date()));
+    for(const it of res.items){
+      const n = liveNotice(it);
+      if(n.no && !have.has(n.id) && keep(n)){ have.add(n.id); Live.items.push(n); }
+    }
+  }catch(e){
+    if(token !== Live.token) return;
+    $('liveInfo').textContent = '';
+    list.innerHTML = `<div class="empty card">조회하지 못했습니다: ${esc(e.message)}<br><span class="faint">기간이 너무 길면 줄여 보세요. 서비스키 오류라면 설정 탭에서 키를 확인하세요 (활용 승인 직후에는 1~2시간 걸릴 수 있습니다).</span></div>`;
+    return;
+  }finally{ $('liveMore').disabled = false; }
+  renderLive();
+}
+async function renderLive(){
+  const list = $('liveList'), sido = $('lRgn').value;
+  if(sido){
+    Live.items.forEach(b => { if(!b.sido) b.sido = sido; });
+    if(Data.hasScsbid(sido) && !Data.scsbid[sido]){ try{ await Data.loadScsbid(sido); }catch(e){ console.warn(e); } }
+  }
+  watchIds = new Set((await WatchStore.list()).map(w => w.id));
+  // 변경공고는 같은 공고번호의 마지막 차수만, 취소공고 제외
+  const maxOrd = {};
+  Live.items.forEach(b => { if(!maxOrd[b.no] || b.ord > maxOrd[b.no]) maxOrd[b.no] = b.ord; });
+  const rows = Live.items.filter(b => b.ord === maxOrd[b.no] && !b.cancel);
+  const today = kstDay(new Date());
+  $('liveInfo').innerHTML = [`나라장터 실시간 ${esc(Live.kind)} ${fmtNum(Live.total)}건 중 ${fmtNum(Math.min(Live.total, Live.page * LIVE_ROWS))}건 조회${Live.fallback ? `(조건은 앱에서 거름 → ${fmtNum(rows.length)}건)` : ''}`,
+    Live.kind !== '공사' ? '예측은 공사만 제공' : '',
+    !sido ? '지역을 고르면 예상 사정율·낙찰확률도 표시됩니다' : ''].filter(Boolean).join(' · ');
+  list.innerHTML = rows.length ? rows.map(b => bidCard(b, today)).join('') : '<div class="empty card">조건에 맞는 공고가 없습니다.</div>';
+  const left = Math.max(0, Live.total - Live.page * LIVE_ROWS);
+  $('liveMore').hidden = !left;
+  $('liveMore').textContent = `더 보기 (${fmtNum(left)}건 남음)`;
 }
 
 async function toggleWatch(id, btn){
-  const b = Data.bids.find(x => x.id === id);
+  const b = findNotice(id);
   if(!b) return;
   if(watchIds.has(id)){
     await WatchStore.remove(id); watchIds.delete(id);
@@ -472,7 +966,7 @@ function renderPredictTab(){
     card.innerHTML = `<div class="card-head"><div>
         <h2>${esc(n.nm)}</h2>
         <p class="sub" style="margin:0;">${esc(n.org || '')} · ${esc([n.sido, n.sgg].filter(Boolean).join(' '))} · ${esc((n.lic||[]).join(', ') || '면허 정보 없음')} · ${esc(dd.text)}</p>
-        <div class="meta-line">기초금액 ${won(n.base)} · A값 ${won(n.a)} · 낙찰하한율 ${n.floor ? pct(n.floor) : `미확인(${DEFAULT_FLOOR}% 적용)`} · 순공사원가 ${won(n.net)}${n.rng ? ` · 예가범위 ${n.rng[0]}~+${n.rng[1]}%` : ''}</div>
+        <div class="meta-line">기초금액 ${won(n.base)} · A값 ${won(n.a)} · 낙찰하한율 ${n.floor ? pct(n.floor) : `미확인(${DEFAULT_FLOOR}% 적용)`} · 순공사원가 ${won(n.net)}${n.rng ? ` · 예가범위 ${esc(rngText(n.rng))}` : ''}</div>
       </div>
       <div class="btn-row"><button class="btn sm ghost" id="pSaveWatch" type="button">내 예측을 관심공고에 저장</button><button class="btn sm line" id="pClearNotice" type="button">공고 해제</button></div></div>`;
     $('pClearNotice').onclick = () => { P.notice = null; renderPredictTab(); };
@@ -485,9 +979,10 @@ function renderPredictTab(){
   }
 }
 
-function predictWithNotice(id){
-  const b = Data.bids.find(x => x.id === id);
+async function predictWithNotice(id){
+  const b = findNotice(id);
   if(!b) return;
+  if(b.live) await enrichLive(b);
   P.notice = b;
   if(b.sido){ P.sidos.clear(); P.sidos.add(b.sido); LS.set('pSidos', [...P.sidos]); }
   P.sggs.clear();
@@ -500,6 +995,7 @@ function predictWithNotice(id){
   $('cFloor').value = b.floor || DEFAULT_FLOOR;
   $('cNet').value = b.net || '';
   $('cManual').value = '';
+  $('fRng').checked = !!b.rng;
   if(b.rng?.[1]) $('sRange').value = Math.abs(b.rng[1]);
   if(b.sido){ $('orgSido').value = b.sido; }
   orgLoaded = true;
@@ -509,6 +1005,14 @@ function predictWithNotice(id){
   runPredict();
 }
 
+/** 설정 → 백테스트 결과(시·도별). 추천값 옆에 "검증됨/우위 없음/검증 전" 표시에 쓴다 */
+function btBadge(sido){
+  const r = LS.get('btResult', {})[sido];
+  if(!r) return `<span class="badge gray">백테스트 전</span>`;
+  return r.adopt ? `<span class="badge ok">백테스트 우위 확인 · 무작위 대비 ${r.lift.toFixed(2)}배 (${fmtNum(r.n)}건)</span>`
+    : `<span class="badge warn">백테스트: 뚜렷한 우위 없음 (${fmtNum(r.n)}건, ${r.lift ? r.lift.toFixed(2) + '배' : '-'})</span>`;
+}
+
 async function runPredict(){
   const out = $('predictResult');
   const sidos = [...P.sidos];
@@ -516,22 +1020,97 @@ async function runPredict(){
   const missing = sidos.filter(s => !Data.hasScsbid(s));
   out.innerHTML = `<div class="card">${loadingHtml()}</div>`;
   let recs;
-  try{ recs = await Data.loadScsbidMany(sidos); }
-  catch(e){ out.innerHTML = `<div class="card"><div class="empty">데이터를 불러오지 못했습니다. (${esc(e.message)})</div></div>`; return; }
+  const opening = new Map();
+  try{
+    recs = await Data.loadScsbidMany(sidos);
+    for(const s of sidos.filter(s => Data.hasDetail(s))) for(const [id, b] of (await Data.loadOpening(s)).bids) opening.set(id, b);
+  }catch(e){ out.innerHTML = `<div class="card"><div class="empty">데이터를 불러오지 못했습니다. (${esc(e.message)})</div></div>`; return; }
   const o = {sggs: P.sggs, lics: P.lics, recent: $('fRecent').checked,
     useBase: $('fBase').checked, base: +$('inBase').value || 0,
-    useCnt: $('fCnt').checked, cnt: +$('inCnt').value || 0};
-  const rows = filterRecords(recs, o);
-  $('matchCount').textContent = `${fmtNum(rows.length)}건의 과거 낙찰로 계산`;
+    useCnt: $('fCnt').checked, cnt: +$('inCnt').value || 0,
+    rng: $('fRng').checked ? P.notice?.rng : null,
+    org: $('fOrg').checked && P.notice ? recOrg(P.notice) : ''};
+  let rows = filterRecords(recs, o);
+  const notes = [];
+  if(o.rng && rows.length < MIN_SAMPLE){ rows = filterRecords(recs, {...o, rng: null}); notes.push('예가범위 일치 표본 부족 → 예가범위 조건 제외'); }
+  $('matchCount').textContent = `${fmtNum(rows.length)}건의 과거 낙찰로 계산${notes.length ? ' · ' + notes.join(' · ') : ''}`;
   const pred = predictFrom(rows);
-  P.last = pred ? {pred, rows} : null;
+  const homeSido = P.notice?.sido || (sidos.length === 1 ? sidos[0] : null);
+  // 곡선은 넓은 표본으로: 선택 지역 최근 24개월 + 예가범위 같음(30건↑). 면허·금액으로 쪼개면 우연한 봉우리가 생긴다(설계 문서 3-4)
+  const recent24 = recs.filter(r => (r.date || '') >= monthsAgo(24));
+  const rngPool = P.notice?.rng ? recent24.filter(r => sameRng(r.rng, P.notice.rng)) : [];
+  const curveRows = rngPool.length >= MIN_SAMPLE ? rngPool : recent24;
+  const wc = pred ? winCurve(curveRows, {sido: homeSido, opening}) : null;
+  // 이 공고의 예상 참가업체 수: 입력값 → 비슷한 과거 공고 중앙값
+  const ec = +$('inCnt').value ? {n: +$('inCnt').value, k: 0} : expectedCnt(recs.filter(r => (r.date || '') >= monthsAgo(24)), P.notice || {lic: [...P.lics], base: o.base});
+  P.last = pred ? {pred, rows, wc, ec} : null;
   if(!pred || rows.length < 3){
     out.innerHTML = `<div class="card"><div class="empty">조건에 맞는 과거 데이터가 너무 적습니다 (${rows.length}건). 조건을 넓혀 보세요.${missing.length ? `<br>데이터 없는 지역: ${esc(missing.join(', '))}` : ''}</div></div>`;
     return;
   }
-  $('cRate').value = pred.mean.toFixed(4);
+  $('cRate').value = (wc ? wc.best.x : pred.mean).toFixed(4);
   renderCalc();
   const base = +$('cBase').value || 0, a = +$('cA').value || 0, floor = +$('cFloor').value || DEFAULT_FLOOR;
+  const amtAt = (x) => base ? bidAmount(base, x, a, floor) : null;
+
+  // ---- 1) 추천 요약
+  let hero, curveCard = '', tips = '';
+  if(wc){
+    const pAdj = adjustP(wc, wc.best.p, ec?.n), lift = liftOf(wc, wc.best.p);
+    const pMean = wc.at(pred.mean);
+    hero = `<div class="card hero">
+      <div class="hero-top"><span class="hero-tag">🎯 낙찰확률 최대 추천</span>${btBadge(homeSido || sidos[0])}</div>
+      <div class="hero-main">
+        <div>
+          <div class="hero-label">추천 투찰금액</div>
+          <div class="hero-amt">${base ? won(amtAt(wc.best.x)) : '<span class="faint" style="font-size:18px;">기초금액을 넣으면 금액이 나옵니다</span>'}</div>
+          <div class="hero-sub">투찰 사정률 <b>${pct(wc.best.x, 3)}</b>${base ? ` · 안전 범위 ${won(amtAt(wc.safe.lo))} ~ ${won(amtAt(wc.safe.hi))}` : ` · 안전 범위 ${pct(wc.safe.lo, 3)} ~ ${pct(wc.safe.hi, 3)}`}</div>
+        </div>
+        <div class="hero-stats">
+          <div class="stat hl"><div class="t">예상 낙찰확률</div><div class="v">${(pAdj * 100).toFixed(2)}%</div></div>
+          <div class="stat"><div class="t">무작위 대비 (과거 재생)</div><div class="v">${lift ? '×' + lift.toFixed(2) : '-'}</div></div>
+          <div class="stat"><div class="t">예상 참가</div><div class="v">${ec?.n ? '~' + fmtNum(ec.n) + '개사' : '-'}</div></div>
+          <div class="stat"><div class="t">평균값으로 넣으면</div><div class="v">${(adjustP(wc, pMean, ec?.n) * 100).toFixed(2)}%</div></div>
+        </div>
+      </div>
+      <div class="meta-line">과거 공고 ${fmtNum(wc.n)}건${sampleBadge(wc.n)}을 다시 재생해 "이 금액으로 넣었으면 1순위였나"를 센 값입니다. 안전 범위 = 확률이 최대의 90% 이상인 구간. ${opening.size ? '개찰 상세가 있는 공고는 전체 순위로 정확히 계산했습니다. ' : ''}참고용이며 낙찰을 보장하지 않습니다.</div>
+      <div class="btn-row" style="margin-top:10px;"><button class="btn sm" data-use-sr="${wc.best.x}" type="button">계산기에 적용</button></div>
+    </div>`;
+
+    // ---- 2) 곡선 + 후보
+    const [vMin, vMax] = wc.view;
+    const sBins = binPts(wc.sList, vMin, vMax, (vMax - vMin) > 3 ? 0.05 : 0.02);
+    curveCard = `<div class="card">
+      <h2>투찰 사정률별 과거 낙찰확률</h2>
+      <p class="sub">선 = 그 값으로 넣었을 때 과거 낙찰확률, 옅은 막대 = 실제 사정율이 떨어진 분포. 사정율이 자주 떨어지면서 경쟁사가 덜 몰린 곳이 높게 나옵니다.</p>
+      ${plot([{pts: sBins, color: 'var(--text-sub)', label: '실제 사정율 분포', bars: true},
+              {pts: curvePts(wc), color: 'var(--primary)', label: '과거 낙찰확률', fill: true}],
+        {min: vMin, max: vMax, marks: [{x: wc.best.x, color: 'var(--target)', label: `추천 ${wc.best.x.toFixed(3)}`}, {x: pred.mean, color: 'var(--text-faint)', label: `평균 ${pred.mean.toFixed(2)}`}]})}
+      <div class="table-wrap" style="margin-top:10px; max-height:none;"><table>
+        <thead><tr><th>후보</th><th class="num">투찰 사정률</th><th class="num">과거 낙찰확률</th><th class="num">무작위 대비</th><th class="num">투찰금액</th><th></th></tr></thead>
+        <tbody>${wc.peaks.map((c, i) => `<tr${i ? '' : ' class="hl-row"'}><td>${i + 1}${i ? '' : ' ★'}</td><td class="num">${pct(c.x, 3)}</td><td class="num">${(adjustP(wc, c.p, ec?.n) * 100).toFixed(2)}%</td>
+          <td class="num">${liftOf(wc, c.p) ? '×' + liftOf(wc, c.p).toFixed(2) : '-'}</td><td class="num">${base ? won(amtAt(c.x)) : '-'}</td>
+          <td><button class="btn sm line" data-use-sr="${c.x}" type="button">적용</button></td></tr>`).join('')}</tbody>
+      </table></div>
+      <div class="meta-line">곡선 표본: ${esc(sidos.join('·'))} 최근 24개월${curveRows === rngPool ? ` · 예가범위 ${esc(rngText(P.notice.rng))}` : ''} ${fmtNum(wc.n)}건 (면허·금액 조건은 표본을 너무 쪼개므로 곡선에는 쓰지 않고 아래 참고 분포에만 적용) · 곡선 폭 ±${wc.smooth}%p (설정 → 백테스트에서 자동 선택) · 최근 공고일수록 가중(exp(−개월/12))${homeSido ? ` · ${esc(homeSido)} 공고 ×2` : ''} · 무작위 = 평균 업체의 낙찰확률(1 ÷ 참가업체 수)</div>
+    </div>`;
+
+    // ---- 3) 금액·숫자 팁
+    const cal = LS.get('myCal', null);
+    tips = `<div class="card">
+      <h2>💡 어떤 금액·숫자를 넣을까</h2>
+      <ul class="tips">
+        <li><b>금액</b>: 추천 금액을 <b>원 단위까지 그대로</b> 넣으세요. 만원·천원 단위로 반올림하면 투찰 사정률이 옮겨가 확률 구간을 벗어날 수 있습니다${base ? ` (이 공고에서 1만원 ≈ 사정률 ${(1e4 / (floor / 100) / base * 100).toFixed(4)}%p)` : ''}.</li>
+        <li><b>범위</b>: 안전 범위 안이면 과거 확률이 비슷했습니다. 다른 사람과 같은 금액(동가)을 피하려면 범위 안에서 끝자리를 조금 바꿔도 됩니다.</li>
+        <li><b>복수예가 번호(15개 중 2개)</b>: 수백 개사가 함께 고르기 때문에 내 선택 2개가 예정가격에 주는 영향은 거의 없습니다. 번호와 금액의 짝도 공고마다 무작위라 "잘 뽑히는 번호"는 과거 빈도가 무작위(26.7%)와 크게 다를 때만 참고하세요 (통계 탭).</li>
+        ${cal && cal.n ? `<li><b>내 투찰 기록 보정</b>: 개찰된 내 투찰 ${fmtNum(cal.n)}건 기준, 투찰 사정률을 <b>${cal.shift >= 0 ? '+' : ''}${cal.shift.toFixed(3)}%p</b> 옮겼다면 낙찰권이 ${cal.wins}건 → ${cal.best}건이었습니다${cal.n < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}. (관심공고 탭에서 내 투찰금액을 기록하면 쌓입니다)</li>` : '<li><b>내 기록</b>: 관심공고 탭에서 실제로 넣은 금액을 기록하면, 개찰 뒤 결과와 비교해 다음에 얼마나 올리거나 내릴지 알려드립니다.</li>'}
+      </ul>
+    </div>`;
+  }else{
+    hero = `<div class="card"><h2>🎯 낙찰확률 최대 추천</h2><div class="empty">예정가격·1위 낙찰금액·기초금액이 함께 있는 과거 공고가 5건 미만이라 계산할 수 없습니다. 조건을 넓혀 보세요.</div></div>`;
+  }
+
+  // ---- 4) 참고: 사정율 분포 (기존 평균 방식)
   const band = (key, title, cls='') => {
     const b = pred.bands[key];
     return `<div class="band ${cls}"><div class="t">${title}</div><div class="v">${pct(b.v, 3)}</div>
@@ -548,17 +1127,17 @@ async function runPredict(){
   const rSorted = [...rates].sort((x,y) => x-y);
   let rLo = Math.floor(Math.min(floorLine, quantile(rSorted, .01))), rHi = Math.min(100, Math.ceil(quantile(rSorted, .98)));
   if(rHi - rLo < 1) rHi = rLo + 1;
-  out.innerHTML = `
-    <div class="card">
-      <h2>예측 결과</h2>
-      <p class="sub">선택한 조건의 과거 사정율(예정가격 ÷ 기초금액) 분포 기준 추정치입니다. 참고용이며 낙찰을 보장하지 않습니다.</p>
+  out.innerHTML = hero + curveCard + tips + `
+    <details class="card fold">
+      <summary><h2>참고: 사정율 분포 (평균·공격·추천·보수)</h2><span class="meta-line" style="margin:0;">평균 ${pred.mean.toFixed(3)}% · ${sampleText(pred.n)}</span></summary>
+      <p class="sub" style="margin-top:12px;">선택한 조건의 과거 사정율(예정가격 ÷ 기초금액) 분포입니다. 평균 사정율은 가장 흔한 값이지만 경쟁사도 가장 많이 몰려 있어 낙찰확률 최대값과 다를 수 있습니다.</p>
       <div class="result-grid">
         <div>
           <div class="big-number">${pred.mean.toFixed(3)}<small>% 평균 사정율</small></div>
           <div class="meta-line">표준편차 ±${pred.std.toFixed(3)}%p · ${sampleText(pred.n)}</div>
           <div class="meta-line">신뢰도 <b>${pred.conf.label}</b> (${pred.conf.score}점 · 표본 수와 분산 기준)</div>
           <div class="meta-line">중앙값 ${quantile(sorted,.5).toFixed(3)}% · 범위 ${sorted[0].toFixed(2)}~${sorted.at(-1).toFixed(2)}%</div>
-          <div class="bands">${band('aggressive','공격')}${band('recommend','추천','rec')}${band('conservative','보수')}</div>
+          <div class="bands">${band('aggressive','공격')}${band('recommend','평균','rec')}${band('conservative','보수')}</div>
           <div class="meta-line">공격 = 낮게 써서 1순위 가능성↑, 하한 미달 위험↑ · 보수 = 그 반대</div>
         </div>
         <div>
@@ -570,18 +1149,21 @@ async function runPredict(){
           <div class="meta-line">${sampleText(rates.length)}</div>
         </div>
       </div>
-    </div>
-    <div class="card">
-      <div class="card-head">
-        <div><h2>근거 과거 공고 (${fmtNum(rows.length)}건)</h2><p class="sub">예측에 쓰인 공고 전체 · 최근 순</p></div>
-        <button class="btn sm ghost" id="csvBtn" type="button">CSV 내보내기</button>
-      </div>
+    </details>
+    <details class="card fold">
+      <summary><h2>근거 과거 공고 (${fmtNum(rows.length)}건)</h2><span class="meta-line" style="margin:0;">예측에 쓰인 공고 · 최근 순</span></summary>
+      <div class="btn-row" style="margin:12px 0 8px;"><button class="btn sm ghost" id="csvBtn" type="button">CSV 내보내기</button></div>
       <div class="table-wrap"><table>
         <thead><tr><th>공고명</th><th>기관</th><th class="num">낙찰율</th><th class="num">사정율</th><th class="num">기초금액</th><th class="num">참가</th><th>개찰일</th></tr></thead>
         <tbody>${rows.slice(0, 1000).map(r => `<tr><td class="wrap">${esc(r.nm)}</td><td>${esc(recOrg(r))}</td><td class="num">${pct(r.rate)}</td><td class="num">${pct(r.sr)}</td><td class="num">${eok(r.base)}</td><td class="num">${r.cnt ?? '-'}</td><td>${esc(r.date)}</td></tr>`).join('')}</tbody>
       </table></div>
       ${rows.length > 1000 ? `<div class="meta-line">화면에는 최근 1,000건만 표시합니다. 전체는 CSV로 받으세요.</div>` : ''}
-    </div>`;
+    </details>`;
+  out.querySelectorAll('[data-use-sr]').forEach(btn => btn.addEventListener('click', () => {
+    $('cRate').value = (+btn.dataset.useSr).toFixed(4);
+    renderCalc();
+    $('calcResult').scrollIntoView({behavior:'smooth', block:'center'});
+  }));
   $('csvBtn').onclick = () => downloadCSV('예측근거_과거공고.csv',
     ['공고번호','공고명','발주기관','수요기관','시도','시군','면허','기초금액','예정가격','낙찰금액','낙찰율','사정율','참가업체수','낙찰하한율','A값','개찰일'],
     rows.map(r => [r.no, r.nm, r.org, r.dmd, r.sido, r.sgg, (r.lic||[]).join(' '), r.base, r.plan, r.amt, r.rate, r.sr, r.cnt, r.floor, r.a, r.date]));
@@ -606,6 +1188,10 @@ function renderCalc(){
   const rng = P.notice?.rng;
   const info = [];
   if(rng && rng[0] != null && rng[1] != null && (c.sr < 100 + rng[0] || c.sr > 100 + rng[1])) info.push(`적용 사정율이 공고 예가범위(${100+rng[0]}~${100+rng[1]}%) 밖입니다.`);
+  if(P.last?.wc){
+    const wc = P.last.wc;
+    info.push(`이 투찰 사정율(${c.sr}%)의 과거 낙찰확률 <b>${(wc.at(c.sr)*100).toFixed(2)}%</b> · 최대는 ${pct(wc.best.x, 2)}에서 ${(wc.best.p*100).toFixed(2)}%`);
+  }
   if(P.last?.rows?.length){
     const above = P.last.rows.filter(r => r.sr > c.sr).length / P.last.rows.length;
     info.push(`과거 분포상 실제 사정율이 적용값보다 높을 확률 ${(above*100).toFixed(1)}% — 이 경우 이 금액은 실제 낙찰하한가에 못 미칩니다. (${sampleText(P.last.rows.length)})`);
@@ -719,42 +1305,75 @@ function runSimulation(){
     <div class="meta-line">무작위 가정에 따른 참고용 시뮬레이션입니다. 실제 예가 생성 방식·업체 추첨과 다를 수 있습니다.</div>`;
 }
 
-// ============================================================ 관심공고
+// ============================================================ 관심공고 (내 투찰 기록 → 개찰 뒤 검증 → 다음 투찰 보정)
+/** 내 투찰금액을 승리 구간과 비교. 개찰 상세가 있으면 내 예상 순위도 센다. */
+function judgeBid(amt, r, op){
+  const w = winWindow(r, op);
+  if(!amt || !w) return null;
+  const base = op?.base || r.base, a = r.a || 0, floor = r.floor || DEFAULT_FLOOR;
+  const x = ((amt - a) / (floor / 100) + a) / base * 100;
+  const floorPrice = Math.ceil((w.S * base / 100 - a) * floor / 100 + a);
+  const winAmt = bidAmount(base, w.W, a, floor);
+  let rank = null;
+  if(op?.r?.length && x >= w.S){
+    rank = 1 + op.r.filter(row => { const y = bidToSr(row[2], base, a, floor); return y != null && y >= w.S && y < x; }).length;
+  }
+  const res = x < w.S ? {cls: 'below', label: '하한 미달', gap: floorPrice - amt, gapText: `낙찰하한가보다 ${won(floorPrice - amt)} 낮음`}
+    : x < w.W ? {cls: 'win', label: '낙찰권 (1순위)', gap: 0, gapText: `1위보다 ${won(winAmt - amt)} 낮게 씀`}
+    : {cls: 'high', label: '1위보다 높음', gap: amt - winAmt, gapText: `1위보다 ${won(amt - winAmt)} 높음`};
+  return {...res, x, S: w.S, W: w.W, rank, floorPrice};
+}
+
+/** 내 투찰 기록들로 "투찰 사정률을 얼마나 옮겼으면 가장 많이 낙찰권이었나" (−1 ~ +1%p, 0.001 간격) */
+function calibrate(list){
+  if(!list.length) return null;
+  const wins0 = list.filter(j => j.S <= j.x && j.x < j.W).length;
+  let best = {shift: 0, k: wins0};
+  for(let i = -1000; i <= 1000; i++){
+    const d = i / 1000;
+    const k = list.filter(j => j.S <= j.x + d && j.x + d < j.W).length;
+    if(k > best.k || (k === best.k && Math.abs(d) < Math.abs(best.shift))) best = {shift: d, k};
+  }
+  return {n: list.length, wins: wins0, best: best.k, shift: best.shift};
+}
+
 async function renderWatch(){
   const el = $('watchList');
   const items = await WatchStore.list();
   if(!items.length){ el.innerHTML = '<div class="empty">아직 저장한 관심공고가 없습니다. 입찰공고 탭에서 ☆를 눌러 보세요.</div>'; return; }
   el.innerHTML = loadingHtml();
   const sidos = [...new Set(items.map(i => i.sido).filter(s => s && Data.hasScsbid(s)))];
-  try{ await Data.loadScsbidMany(sidos); }catch(e){ console.warn(e); }
+  try{
+    await Data.loadScsbidMany(sidos);
+    await Promise.all(sidos.filter(s => Data.hasDetail(s)).map(s => Data.loadOpening(s)));
+  }catch(e){ console.warn(e); }
   const findRec = (w) => {
     const s = Data.scsbid[w.sido];
     if(!s) return null;
     return s.byId.get(w.id) || s.recs.find(r => r.no === w.no) || null;
   };
-  el.innerHTML = `<div class="bid-list" style="margin-top:0;">${items.map(w => {
+  const judged = [];
+  const cards = items.map(w => {
     const r = findRec(w);
+    const op = r ? Data.opening[w.sido]?.bids.get(r.id) : null;
     const dd = ddayLabel(w.close);
+    const mine = r ? judgeBid(w.myBid, r, op) : null;
+    const rec = r ? judgeBid(w.pred?.bid, r, op) : null;
+    if(mine) judged.push(mine);
     let body;
     if(r && r.sr != null){
       const diff = w.pred?.sr != null ? w.pred.sr - r.sr : null;
-      const floor = r.floor || w.floor || DEFAULT_FLOOR, a = r.a ?? w.a ?? 0;
-      const realFloorPrice = r.plan ? Math.ceil((r.plan - a) * floor / 100 + a) : null;
-      let verdict = '';
-      if(w.pred?.bid && realFloorPrice && r.amt){
-        verdict = w.pred.bid < realFloorPrice ? '<span class="badge">하한 미달</span>'
-          : w.pred.bid < r.amt ? '<span class="badge ok">1위보다 낮음 (낙찰권)</span>'
-          : '<span class="badge gray">1위보다 높음</span>';
-      }
       body = `<div class="stat-grid" style="margin-top:8px;">
-          <div class="stat"><div class="t">내 예측 사정율</div><div class="v">${w.pred?.sr != null ? pct(w.pred.sr) : '-'}</div></div>
           <div class="stat"><div class="t">실제 사정율</div><div class="v">${pct(r.sr)}</div></div>
-          <div class="stat"><div class="t">오차</div><div class="v">${diff != null ? (diff >= 0 ? '+' : '') + diff.toFixed(3) + '%p' : '-'}</div></div>
-          <div class="stat"><div class="t">1위 투찰률</div><div class="v">${pct(r.rate)}</div></div>
+          <div class="stat"><div class="t">1위 투찰 사정률</div><div class="v">${mine ? pct(mine.W) : rec ? pct(rec.W) : '-'}</div></div>
+          <div class="stat"><div class="t">예측 오차 (평균 사정율)</div><div class="v">${diff != null ? (diff >= 0 ? '+' : '') + diff.toFixed(3) + '%p' : '-'}</div></div>
+          <div class="stat"><div class="t">참가</div><div class="v">${r.cnt ? fmtNum(r.cnt) + '개사' : '-'}</div></div>
         </div>
-        <div class="meta-line">개찰 ${esc(r.date)} · 1위 ${esc(r.win || '-')} ${won(r.amt)} · 내 투찰가 ${won(w.pred?.bid)} ${verdict}</div>`;
+        <div class="meta-line">개찰 ${esc(r.date)} · 1위 ${esc(r.win || '-')} ${won(r.amt)}</div>
+        ${mine ? `<div class="verdict ${mine.cls}"><b>내 투찰 ${won(w.myBid)}</b> → ${mine.label}${mine.rank ? ` · 예상 ${fmtNum(mine.rank)}순위` : ''} · ${mine.gapText} <span class="faint">(투찰 사정률 ${mine.x.toFixed(3)}%)</span></div>` : ''}
+        ${rec ? `<div class="verdict ${rec.cls} soft">앱 추천 ${won(w.pred.bid)} → ${rec.label} · ${rec.gapText}</div>` : ''}`;
     }else{
-      body = `<div class="meta-line">${r ? '개찰됨 · 사정율 계산 불가(기초금액 없음)' : '개찰 전 또는 결과 미수집'} · 내 예측 ${w.pred?.sr != null ? pct(w.pred.sr) + ' / ' + won(w.pred.bid) : '없음'}${w.pred?.n != null ? ` (${sampleText(w.pred.n)})` : ''}</div>`;
+      body = `<div class="meta-line">${r ? '개찰됨 · 사정율 계산 불가(기초금액 없음)' : '개찰 전 또는 결과 미수집'} · 앱 추천 ${w.pred?.bid ? won(w.pred.bid) : '없음'}${w.pred?.n != null ? ` (${sampleText(w.pred.n)})` : ''}</div>`;
     }
     return `<div class="bid">
       <div class="bid-top"><div>
@@ -762,10 +1381,37 @@ async function renderWatch(){
         <div class="bid-sub">${esc(w.org || '')} · ${esc([w.sido, w.sgg].filter(Boolean).join(' '))} · <span class="dday ${dd.urgent ? 'urgent' : ''}">${esc(dd.text)}</span></div>
       </div><button class="star on" data-unwatch="${esc(w.id)}" title="관심 해제" type="button">★</button></div>
       ${body}
-      <div class="bid-actions">${Data.bids?.some(b => b.id === w.id) ? `<button class="btn sm" data-predict="${esc(w.id)}" type="button">이 공고로 예측</button>` : ''}
+      <div class="mybid-row">
+        <label>내가 넣은 투찰금액</label>
+        <input type="number" inputmode="numeric" data-mybid-in="${esc(w.id)}" value="${w.myBid || ''}" placeholder="${w.pred?.bid ? '예: ' + w.pred.bid : '원 단위'}">
+        <button class="btn sm ghost" data-mybid-save="${esc(w.id)}" type="button">기록</button>
+      </div>
+      <div class="bid-actions">${findNotice(w.id) ? `<button class="btn sm" data-predict="${esc(w.id)}" type="button">이 공고로 예측</button>` : ''}
         ${w.url ? `<a class="btn line sm" href="${esc(w.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}</div>
     </div>`;
-  }).join('')}</div>`;
+  });
+  const cal = calibrate(judged);
+  LS.set('myCal', cal);
+  const cnt = (c) => judged.filter(j => j.cls === c).length;
+  const summary = cal ? `<div class="card-inner my-score">
+      <h3 style="margin-top:0;">내 투찰 성적 (개찰된 ${fmtNum(cal.n)}건)${sampleBadge(cal.n)}</h3>
+      <div class="stat-grid">
+        <div class="stat"><div class="t">낙찰권</div><div class="v" style="color:var(--ok);">${cnt('win')}</div></div>
+        <div class="stat"><div class="t">하한 미달</div><div class="v" style="color:var(--target);">${cnt('below')}</div></div>
+        <div class="stat"><div class="t">1위보다 높음</div><div class="v">${cnt('high')}</div></div>
+        <div class="stat hl"><div class="t">다음 투찰 보정</div><div class="v">${cal.shift >= 0 ? '+' : ''}${cal.shift.toFixed(3)}%p</div></div>
+      </div>
+      <div class="meta-line">내 투찰 사정률을 ${cal.shift >= 0 ? '+' : ''}${cal.shift.toFixed(3)}%p 옮겼다면 낙찰권이 ${cal.wins}건 → ${cal.best}건이었습니다. ${cnt('high') > cnt('below') ? '대체로 1위보다 높게 쓰는 편입니다.' : cnt('below') > cnt('high') ? '대체로 하한 미달이 많은 편입니다.' : ''} 표본이 적을수록 우연일 수 있습니다.</div>
+    </div>` : `<div class="meta-line" style="margin-bottom:10px;">실제로 넣은 금액을 기록해 두면, 개찰 뒤 낙찰권·하한 미달·1위보다 높음을 판정하고 다음에 얼마나 올리거나 내릴지 알려드립니다.</div>`;
+  el.innerHTML = summary + `<div class="bid-list" style="margin-top:0;">${cards.join('')}</div>`;
+  el.querySelectorAll('[data-mybid-save]').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.dataset.mybidSave;
+    const inp = el.querySelector(`[data-mybid-in="${CSS.escape(id)}"]`);
+    const w = (await WatchStore.list()).find(x => x.id === id);
+    if(!w) return;
+    await WatchStore.save({...w, myBid: +inp.value || null});
+    renderWatch();
+  }));
 }
 
 // ============================================================ 통계
@@ -834,6 +1480,7 @@ async function renderStats(){
   let nDraw = 0;
   const corps = new Map();
   let nRank = 0;
+  const allX = [], allS = [];   // 경쟁사 투찰 사정률 · 실제 사정율 (겹쳐 그리기용)
   for(const [id, b] of op.bids){
     const r = sc.byId.get(id);
     if(!r || (cut && r.date < cut) || (lic && !(r.lic||[]).includes(lic))) continue;
@@ -842,6 +1489,8 @@ async function renderStats(){
     const base = b.base || r.base, floor = r.floor || DEFAULT_FLOOR, a = r.a || 0;
     if(!b.r?.length) continue;
     nRank++;
+    const ww = winWindow(r, b);
+    if(ww) allS.push([ww.S, 1]);
     for(const row of b.r){
       const [rank, ci, amt] = row;
       const [name, biz] = b.corps[ci] || ['?', ''];
@@ -850,16 +1499,23 @@ async function renderStats(){
       if(!c) corps.set(key, c = {name, biz, n:0, wins:0, srs:[]});
       c.n++;
       if(r.winBiz ? biz === r.winBiz : rank === 1) c.wins++;
-      if(base && amt){
-        const sr = ((amt - a) / (floor/100) + a) / base * 100;
-        if(sr > 90 && sr < 110) c.srs.push(sr);
-      }
+      const sr = bidToSr(amt, base, a, floor);
+      if(sr != null){ c.srs.push(sr); allX.push([sr, 1 / b.r.length]); }
     }
   }
   const freqItems = freq.slice(1).map((c, i) => ({label: String(i+1), v: nDraw ? c / nDraw : 0}));
   const top = [...corps.values()].sort((a,b) => b.n - a.n).slice(0, 20);
   top.forEach(c => c.st = stats(c.srs));
-  el.innerHTML = html + `
+  const sSorted = allS.map(v => v[0]).sort((x, y) => x - y);
+  const dMin = sSorted.length ? Math.floor(quantile(sSorted, .01) * 10) / 10 - 0.2 : 98, dMax = sSorted.length ? Math.ceil(quantile(sSorted, .99) * 10) / 10 + 0.2 : 102;
+  const densCard = allS.length >= 5 ? `<div class="card">
+      <h2>경쟁사 투찰 사정률 vs 실제 사정율</h2>
+      <p class="sub">파란 선 = 경쟁사들이 투찰한 위치(공고마다 같은 비중), 옅은 막대 = 실제 사정율이 떨어진 위치. 막대는 높은데 선이 낮은 곳이 "사정율은 자주 오는데 경쟁사가 덜 몰린" 빈틈입니다.</p>
+      ${plot([{pts: binPts(allS, dMin, dMax, 0.02), color: 'var(--text-sub)', label: '실제 사정율', bars: true},
+              {pts: binPts(allX, dMin, dMax, 0.02), color: 'var(--primary)', label: '경쟁사 투찰 사정률'}], {min: dMin, max: dMax})}
+      <div class="meta-line">개찰 순위 ${sampleText(nRank)} · 투찰 ${fmtNum(allX.length)}건</div>
+    </div>` : '';
+  el.innerHTML = html + densCard + `
     <div class="card">
       <h2>예가 번호(1~15) 추첨 빈도</h2>
       <p class="sub">번호별로 4개 추첨에 뽑힌 비율. 완전 무작위라면 모두 26.7%입니다.</p>
@@ -918,6 +1574,21 @@ async function renderSettings(){
 }
 
 function initSettings(){
+  const keyMsg = (t) => { $('keyMsg').innerHTML = t; };
+  keyMsg(LS.get('apiKey', '') ? '저장된 키 있음 (이 기기)' : '저장된 키 없음');
+  $('keySave').addEventListener('click', async () => {
+    const v = $('keyIn').value.trim();
+    if(!v){ keyMsg('서비스키를 붙여넣으세요.'); return; }
+    LS.set('apiKey', v); $('keyIn').value = '';
+    keyMsg(loadingHtml('연결 확인 중…'));
+    try{
+      const d = kstDay(new Date()).replace(/-/g, '');
+      const {total} = await liveCall('getBidPblancListInfoCnstwkPPSSrch', {inqryDiv: '1', inqryBgnDt: d + '0000', inqryEndDt: d + '2359', numOfRows: 1, pageNo: 1});
+      keyMsg(`<span class="badge ok">연결 성공</span> 오늘 공사 공고 ${fmtNum(total)}건 확인`);
+      Live.params = null;
+    }catch(e){ keyMsg(`<span class="badge">연결 실패</span> ${esc(e.message)} (키는 저장됨)`); }
+  });
+  $('keyDel').addEventListener('click', () => { LS.set('apiKey', ''); Live.params = null; keyMsg('키를 지웠습니다.'); });
   fillSelect($('btSido'), SIDOS, {all:'시·도 선택', value: Data.meta.detail?.regions?.[0] || ''});
   $('btRun').addEventListener('click', runBacktest);
   $('themeSeg').addEventListener('click', (e) => {
@@ -930,46 +1601,101 @@ function initSettings(){
   });
 }
 
+/** Wilson 95% 신뢰구간 */
+function wilson(k, n, z=1.96){
+  if(!n) return [0, 0];
+  const p = k / n, d = 1 + z*z/n, c = (p + z*z/(2*n)) / d, h = z * Math.sqrt(p*(1-p)/n + z*z/(4*n*n)) / d;
+  return [Math.max(0, c - h), Math.min(1, c + h)];
+}
+const BT_SMOOTHS = [0.005, 0.01, 0.03, 0.05];
+
+/** 롤링 표본외 백테스트: 최근 12개월 각 달 m 에 대해 m 이전 24개월로만 추천값을 정하고(예가범위별),
+ *  m 달의 실제 공고에서 S ≤ x < W 이면 성공. 무작위 기준(1/참가수)·평균 전략·곡선 전략(폭별)을 비교한다. */
 async function runBacktest(){
   const out = $('btResult');
-  const sido = $('btSido').value, N = Math.max(10, Math.min(2000, +$('btN').value || 100));
+  const sido = $('btSido').value;
+  const months = Math.max(3, Math.min(24, +$('btN').value || 12));
   if(!sido || !Data.hasScsbid(sido)){ out.innerHTML = '<div class="empty">낙찰 데이터가 있는 시·도를 선택하세요.</div>'; return; }
-  out.innerHTML = loadingHtml('계산 중…');
+  out.innerHTML = loadingHtml('과거를 한 달씩 다시 재생하는 중…');
   const sc = await Data.loadScsbid(sido);
+  const op = Data.hasDetail(sido) ? (await Data.loadOpening(sido)).bids : null;
   await new Promise(r => setTimeout(r, 20));
-  const usable = sc.recs.filter(r => r.sr != null && r.base && r.amt && r.plan);   // 최근 순
-  const tests = usable.slice(0, N);
-  const res = [];
-  for(const t of tests){
-    const from = addMonths(t.date, -12);
-    let pool = usable.filter(r => r.date < t.date && r.date >= from);
-    if(t.lic?.length){
-      const lic = new Set(t.lic);
-      const wl = pool.filter(r => (r.lic||[]).some(l => lic.has(l)));
-      if(wl.length >= 10) pool = wl;
+  const usable = sc.recs.filter(r => r.date && winWindow(r, op?.get(r.id)));
+  if(!usable.length){ out.innerHTML = '<div class="empty">예정가격·낙찰금액이 있는 공고가 없습니다.</div>'; return; }
+  const last = usable[0].date.slice(0, 7);
+  const monthList = [];
+  for(let i = 0; i < months; i++) monthList.push(addMonths(last + '-01', -i).slice(0, 7));
+  const strat = {random: {k: 0, n: 0}, mean: {k: 0, n: 0, below: 0}};
+  BT_SMOOTHS.forEach(s => strat['c' + s] = {k: 0, n: 0, below: 0});
+  let randSum = 0, nTest = 0;
+  const monthly = [];
+  for(const m of monthList.reverse()){
+    const mStart = m + '-01', mEnd = addMonths(mStart, 1), tStart = addMonths(mStart, -24);
+    const test = usable.filter(r => r.date >= mStart && r.date < mEnd);
+    const train = usable.filter(r => r.date >= tStart && r.date < mStart);
+    if(!test.length || train.length < MIN_SAMPLE) continue;
+    const row = {m, n: 0, mean: 0, curve: 0};
+    const groups = new Map();
+    test.forEach(t => { const k = (t.rng || []).join(','); if(!groups.has(k)) groups.set(k, []); groups.get(k).push(t); });
+    for(const [k, tests] of groups){
+      const same = k ? train.filter(r => (r.rng || []).join(',') === k) : [];
+      const tr = same.length >= MIN_SAMPLE ? same : train;
+      const now = parseKst(mStart).getTime();
+      const meanX = stats(tr.map(r => winWindow(r, op?.get(r.id)).S)).mean;
+      const xs = {};
+      for(const s of BT_SMOOTHS) xs[s] = winCurve(tr, {now, sido, opening: op, smooth: s})?.best.x ?? meanX;
+      for(const t of tests){
+        const w = winWindow(t, op?.get(t.id));
+        const hit = (x) => w.S <= x && x < w.W;
+        nTest++; row.n++;
+        if(t.cnt){ strat.random.n++; randSum += 1 / t.cnt; }
+        strat.mean.n++; if(hit(meanX)){ strat.mean.k++; row.mean++; } else if(meanX < w.S) strat.mean.below++;
+        for(const s of BT_SMOOTHS){
+          const st = strat['c' + s]; st.n++;
+          if(hit(xs[s])){ st.k++; if(s === 0.01) row.curve++; } else if(xs[s] < w.S) st.below++;
+        }
+      }
     }
-    if(pool.length < 5) continue;
-    const pred = stats(pool.map(r => r.sr)).mean;
-    const floor = t.floor || DEFAULT_FLOOR, a = t.a || 0;
-    const rec = bidAmount(t.base, pred, a, floor);
-    const floorPrice = Math.ceil((t.plan - a) * floor / 100 + a);
-    res.push({t, pred, n: pool.length, rec, below: rec < floorPrice, win: rec >= floorPrice && rec < t.amt, err: Math.abs(pred - t.sr)});
+    monthly.push(row);
   }
-  if(!res.length){ out.innerHTML = '<div class="empty">백테스트할 수 있는 과거 데이터가 부족합니다.</div>'; return; }
-  const rate = res.filter(r => r.win).length / res.length;
-  const below = res.filter(r => r.below).length / res.length;
-  const err = stats(res.map(r => r.err)).mean;
-  out.innerHTML = `<div class="stat-grid">
-      <div class="stat"><div class="t">성공 비율</div><div class="v" style="color:var(--primary-dark);">${(rate*100).toFixed(1)}%</div></div>
-      <div class="stat"><div class="t">하한 미달 비율</div><div class="v">${(below*100).toFixed(1)}%</div></div>
-      <div class="stat"><div class="t">1위보다 높았던 비율</div><div class="v">${((1-rate-below)*100).toFixed(1)}%</div></div>
-      <div class="stat"><div class="t">평균 오차(사정율)</div><div class="v">${err.toFixed(3)}%p</div></div>
-    </div>
-    <div class="meta-line">${sampleText(res.length)} (요청 ${N}건 중 과거 표본 5건 이상인 공고) · 각 공고는 개찰일 이전 12개월, 같은 면허 데이터만 사용</div>
-    <div class="meta-line">성공 = 추천 투찰가 ≥ 실제 낙찰하한가 그리고 &lt; 실제 1위 낙찰금액</div>
-    <div class="table-wrap" style="margin-top:10px;"><table>
-      <thead><tr><th>개찰일</th><th>공고명</th><th class="num">예측</th><th class="num">실제</th><th>결과</th></tr></thead>
-      <tbody>${res.slice(0, 200).map(r => `<tr><td>${esc(r.t.date)}</td><td class="wrap">${esc(r.t.nm)}</td><td class="num">${pct(r.pred)}</td><td class="num">${pct(r.t.sr)}</td><td>${r.win ? '<span class="badge ok">성공</span>' : r.below ? '<span class="badge">하한 미달</span>' : '<span class="badge gray">1위보다 높음</span>'}</td></tr>`).join('')}</tbody>
+  if(!nTest){ out.innerHTML = '<div class="empty">시험할 수 있는 공고가 부족합니다 (각 달 이전 24개월에 30건 이상 필요).</div>'; return; }
+  const randP = strat.random.n ? randSum / strat.random.n : null;
+  const line = (name, st, note='') => {
+    const rate = st.k / st.n, [lo, hi] = wilson(st.k, st.n);
+    const lift = randP ? rate / randP : null;
+    return {name, note, rate, lo, hi, lift, liftLo: randP ? lo / randP : null, liftHi: randP ? hi / randP : null, below: st.below / st.n, n: st.n, k: st.k};
+  };
+  const curves = BT_SMOOTHS.map(s => ({s, ...line(`곡선 전략 (폭 ±${s}%p)`, strat['c' + s])}));
+  const bestC = curves.reduce((b, c) => c.rate > b.rate ? c : b, curves[0]);
+  const meanL = line('평균 전략 (평균 사정율)', strat.mean);
+  const adopt = bestC.n >= 2000 && bestC.liftLo != null && bestC.liftLo > 1;
+  // 가장 좋았던 폭을 앱 전체 곡선에 쓰고, 결과를 시·도별로 기억
+  LS.set('curveSmooth', bestC.s);
+  qpCache.clear();
+  const saved = LS.get('btResult', {});
+  saved[sido] = {n: bestC.n, rate: bestC.rate, lift: bestC.lift, liftLo: bestC.liftLo, adopt, smooth: bestC.s, at: new Date().toISOString()};
+  LS.set('btResult', saved);
+
+  const tr = (l, cls='') => `<tr class="${cls}"><td>${l.name}${l.note}</td><td class="num">${(l.rate*100).toFixed(2)}%</td><td class="num">${(l.lo*100).toFixed(2)}~${(l.hi*100).toFixed(2)}%</td>
+    <td class="num">${l.lift ? '×' + l.lift.toFixed(2) : '-'}${l.liftLo ? ` <span class="faint">(${l.liftLo.toFixed(2)}~${l.liftHi.toFixed(2)})</span>` : ''}</td>
+    <td class="num">${(l.rate*100).toFixed(1)}건</td><td class="num">${l.below != null ? (l.below*100).toFixed(1) + '%' : '-'}</td></tr>`;
+  out.innerHTML = `
+    <div class="alert ${adopt ? 'ok' : 'warn'}">${adopt
+      ? `✅ <b>우위 있음</b> — 곡선 추천값이 무작위보다 ${bestC.lift.toFixed(2)}배(신뢰구간 하한 ${bestC.liftLo.toFixed(2)}배) 자주 낙찰권이었습니다. 추천값으로 사용합니다.`
+      : `⚠️ <b>뚜렷한 우위 없음</b> — ${bestC.n < 2000 ? `시험 공고가 ${fmtNum(bestC.n)}건으로 2,000건 미만입니다. ` : ''}${bestC.liftLo != null ? `무작위 대비 배수 신뢰구간 하한 ${bestC.liftLo.toFixed(2)} ${bestC.liftLo > 1 ? '> 1' : '≤ 1'}. ` : ''}추천값은 참고로만 보세요.`}</div>
+    <div class="table-wrap" style="max-height:none; margin-top:10px;"><table>
+      <thead><tr><th>전략</th><th class="num">성공률</th><th class="num">95% 신뢰구간</th><th class="num">무작위 대비</th><th class="num">100건당 낙찰</th><th class="num">하한 미달</th></tr></thead>
+      <tbody>
+        <tr><td>무작위 기준 (평균 업체, 1÷참가수)</td><td class="num">${randP ? (randP*100).toFixed(2) + '%' : '-'}</td><td class="num">-</td><td class="num">×1.00</td><td class="num">${randP ? (randP*100).toFixed(1) + '건' : '-'}</td><td class="num">-</td></tr>
+        ${tr(meanL)}
+        ${curves.map(c => tr({...c, note: c.s === bestC.s ? ' <span class="badge blue">채택</span>' : ''}, c.s === bestC.s ? 'hl-row' : '')).join('')}
+      </tbody></table></div>
+    <div class="meta-line">${esc(sido)} · 시험 ${fmtNum(nTest)}건(최근 ${monthly.length}개월) · 각 달은 그 이전 24개월 데이터만으로 추천값을 정함(예가범위별, 같은 범위 30건 미만이면 전체) · 성공 = 실제 사정율 ≤ 추천 투찰 사정률 &lt; 실제 낙찰자 투찰 사정률</div>
+    <div class="meta-line">채택 기준: 시험 2,000건 이상 그리고 무작위 대비 배수 신뢰구간 하한 &gt; 1. 곡선 폭은 이 결과에서 가장 좋았던 값을 골라 앱 전체에 적용했으므로(현재 ±${bestC.s}%p) 실제보다 약간 낙관적일 수 있습니다.</div>
+    <h3>달별 결과 (곡선 폭 ±0.01%p 기준)</h3>
+    <div class="table-wrap" style="max-height:none;"><table>
+      <thead><tr><th>시험 달</th><th class="num">공고</th><th class="num">평균 전략 성공</th><th class="num">곡선 전략 성공</th></tr></thead>
+      <tbody>${monthly.map(r => `<tr><td>${r.m}</td><td class="num">${fmtNum(r.n)}</td><td class="num">${r.mean}</td><td class="num">${r.curve}</td></tr>`).join('')}</tbody>
     </table></div>`;
 }
 
@@ -1036,10 +1762,13 @@ async function init(){
     const u = e.target.closest('[data-unwatch]');
     if(u){ WatchStore.remove(u.dataset.unwatch).then(renderWatch); return; }
     const p = e.target.closest('[data-predict]');
-    if(p){ predictWithNotice(p.dataset.predict); }
+    if(p){ predictWithNotice(p.dataset.predict); return; }
+    const g = e.target.closest('[data-goto]');
+    if(g) switchTab(g.dataset.goto);
   });
 
   initBidsFilters();
+  initLive();
   initPredict();
   initStats();
   initSettings();

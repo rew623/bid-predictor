@@ -9,12 +9,14 @@ GitHub Actions(.github/workflows/collect.yml)에서 매일 실행된다.
   RESET_BACKFILL   true 면 과거 수집 커서를 오늘로 되돌려 처음부터 다시 수집
   API_DAILY_LIMIT  서비스(낙찰정보/입찰공고)별 하루 호출 한도. 기본 950
   MAX_MINUTES      이 시간이 지나면 저장하고 종료. 기본 300
+  STEPS            실행할 단계 이름(쉼표 구분). 비우면 전부. 예: "공고,최근낙찰"
 
-단계
-  1) 입찰공고(진행중) 갱신      → data/bids.json, data/notice_cache.json
-  2) 최근 낙찰 목록 갱신        → data/scsbid/{시도}.json
-  3) 과거 낙찰 목록 일괄 수집   → 커서를 한 달씩 과거로 (진행 상황 meta.json)
-  4) 개찰 전체 순위·복수예가    → data/opening/{시도}/{연도}.json (scripts/regions.json 지역만)
+단계 (이름)
+  1) 공고      입찰공고(진행중) 갱신      → data/bids.json, data/notice_cache.json
+  2) 최근낙찰  최근 낙찰 목록 갱신        → data/scsbid/{시도}.json
+  3) 과거낙찰  과거 낙찰 목록, 최근 24개월까지 먼저 (진행 상황 meta.json)
+  4) 상세      개찰 전체 순위·복수예가    → data/opening/{시도}/{연도}.json (scripts/regions.json 지역만)
+  5) 과거낙찰  나머지 과거(3년까지)
 
 API 필드명이 확정되지 않았으므로 모든 필드 접근은 후보 이름 목록(F_*)을 거친다.
 첫 실행 때 각 API 원본 1건을 data/_sample_{op}.json 에 저장하니 그걸 보고 후보를 고친다.
@@ -46,6 +48,7 @@ ROWS = 999                                  # 페이지당 건수
 NOTICE_CACHE_DAYS = 60                      # 낙찰 정보 보강용 공고 보관 기간
 RECENT_SCSBID_DAYS = 40                     # 매일 다시 훑는 최근 낙찰 기간
 BACKFILL_YEARS = 3
+RECENT_FIRST_MONTHS = 24                    # 과거 낙찰은 이 기간을 먼저 채운 뒤 상세 → 나머지 과거 순으로
 DETAIL_MAX_TRIES = 3
 SCHEMA_VERSION = 1
 
@@ -890,7 +893,8 @@ def step_recent_scsbid(api, meta, store, cache, now):
     log(f"  낙찰 {n}건 조회")
 
 
-def step_backfill(api, meta, store, now, checkpoint):
+def step_backfill(api, meta, store, now, checkpoint, horizon=None):
+    """horizon 을 주면 커서가 그 날짜보다 과거로 가기 전에 멈춘다 (최근분 우선 수집용)."""
     bf = meta.setdefault("backfill", {})
     start_env = (os.environ.get("START_DATE") or "").strip()
     if os.environ.get("RESET_BACKFILL", "").lower() in ("1", "true", "yes"):
@@ -911,6 +915,9 @@ def step_backfill(api, meta, store, now, checkpoint):
             bf["done"] = True
             bf["cursor"] = None
             log("[과거] 완료")
+            return
+        if horizon and cur < horizon:
+            log(f"[과거] 최근 {RECENT_FIRST_MONTHS}개월 수집 완료, 커서 {cursor}")
             return
         if api.remaining("scsbid") < 40 or api.remaining("bid") < 80 or api.time_left() < 20:
             log(f"[과거] 오늘 한도 도달, 커서 {cursor}")
@@ -1041,14 +1048,20 @@ def main():
         if final:
             log(f"저장 완료: 공고 {len(bids)}건, 낙찰 {sum(counts_s.values())}건, 상세 {sum(counts_o.values())}건")
 
+    # 예측(앱은 최근 24개월 위주)에 효과가 큰 순서: 공고 → 최근 낙찰 → 과거 24개월 → 개찰 상세 → 나머지 과거
+    horizon = now - dt.timedelta(days=round(30.44 * RECENT_FIRST_MONTHS))
     steps = [
         ("공고", lambda: step_notices(api, meta, cache, now)),
         ("최근낙찰", lambda: step_recent_scsbid(api, meta, store, cache, now)),
-        ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all)),
+        ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all, horizon)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all)),
+        ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all)),
     ]
+    only = {s.strip() for s in (os.environ.get("STEPS") or "").split(",") if s.strip()}
     fatal = None
     for name, fn in steps:
+        if only and name not in only:
+            continue
         try:
             fn()
         except BudgetExhausted as e:

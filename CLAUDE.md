@@ -26,9 +26,10 @@ manifest.json         PWA 매니페스트
 icons/                아이콘 (svg, 192/512 png)
 .nojekyll             _sample_*.json 등 밑줄 파일도 Pages 에 게시되도록
 scripts/collect.py    수집기 (Actions 에서 실행)
+scripts/commit_data.sh  data/ 변경 커밋·푸시 (워크플로에서 단계마다 호출)
 scripts/korea.py      시도·시군구 파싱, 면허 23개 + 옛 명칭 별칭표
 scripts/regions.json  개찰 상세(전체 순위·복수예가)를 수집할 시·도 목록. 예: ["강원"]
-.github/workflows/collect.yml  매일 02:00 KST + 수동 실행(start_date, reset_backfill)
+.github/workflows/collect.yml  02:00 KST 전체 + 09·13·17시 공고만 + 수동 실행(start_date, reset_backfill, quick_only)
 reference/prototype.html       초기 프로토타입 (디자인 참고용, 가상 데이터 코드는 쓰지 않음)
 data/                 수집 결과 (아래)
 ```
@@ -36,7 +37,8 @@ data/                 수집 결과 (아래)
 ## 수집 (scripts/collect.py)
 - API: 공공데이터포털 조달청 나라장터 `낙찰정보서비스`(ScsbidInfoService), `입찰공고정보서비스`(BidPublicInfoService).
   엔드포인트 후보는 `SERVICES`, 오퍼레이션은 `OPS`, 필드 이름 후보는 `F_*` 목록. 첫 성공 응답 1건을 `data/_sample_{op}.json` 에 저장하므로 필드명이 다르면 그걸 보고 `F_*` 를 고친다.
-- 단계: ① 진행중 공고(최근 공고·기초금액·면허제한·참가가능지역) ② 최근 40일 낙찰 목록 ③ 과거 낙찰 목록을 한 달씩 과거로(기본 3년, `meta.backfill.cursor`) ④ regions.json 지역의 개찰 전체 순위·복수예가(공고 1건당 2회 이상 호출, 최신 개찰부터).
+- 단계(이름): ① `공고` 진행중 공고(최근 공고·기초금액·면허제한·참가가능지역) ② `최근낙찰` 최근 40일 낙찰 목록 ③ `과거낙찰` 과거 낙찰 목록을 한 달씩 과거로, 최근 24개월(`RECENT_FIRST_MONTHS`)까지 먼저 ④ `상세` regions.json 지역의 개찰 전체 순위·복수예가(공고 1건당 2회 이상 호출, 최신 개찰부터) ⑤ `과거낙찰` 나머지 과거(기본 3년, `meta.backfill.cursor`).
+- 환경변수 `STEPS` 로 단계를 골라 실행. 워크플로는 1차 `공고,최근낙찰`(MAX_MINUTES 40) → 커밋 → 2차 `과거낙찰,상세` → 커밋 순서라 공고는 몇 분 안에 앱에 뜬다. 09·13·17시 예약 실행과 `quick_only` 수동 실행은 1차만.
 - 하루 호출 한도: 서비스별 `API_DAILY_LIMIT`(기본 950). 호출 수는 `meta.api.calls` 에 날짜별로 기록, 넘으면 저장 후 다음 날 이어서.
 - 예정가격이 없으면 `낙찰금액 ÷ 낙찰률` 로 역산, 사정율 `sr = 예정가격 ÷ 기초금액 × 100` (80~120 벗어나면 버림).
 - 공고번호-차수(`id`)로 중복 병합. 워크플로는 meta.json 외 파일이 바뀐 경우에만 커밋.
@@ -118,4 +120,14 @@ data/                 수집 결과 (아래)
 - 앱은 meta.json → 사용자가 고른 시·도의 파일만 불러옴(메모리 + 서비스워커 `data-v1` 캐시, URL 에 `?v=updated_at`).
 - NEW: `localStorage bp.lastVisit` 이후 `seen` 인 공고. 탭 배지: `bp.bidsSeenAt` 이후 수.
 - 투찰금액 = (예정가격 − A값) × 낙찰하한율 + A값 (원 단위 올림). 낙찰하한율 기본 87.745.
+- 투찰 사정률 x = 투찰금액을 위 식으로 되돌린 값(`bidToSr`). x ≥ 실제 사정율 S ⟺ 투찰금액 ≥ 낙찰하한가.
+- **승리 구간**(`winWindow`): 과거 공고마다 [S, W), W = 실제 낙찰자 투찰 사정률(낙찰금액으로 계산). 개찰 상세가 있으면 정확한 예정가격과 "x ≥ S 인 투찰 중 최소"를 W 로(적격심사 탈락 보정). 유효: 0 ≤ W−S < 1.
+- **낙찰확률 곡선**(`winCurve`): 97~103% 를 0.001 간격으로, 승리 구간을 차분 배열로 쌓아 누적합 ÷ 가중치 합. 가중치 exp(−경과개월/12), 기준 시·도 ×2. ±`curveSmooth`(기본 0.01%p, 백테스트가 0.005/0.01/0.03/0.05 중 골라 `localStorage bp.curveSmooth` 에 저장) 이동평균의 최대점 = 추천 x*. 상위 3 봉우리, 안전 범위(최대의 90% 이상 구간), 무작위 기준(가중 평균 1/참가수) 함께 반환.
+- 곡선 표본은 넓게: 지역 최근 24개월 + 예가범위 같음(30건↑). 면허·금액으로 쪼개지 않는다(우연한 봉우리). 면허·금액 등 필터는 참고용 평균 분포에만.
+- 예상 참가업체 수(`expectedCnt`): 같은 발주기관 → 같은 면허·금액 0.5~2배 → 지역 전체 순으로 5건 이상인 첫 단계의 cnt 중앙값. 공고별 예상 낙찰확률 = 곡선값 × (곡선 표본 cnt 중앙값 ÷ 예상 참가 수). 기대 수주액 = 예상 낙찰확률 × 기초금액(없으면 추정가격).
+- **백테스트**(설정): 롤링 표본외 — 최근 N개월 각 달을, 그 이전 24개월만으로 예가범위별 x* 를 정해 시험. 무작위(1/참가수)·평균·곡선(폭 4가지) 비교, Wilson 95% 신뢰구간, 무작위 대비 배수. 채택 = 시험 2,000건↑ 그리고 배수 신뢰구간 하한 > 1. 결과는 `bp.btResult[시도]` 에 저장해 예측 화면 배지로 표시.
+- **내 투찰 기록**(관심공고): WatchStore 항목에 `myBid`(실제 넣은 금액). 개찰 뒤 `judgeBid` 로 낙찰권/하한 미달/1위보다 높음 + 차이 금액 + (상세 있으면) 예상 순위. `calibrate` = 내 기록 전체에서 투찰 사정률을 −1~+1%p 옮겼을 때 낙찰권이 가장 많았던 이동량 → `bp.myCal` 에 저장해 예측 화면 팁에 표시.
+- 입찰공고 탭은 두 모드: **실시간 검색**(조달청 `BidPublicInfoService` 의 `getBidPblancListInfo{Cnstwk|Servc|Thng|Frgcpt|Etc}PPSSrch` 를 브라우저에서 직접 호출, CORS 허용됨. 업무구분 공사·용역·물품·외자·기타, `LIVE_KINDS`. 검색조건 조회가 키 오류 외 이유로 실패하면 기본 목록 조회 + 앱에서 거르기로 대체. 예측은 공사만) / **진행중 공고**(자동 수집 bids.json). 서비스키는 설정 탭에서 입력해 `localStorage bp.apiKey` 에만 저장(저장소에 넣지 않음). 키가 있으면 실시간이 기본.
+  실시간 결과는 같은 공고번호의 마지막 차수만, 취소공고 제외. "이 공고로 예측" 때 `getBidPblancListInfoCnstwkBsisAmount`(inqryDiv=2, 공고번호)로 기초금액·A값·예가범위를 채운다(`enrichLive`). 검색 조건 파라미터 이름(bidNtceNm, ntceInsttNm, dminsttNm, prtcptLmtRgnNm, indstrytyNm, presmptPrceBgn/End, bidClseExcpYn)은 실제 키로 확인 전 — 안 먹히면 여기부터 확인.
+- 공고 목록 간단 예측(`quickPredict`): 같은 시도 최근 24개월 → 면허 겹침(10건 이상일 때) → 예가범위 같음(30건 이상일 때). 조건별로 결과 캐시.
 - 경고: 투찰금액 < 낙찰하한가, 또는 < 순공사원가 × 98% → 빨간 경고.

@@ -39,18 +39,67 @@
 
   <!-- ===================== 입찰공고 ===================== -->
   <section id="view-bids" hidden>
-    <div class="card">
-      <h2>진행중 입찰공고</h2>
-      <p class="sub">시도 → 시·군 → 면허 → 공고명 순으로 좁혀 보세요. 마감 임박 순으로 보여줍니다.</p>
-      <div class="inline-inputs">
-        <div><label for="bSido">시·도</label><select id="bSido"></select></div>
-        <div><label for="bSgg">시·군·구</label><select id="bSgg"></select></div>
-        <div><label for="bLic">면허</label><select id="bLic"></select></div>
-        <div><label for="bQuery">공고명 검색</label><input type="search" id="bQuery" placeholder="예: 도로, 배수로"></div>
+    <div class="seg mode-seg" id="bMode">
+      <button data-v="live" type="button">🔎 실시간 검색 (나라장터)</button>
+      <button data-v="saved" type="button">📋 진행중 공고 (자동 수집)</button>
+    </div>
+
+    <!-- 실시간 검색: 조달청 API 직접 조회 -->
+    <div id="bidsLive" hidden>
+      <div class="alert warn" id="liveKeyHint" hidden>실시간 검색을 쓰려면 설정 탭에서 조달청 API 서비스키를 한 번 넣어 주세요. <button class="btn sm line" data-goto="settings" type="button">설정으로</button></div>
+      <div class="card filter-card">
+        <div class="search-box">
+          <span class="search-ico" aria-hidden="true">🔎</span>
+          <input type="search" id="lQuery" placeholder="공고명 (예: 도로, 배수로, 청소용역, 레미콘)" aria-label="공고명">
+        </div>
+        <div class="period-row">
+          <select id="lKind" aria-label="업무구분"></select>
+          <select id="lDiv" aria-label="조회 기준"><option value="1">공고일 기준</option><option value="2">개찰일 기준</option></select>
+          <input type="date" id="lFrom" aria-label="시작일">
+          <span class="faint">~</span>
+          <input type="date" id="lTo" aria-label="종료일">
+          <div class="seg" id="lPeriod">
+            <button data-d="7" class="on" type="button">1주</button><button data-d="30" type="button">1개월</button><button data-d="90" type="button">3개월</button><button data-d="182" type="button">6개월</button>
+          </div>
+        </div>
+        <div class="filter-row">
+          <input type="text" id="lOrg" placeholder="공고기관" aria-label="공고기관">
+          <input type="text" id="lDmd" placeholder="수요기관" aria-label="수요기관">
+          <select id="lRgn" aria-label="참가제한지역"></select>
+          <select id="lLic" aria-label="업종"></select>
+        </div>
+        <div class="search-foot">
+          <select id="lAmt" aria-label="추정가격"></select>
+          <label class="check"><input type="checkbox" id="lOpen"> 마감 전 공고만</label>
+          <button class="btn" id="lSearch" type="button">검색</button>
+        </div>
       </div>
+      <div class="list-head"><div class="meta-line" id="liveInfo"></div></div>
+      <div class="bid-list" id="liveList"></div>
+      <div class="more"><button class="btn line sm" id="liveMore" type="button" hidden>더 보기</button></div>
+    </div>
+
+    <!-- 자동 수집된 진행중 공고 -->
+    <div id="bidsSaved" hidden>
+    <div class="kpis" id="bidsKpis"></div>
+    <div class="card filter-card">
+      <div class="search-box">
+        <span class="search-ico" aria-hidden="true">🔎</span>
+        <input type="search" id="bQuery" placeholder="공고명·기관 검색 (예: 도로, 배수로, 춘천시)" aria-label="공고명·기관 검색">
+      </div>
+      <div class="filter-row">
+        <select id="bSido" aria-label="시·도"></select>
+        <select id="bSgg" aria-label="시·군·구"></select>
+        <select id="bLic" aria-label="면허"></select>
+        <select id="bAmt" aria-label="금액"></select>
+      </div>
+    </div>
+    <div class="list-head">
       <div class="meta-line" id="bidsInfo"></div>
-      <div class="bid-list" id="bidsList"></div>
-      <div class="more"><button class="btn line sm" id="bidsMore" type="button" hidden>더 보기</button></div>
+      <select id="bSort" class="sort-select" aria-label="정렬"></select>
+    </div>
+    <div class="bid-list" id="bidsList"></div>
+    <div class="more"><button class="btn line sm" id="bidsMore" type="button" hidden>더 보기</button></div>
     </div>
   </section>
 
@@ -86,6 +135,14 @@
           <div><label for="fRecent">최근 12개월만</label><div class="desc">개찰일이 최근 12개월 이내인 공고만 반영</div></div>
         </div>
         <div class="field-item">
+          <input type="checkbox" id="fRng" checked>
+          <div><label for="fRng">예가범위 같은 공고만 (공고 선택 시)</label><div class="desc">±2%·±3% 등 예가범위가 다르면 사정율 분포 폭이 달라집니다. 같은 범위 표본이 30건 미만이면 자동으로 빼고 계산</div></div>
+        </div>
+        <div class="field-item">
+          <input type="checkbox" id="fOrg">
+          <div><label for="fOrg">같은 발주기관만 (공고 선택 시)</label><div class="desc">선택한 공고의 발주기관 과거 공고만 반영</div></div>
+        </div>
+        <div class="field-item">
           <input type="checkbox" id="fCnt">
           <div><label for="fCnt">참가업체 수 유사도 (±2)</label><div class="desc">아래 참가업체 수와 ±2개사 이내인 공고만 반영</div></div>
         </div>
@@ -104,7 +161,7 @@
 
     <div class="card">
       <h2>투찰가 계산기</h2>
-      <p class="sub">투찰금액 = (예정가격 − A값) × 낙찰하한율 + A값. 예측 실행 시 적용 사정율이 자동으로 채워집니다.</p>
+      <p class="sub">투찰금액 = (예정가격 − A값) × 낙찰하한율 + A값. 예측 실행 시 낙찰확률이 가장 높았던 투찰 사정율이 자동으로 채워집니다.</p>
       <div class="inline-inputs">
         <div><label for="cBase">기초금액(원)</label><input type="number" id="cBase" inputmode="numeric"></div>
         <div><label for="cA">A값(원, 없으면 0)</label><input type="number" id="cA" inputmode="numeric" placeholder="0"></div>
@@ -169,6 +226,18 @@
   <!-- ===================== 설정 ===================== -->
   <section id="view-settings" hidden>
     <div class="card">
+      <h2>실시간 공고 검색 키</h2>
+      <p class="sub">공공데이터포털 "조달청_나라장터 입찰공고정보서비스"의 서비스키(Decoding 키)를 넣으면 입찰공고 탭에서 나라장터처럼 기간·조건으로 바로 검색합니다. 키는 <b>이 기기(브라우저)에만</b> 저장되고 저장소에는 올라가지 않습니다. 폰과 PC에 각각 한 번씩 넣어 주세요.</p>
+      <div class="inline-inputs" style="margin-top:0;">
+        <div style="flex:3;"><label for="keyIn">서비스키</label><input type="password" id="keyIn" autocomplete="off" placeholder="서비스키 붙여넣기"></div>
+      </div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn sm" id="keySave" type="button">저장 후 연결 확인</button>
+        <button class="btn sm line" id="keyDel" type="button">지우기</button>
+        <span class="meta-line" id="keyMsg" style="margin:0;"></span>
+      </div>
+    </div>
+    <div class="card">
       <h2>데이터 현황</h2>
       <div id="setData"></div>
     </div>
@@ -178,11 +247,11 @@
       <div id="setDetail"></div>
     </div>
     <div class="card">
-      <h2>백테스트</h2>
-      <p class="sub">최근 N건을 각 개찰일 이전 데이터만으로 예측했을 때, 추천 투찰가가 낙찰하한가 이상이면서 실제 1위(낙찰금액)보다 낮았던 비율과 사정율 평균 오차입니다.</p>
+      <h2>백테스트 — "이 추천값으로 넣었으면 실제로 낙찰됐나"</h2>
+      <p class="sub">최근 N개월의 각 달마다, 그 달 <b>이전 24개월 데이터만으로</b> 추천값을 정해 그 달 실제 공고에 넣어 봅니다(미래 데이터를 보지 않는 표본외 검증). 무작위 기준(평균 업체)·평균 사정율 전략·낙찰확률 곡선 전략을 비교하고, 가장 좋았던 곡선 폭을 앱 전체 추천에 적용합니다.</p>
       <div class="inline-inputs" style="margin-top:0;">
         <div><label for="btSido">시·도</label><select id="btSido"></select></div>
-        <div><label for="btN">최근 N건</label><input type="number" id="btN" value="100" min="10" step="10"></div>
+        <div><label for="btN">시험 기간(최근 N개월)</label><input type="number" id="btN" value="12" min="3" max="24" step="1"></div>
       </div>
       <div class="btn-row" style="margin-top:12px;"><button class="btn ghost" id="btRun" type="button">백테스트 실행</button></div>
       <div id="btResult" style="margin-top:12px;"></div>

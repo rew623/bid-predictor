@@ -2,7 +2,8 @@ name: 데이터 수집
 
 on:
   schedule:
-    - cron: "0 17 * * *"   # 매일 02:00 KST
+    - cron: "0 17 * * *"      # 매일 02:00 KST — 전체 수집
+    - cron: "0 0,4,8 * * *"   # 09·13·17시 KST — 진행중 공고·최근 낙찰만 빠르게
   workflow_dispatch:
     inputs:
       start_date:
@@ -11,6 +12,11 @@ on:
         default: ""
       reset_backfill:
         description: "과거 수집을 오늘부터 처음부터 다시"
+        type: boolean
+        required: false
+        default: false
+      quick_only:
+        description: "진행중 공고·최근 낙찰만 (몇 분이면 끝남)"
         type: boolean
         required: false
         default: false
@@ -36,27 +42,29 @@ jobs:
       - name: 의존성 설치
         run: pip install requests
 
-      - name: 수집
+      # 1차: 진행중 공고 + 최근 낙찰 → 바로 커밋해서 앱에 먼저 뜨게 한다
+      - name: 빠른 수집 (공고·최근 낙찰)
+        env:
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+          STEPS: "공고,최근낙찰"
+          MAX_MINUTES: "40"
+        run: python scripts/collect.py
+
+      - name: 빠른 수집 커밋
+        if: always()
+        run: bash scripts/commit_data.sh "공고"
+
+      # 2차: 과거 낙찰(최근 24개월 먼저) → 개찰 상세 → 나머지 과거
+      - name: 전체 수집 (과거 낙찰·개찰 상세)
+        if: ${{ github.event.schedule != '0 0,4,8 * * *' && !inputs.quick_only }}
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
           START_DATE: ${{ inputs.start_date }}
           RESET_BACKFILL: ${{ inputs.reset_backfill }}
-          MAX_MINUTES: "300"
+          STEPS: "과거낙찰,상세"
+          MAX_MINUTES: "260"
         run: python scripts/collect.py
 
-      - name: 변경 있으면 커밋
+      - name: 전체 수집 커밋
         if: always()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A data
-          # meta.json 만 바뀐 경우(호출 횟수 등)는 커밋하지 않음
-          if git diff --cached --name-only | grep -v '^data/meta.json$' | grep -q .; then
-            git commit -m "data: 수집 $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M')"
-            for i in 1 2 3 4; do
-              git pull --rebase -X theirs origin "${GITHUB_REF_NAME}" && git push && break
-              sleep $((i * 5))
-            done
-          else
-            echo "변경 없음"
-          fi
+        run: bash scripts/commit_data.sh "수집"
