@@ -2,12 +2,13 @@
 """수집 뒤 실행: 전국 과거 낙찰로 추천 모델을 만들고 표본외 역검증까지 해서 data/model.json 에 쓴다.
 
 1) 참가업체 수 예측표  — 금액대×예가범위 → 시도×금액대 → 시도×금액대×하한율 → 면허 → 시도×면허 → 기관 순으로 로그 평균을 수축(shrink)해 섞는다.
-2) 낙찰확률 곡선        — 예가범위 × 예상 참가수(로그 0.2 간격)마다, 참가수가 비슷한(×1/4~×4) 최근 24개월 전국 공고의
-                         승리 구간 [S, W) 를 쌓아 97~103% 0.001 간격으로 계산, ±0.01%p 이동평균. 최대점 = 추천 투찰 사정률.
+2) 낙찰확률 곡선        — 예가범위 × 예상 참가수(로그 0.2 간격)마다, *예상* 참가수가 비슷한(로그 ±0.4) 최근 24개월 전국 공고의
+                         승리 구간 [S, W) 를 쌓아 97~103% 0.001 간격으로 계산, ±0.2%p 이동평균. 최대점 = 추천 투찰 사정률.
 3) 역검증              — 최근 12개월 각 달을 그 이전 데이터만으로 추천해, 실제로 1순위였는지 센다.
                          비교: 평균 사정율 방식, 무작위(평균 업체 = 1/참가수).
-근거: 2026-07~09 실데이터 분석에서 '비슷한 경쟁 규모로 학습'이 평균 사정율 방식보다 새 달에서 더 자주 이겼고(9월 138 vs 124건),
-     예상 참가수 하위 20% 공고만 넣으면 낙찰률이 약 2배였다. 설계 근거·한계는 CLAUDE.md.
+근거(2026-09 재검토, 11개월 60,534건 표본외): 실제 참가수로 곡선을 고르던 방식은 쓸 때 예측 참가수로 고르므로 어긋나
+     평균 업체 대비 ×0.90 이었다. 예측 참가수로 학습 + ±0.2%p 로 바꾸면 ×1.00 (11개월 중 10개월 개선), 예상 150곳↑ 는 ×1.3 안팎.
+     참가수를 정확히 알아도 상한은 ×1.12 — 위치 선택만으로 큰 우위는 없다. 설계 근거·한계는 CLAUDE.md.
 """
 import collections
 import datetime as dt
@@ -21,9 +22,9 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 G0, GS, GN = 97.0, 0.001, 6000
-SMOOTH_K = 10            # ±0.01%p
-BAND = 4.0               # 참가수 ×1/4 ~ ×4
-MIN_POOL = 200
+SMOOTH_K = 200           # ±0.2%p (±0.01 은 봉우리가 우연이라 새 달에서 못 이김)
+LN_BW = 0.4              # 예측 참가수 로그 ±0.4 (×0.67~×1.49)
+MIN_POOL = 300
 KEY_STEP = 2             # 곡선 키 = round(10·ln 참가수), 2 간격(로그 0.2)
 KEYS = list(range(10, 81, KEY_STEP))   # 참가수 약 3 ~ 3000
 AMT_EDGES = [7.7, 8.0, 8.3, 8.6, 9.0, 9.5]
@@ -122,28 +123,36 @@ def curve(S, W):
 
 
 class Pools:
-    """학습 행들로 (예가범위, 곡선키) 별 곡선을 만들고 재사용"""
+    """학습 행들로 (예가범위, 곡선키) 별 곡선을 만들고 재사용. 행은 예측 참가수(로그) "lp" 로 고른다 —
+    쓸 때도 예측 참가수로 곡선을 고르므로 학습도 같은 기준이어야 한다 (실제 참가수로 고르면 표본외 ×0.90)"""
 
     def __init__(self, rows):
         self.by_rng = {}
         for rk in RNGS:
             sel = [r for r in rows if r["rng"] == rk]
-            self.by_rng[rk] = (np.array([r["S"] for r in sel]), np.array([r["W"] for r in sel]), np.array([r["N"] for r in sel], float))
+            self.by_rng[rk] = (np.array([r["S"] for r in sel]), np.array([r["W"] for r in sel]),
+                               np.array([r["N"] for r in sel], float), np.array([r["lp"] for r in sel]))
         self.cache = {}
 
     def get(self, rk, key):
         if (rk, key) not in self.cache:
-            S, W, N = self.by_rng[rk]
+            S, W, N, L = self.by_rng[rk]
             if len(S) < 30:
                 self.cache[(rk, key)] = None
             else:
-                c = math.exp(key / 10)
-                m = (N >= c / BAND) & (N <= c * BAND)
+                d = np.abs(L - key / 10)
+                m = d <= LN_BW
                 if m.sum() < MIN_POOL:
-                    m = np.ones(len(S), bool)
+                    m = np.argsort(d)[:MIN_POOL]
                 sm = curve(S[m], W[m])
                 self.cache[(rk, key)] = (sm, S[m], N[m])
         return self.cache[(rk, key)]
+
+
+def with_lp(rows, npm):
+    for r in rows:
+        r["lp"] = predict_ln(npm, r)
+    return rows
 
 
 def snap_key(ln_n):
@@ -162,7 +171,7 @@ def summarize(sm, S, N):
     for i in np.argsort(-sm):
         if sm[i] <= 0 or len(peaks) >= 3:
             break
-        if all(abs(i - p) > 50 for p in peaks):
+        if all(abs(i - p) > SMOOTH_K for p in peaks):   # 후보끼리 곡선 폭 이상 떨어지게
             peaks.append(int(i))
     x = lambda i: round(G0 + i * GS, 3)
     qs = np.quantile(S, [0.01, 0.99])
@@ -197,7 +206,7 @@ def validate(rows):
         if len(train) < 300 or not test:
             continue
         npm = fit_npred(train)
-        pools = Pools(train)
+        pools = Pools(with_lp(train, npm))
         means = {rk: float(np.mean(pools.by_rng[rk][0])) if len(pools.by_rng[rk][0]) else 100.0 for rk in RNGS}
         row = {"m": m, "n": 0, "near": 0, "mean": 0, "rand": 0.0, "below_near": 0, "below_mean": 0}
         for r in test:
@@ -233,7 +242,7 @@ def validate(rows):
         tot["below_near"] = round(sum(r["below_near"] for r in out_m) / n, 4)
         tot["below_mean"] = round(sum(r["below_mean"] for r in out_m) / n, 4)
     return {"months": out_m, "segments": [s for s in seg if s["n"]], "total": tot,
-            "rule": f"참가수 ×1/{BAND:g}~×{BAND:g} 비슷한 공고, 곡선 ±{SMOOTH_K * GS:g}%p, 학습 = 시험 달 이전 {TRAIN_MONTHS}개월"}
+            "rule": f"예상 참가수 ×{math.exp(-LN_BW):.2f}~×{math.exp(LN_BW):.2f} 비슷한 공고, 곡선 ±{SMOOTH_K * GS:g}%p, 학습 = 시험 달 이전 {TRAIN_MONTHS}개월"}
 
 
 def main():
@@ -244,7 +253,8 @@ def main():
     last = rows[-1]["date"]
     cut = (dt.date.fromisoformat(last) - dt.timedelta(days=int(30.44 * TRAIN_MONTHS))).isoformat()
     recent = [r for r in rows if r["date"] >= cut]
-    pools = Pools(recent)
+    npred = fit_npred(recent)
+    pools = Pools(with_lp(recent, npred))
     curves = {}
     for rk in RNGS:
         lst = []
@@ -258,9 +268,9 @@ def main():
         "updated_at": dt.datetime.now(dt.timezone(dt.timedelta(hours=9))).isoformat(timespec="seconds"),
         "data": {"from": recent[0]["date"], "to": last, "rows": len(recent)},
         "grid": {"x0": G0, "step": 0.01, "n": 601, "scale": 1e5},
-        "band": BAND, "amt_edges": AMT_EDGES,
+        "band": round(math.exp(LN_BW), 2), "smooth": SMOOTH_K * GS, "amt_edges": AMT_EDGES,
         "meanS": {rk: round(float(np.mean(pools.by_rng[rk][0])), 4) for rk in RNGS if len(pools.by_rng[rk][0])},
-        "npred": fit_npred(recent),
+        "npred": npred,
         "curves": curves,
         "validation": validate(rows),
     }

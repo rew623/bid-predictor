@@ -410,7 +410,7 @@ function recFromModel(mp){
   return {src: 'model', x: e.x, p: e.p, lo: e.lo, hi: e.hi, peaks: e.pk.map(([x, p]) => ({x, p})), random: e.r, n: e.n, nExp: mp.nExp,
     view: e.v, at, meanS: mp.meanS, rng: mp.rng, rngKnown: mp.rngKnown, byInput: mp.byInput,
     pts: () => { const out = []; for(let x = e.v[0]; x <= e.v[1] + 1e-9; x += g.step) out.push({x: +x.toFixed(2), y: at(x)}); return out; },
-    note: `전국 최근 24개월 · 예가범위 ${rngText(mp.rng)}${mp.rngKnown ? '' : '(모름 → ±3% 기준)'} · 참가 ${fmtNum(Math.max(1, Math.round(mp.nExp / Model.m.band)))}~${fmtNum(Math.round(mp.nExp * Model.m.band))}곳 공고 ${fmtNum(e.n)}건`};
+    note: `전국 최근 24개월 · 예가범위 ${rngText(mp.rng)}${mp.rngKnown ? '' : '(모름 → ±3% 기준)'} · 예상 참가 ${fmtNum(Math.max(1, Math.round(mp.nExp / Model.m.band)))}~${fmtNum(Math.round(mp.nExp * Model.m.band))}곳 공고 ${fmtNum(e.n)}건`};
 }
 function recFromLocal(wc, ec){
   return {src: 'local', x: wc.best.x, p: adjustP(wc, wc.best.p, ec?.n), lo: wc.safe.lo, hi: wc.safe.hi,
@@ -426,6 +426,14 @@ function valBadge(){
 }
 /** 예상 참가수가 속한 역검증 구간 */
 const valSegment = (nExp) => Model.m?.validation?.segments?.find(s => nExp >= s.k[0] && (s.k[1] == null || nExp < s.k[1]));
+/** 역검증(표본외) 기준 낙찰확률 = 비슷한 공고의 평균 업체 확률(1/참가수 평균) × 그 경쟁 규모 구간의 역검증 배수.
+ *  곡선 최대값(e.p)은 과거 데이터에 맞춘 값이라 새 공고에서는 부풀려져 있다 */
+function valWinP(random, nExp){
+  const s = nExp ? valSegment(nExp) : null;
+  if(!random || !s?.rand || s.n < 300) return null;
+  const lift = s.near / s.rand;
+  return {p: random * lift, lift, n: s.n};
+}
 
 /** 공고 목록용 간단 예측. 평균 사정율: 같은 시도 최근 24개월 → 면허 겹침(10건↑) → 예가범위 같음(30건↑).
  *  낙찰확률 곡선: 같은 시도 최근 24개월 → 예가범위 같음(30건↑) (면허로는 쪼개지 않음). 조건별 결과는 재사용 */
@@ -434,9 +442,10 @@ function quickPredict(notice){
   if(notice.kind && notice.kind !== '공사') return null;
   const mp = modelPredict(notice);
   if(!mp) return quickPredictLocal(notice);
-  const e = mp.e, amt = notice.base || notice.est;
-  return {sr: quickPredictLocal(notice)?.sr ?? mp.meanS, n: e.n, note: '', model: true, bestSr: e.x, winP: e.p,
-    lift: e.r ? e.p / e.r : null, cnt: mp.nExp, value: amt ? e.p * amt : null, bid: bidAmount(notice.base, e.x, notice.a, notice.floor)};
+  const e = mp.e, amt = notice.base || notice.est, v = valWinP(e.r, mp.nExp);
+  const winP = v ? v.p : e.p;
+  return {sr: quickPredictLocal(notice)?.sr ?? mp.meanS, n: e.n, note: '', model: true, bestSr: e.x, winP,
+    lift: v ? v.lift : e.r ? e.p / e.r : null, cnt: mp.nExp, value: amt ? winP * amt : null, bid: bidAmount(notice.base, e.x, notice.a, notice.floor)};
 }
 const qpCache = new Map();
 function quickPredictLocal(notice){
@@ -1315,7 +1324,8 @@ async function runPredict(){
   if(rec){ $('cRate').value = rec.x.toFixed(4); renderCalc(); }
   let hero, curveCard = '', tips = '';
   if(rec){
-    const lift = rec.random ? rec.p / rec.random : null;
+    const vw = rec.src === 'model' ? valWinP(rec.random, rec.nExp) : null;   // 역검증 기준 (없으면 과거 곡선값)
+    const lift = vw ? vw.lift : rec.random ? rec.p / rec.random : null;
     const meanX = rec.meanS ?? pred.mean;
     const V = Model.m?.validation, T = V?.total, seg = rec.nExp ? valSegment(rec.nExp) : null;
     const net = numOf($('cNet')) || P.notice?.net || 0;
@@ -1323,7 +1333,7 @@ async function runPredict(){
     const level = !rec.nExp ? '' : rec.nExp < 20 ? '<b style="color:var(--ok)">경쟁 적음 — 유리</b>' : rec.nExp < 80 ? '보통' : '<b style="color:var(--warn)">경쟁 많음</b>';
     const check = [
       rec.nExp ? `<li class="ok"><b>경쟁 규모</b>: 예상 참가 <b>~${fmtNum(rec.nExp)}곳</b>${rec.byInput ? '(직접 입력)' : ''} → ${level}${seg ? ` · 이런 공고의 역검증 낙찰률 <b>${(seg.near / seg.n * 100).toFixed(1)}%</b> (${fmtNum(seg.n)}건)` : ''}</li>` : '',
-      `<li class="ok"><b>추천 위치</b>: ${rec.src === 'model' ? '경쟁 규모가 비슷한 전국 과거 공고에서 가장 자주 1순위였던 투찰 사정률' : '이 지역 과거 공고에서 가장 자주 1순위였던 투찰 사정률'} <b>${pct(rec.x, 3)}</b>${T?.n ? ` · 새 달 역검증 ${fmtNum(T.n)}건에서 <b>${fmtNum(T.near)}건</b> 낙찰 (평균 사정율 방식 ${fmtNum(T.mean)}건)` : ''}</li>`,
+      `<li class="ok"><b>추천 위치</b>: ${rec.src === 'model' ? '경쟁 규모가 비슷한 전국 과거 공고에서 가장 자주 1순위였던 투찰 사정률' : '이 지역 과거 공고에서 가장 자주 1순위였던 투찰 사정률'} <b>${pct(rec.x, 3)}</b>${T?.n ? ` · 새 달 역검증 ${fmtNum(T.n)}건에서 <b>${fmtNum(T.near)}건</b> 낙찰 (평균 사정율 방식 ${fmtNum(T.mean)}건 · 평균 업체 기대 ${fmtNum(Math.round(T.rand))}건)` : ''}</li>`,
       `<li class="ok"><b>금액</b>: ${recAmt ? `<b>${won(recAmt)}</b>을 ` : ''}원 단위까지 그대로. 안전 범위 ${recAmt ? `${won(amtAt(rec.lo))} ~ ${won(amtAt(rec.hi))}` : `${pct(rec.lo, 3)} ~ ${pct(rec.hi, 3)}`} 안이면 확률 비슷</li>`,
       !base ? `<li class="warn"><b>기초금액</b>을 넣어야 추천 금액이 계산됩니다</li>` : '',
       !rec.rngKnown && rec.src === 'model' ? `<li class="warn"><b>예가범위</b>를 모르면 ±3% 기준으로 계산합니다. 공고문에서 확인해 ② 칸에 고르세요</li>` : '',
@@ -1339,8 +1349,8 @@ async function runPredict(){
           <div class="hero-sub">투찰 사정률 <b>${pct(rec.x, 3)}</b>${recAmt ? ` · 안전 범위 ${won(amtAt(rec.lo))} ~ ${won(amtAt(rec.hi))}` : ` · 안전 범위 ${pct(rec.lo, 3)} ~ ${pct(rec.hi, 3)}`}</div>
         </div>
         <div class="hero-stats">
-          <div class="stat hl"><div class="t">예상 낙찰확률</div><div class="v">${(rec.p * 100).toFixed(2)}%</div></div>
-          <div class="stat"><div class="t">평균 업체 대비 (과거)</div><div class="v">${lift ? '×' + lift.toFixed(2) : '-'}</div></div>
+          <div class="stat hl"><div class="t">예상 낙찰확률</div><div class="v">${((vw ? vw.p : rec.p) * 100).toFixed(2)}%</div></div>
+          <div class="stat"><div class="t">평균 업체 대비 ${vw ? '(역검증)' : '(과거)'}</div><div class="v">${lift ? '×' + lift.toFixed(2) : '-'}</div></div>
           <div class="stat"><div class="t">예상 참가</div><div class="v">${rec.nExp ? '~' + fmtNum(rec.nExp) + '곳' : '-'}</div></div>
           <div class="stat"><div class="t">평균 사정율로 넣으면</div><div class="v">${(rec.at(meanX) * 100).toFixed(2)}%</div></div>
         </div>
@@ -1366,7 +1376,7 @@ async function runPredict(){
           <td class="num">${rec.random ? '×' + (c.p / rec.random).toFixed(2) : '-'}</td><td class="num">${base ? won(amtAt(c.x)) : '-'}</td>
           <td><button class="btn sm line" data-use-sr="${c.x}" type="button">적용</button></td></tr>`).join('')}</tbody>
       </table></div>
-      <div class="meta-line">곡선 표본: ${esc(rec.note)} · 곡선 폭 ±0.01%p · 평균 업체 = 1 ÷ 참가업체 수</div>
+      <div class="meta-line">곡선 표본: ${esc(rec.note)} · 곡선 폭 ±${rec.src === 'model' && Model.m?.smooth ? Model.m.smooth : curveSmooth()}%p · 과거 낙찰확률은 과거에 맞춘 값이라 새 공고에선 더 낮음(위 예상 낙찰확률은 역검증 기준) · 평균 업체 = 1 ÷ 참가업체 수</div>
     </div>`;
 
     // ---- 3) 금액·숫자 팁
