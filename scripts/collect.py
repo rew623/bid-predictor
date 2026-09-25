@@ -601,6 +601,12 @@ class NoticeCache:
         return out
 
 
+def other_quals(e):
+    """건설 면허 23개로 못 바꾼 참가자격(예: 국유림영림단, 산림사업법인) 원문 — 우리 면허와 안 겹치므로 '참가 불가'로 판정되게 남긴다"""
+    raw = e.get("lic_list") or ([e["lic_raw"]] if e.get("lic_raw") else [])
+    return list(dict.fromkeys(t.split("/")[0].strip() for t in raw if t and t.split("/")[0].strip()))
+
+
 def write_lic_map(cache):
     """앱 실시간 검색용: 최근 60일 공사 공고별 면허제한·참가가능지역 → data/lic_map.json
     {"v":1, "lic":[면허명…], "items":{공고ID:[면허 번호…]}, "rg":[지역 원문…], "rgn":{공고ID:[지역 번호…]}}
@@ -620,8 +626,9 @@ def write_lic_map(cache):
     for id_, e in sorted(cache.items.items()):
         if not e.get("nm"):
             continue
-        if e.get("lic"):
-            items[id_] = ids(e["lic"], names, index)
+        lic = e.get("lic") or other_quals(e)
+        if lic:
+            items[id_] = ids(lic, names, index)
         if e.get("rgn"):
             rgns[id_] = ids(e["rgn"], rnames, rindex)
     return write_if_changed(DATA / "lic_map.json", dumps({"v": SCHEMA_VERSION, "lic": names, "items": items, "rg": rnames, "rgn": rgns}))

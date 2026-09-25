@@ -1,5 +1,5 @@
 /* 서비스워커 — 앱이 쓰는 파일(index.html, app.js, style.css, manifest.json, icons/)을 바꾸면 VERSION 을 올린다. */
-const VERSION = '1.6.3';
+const VERSION = '1.6.4';
 const SHELL_CACHE = 'shell-' + VERSION;
 const DATA_CACHE = 'data-v1';
 const FONT_CACHE = 'fonts-v1';
@@ -47,7 +47,8 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(networkFirst(req, SHELL_CACHE, 'index.html'));
     return;
   }
-  e.respondWith(caches.match(req, {ignoreSearch:true}).then(r => r || fetch(req)));
+  // 앱 파일도 네트워크 우선 — 화면(index.html)만 새것이고 app.js 는 옛 캐시인 채로 섞이지 않게. 오프라인이면 캐시
+  e.respondWith(networkFirst(req, SHELL_CACHE));
 });
 
 async function versionedData(req, url){

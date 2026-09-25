@@ -7,6 +7,7 @@ GitHub Pages(main 브랜치 루트)로 배포하고, 공공 데이터는 GitHub 
 ## 작업 규칙
 - **요청한 부분만 수정**한다. 관련 없는 리팩터링·디자인 변경 금지.
 - **하단 탭 5개 유지**: 입찰공고 / 예측분석 / 관심공고 / 통계 / 설정 (PC에서는 좌측 사이드바).
+- 서비스워커는 앱 파일도 네트워크 우선(오프라인이면 캐시) — 화면만 새것이고 app.js 는 옛 캐시로 섞이던 문제(2026-09) 때문.
 - **앱이 쓰는 파일**(index.html, app.js, style.css, manifest.json, icons/)을 바꾸면 **sw.js 의 `VERSION` 을 올린다.**
   예외: reference/, scripts/, .github/ 워크플로, data/ 는 버전 올릴 필요 없음.
 - **디자인 유지**: 흰 배경, 파랑 #2F6FED, 카드형, Noto Sans KR, 다크모드(`prefers-color-scheme` + `data-theme`).
@@ -115,7 +116,8 @@ data/                 수집 결과 (아래)
 ### data/lic_map.json — 공고별 면허제한·참가가능지역 (수집기 `write_lic_map`, 최근 60일 공사)
 `{"v":1, "lic":[면허명…], "items":{"공고ID":[lic 번호…]}, "rg":[지역 원문…], "rgn":{"공고ID":[rg 번호…]}}` — 실시간 검색의 업종 거르기 + "참가 가능한 공고만" 판정용.
 실시간 공고의 `lic` 는 주공종·부대공종이라 면허제한이 아니다 → `eligibility` 는 `licOf`(lic_map → `b.reqLic`, 없으면 '확인 필요')·`rgnOf`(b.rgn → lic_map → bids.json)로 판정.
-lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits`(renderLive 뒤 10건씩 반복)가 `getBidPblancListInfoLicenseLimit`·`…PrtcptPsblRgn`(inqryDiv=2, 공고번호)으로 바로 조회 → `b.reqLic`, `b.rgn`([] = 지역 제한 없음), `b.limOk`(면허 제한 없음이면 참가 가능). 같은 함수가 기초금액 없는 카드는 bids.json 값 → 없으면 `enrichLive` 로 기초금액·A값·예가범위를 채워 목록에서 바로 추천 투찰가를 보여 준다.
+lic_map 의 면허에는 23개로 못 바꾼 참가자격 원문도 들어간다(`other_quals`, 예: 국유림영림단·산림사업법인 → 우리 면허와 안 겹쳐 참가 불가).
+lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits`(renderLive 뒤 10건씩 반복)가 ① 공고 게시일~다음날 등록분 전체(`limitsForDay`, inqryDiv=1, 날짜별 한 번) ② 그 공고가 없으면 공고번호(inqryDiv=2)로 `getBidPblancListInfoLicenseLimit`·`…PrtcptPsblRgn` 조회. 끝내 모르면(`limTried`) "참가 가능한 공고만"에서 뺀다 → `b.reqLic`, `b.rgn`([] = 지역 제한 없음), `b.limOk`(면허 제한 없음이면 참가 가능). 같은 함수가 기초금액 없는 카드는 bids.json 값 → 없으면 `enrichLive` 로 기초금액·A값·예가범위를 채워 목록에서 바로 추천 투찰가를 보여 준다.
 실시간 공고 `corr`(ntceKindNm 정정)·`sui`(cntrctCnclsMthdNm 수의) → 카드 태그. 면허제한은 대업종(4991·4992 등) 단위로 온다(2026-09 최근 60일 확인) — 주력분야는 적격심사 실적 평가용. 카드에는 `licTags` = "요구 면허" + 우리 면허는 ✓. 모델 참가수 예측도 실시간 공고는 licOf 를 쓴다.
 한계: 면허제한 그룹(lmtGrpNo, 그룹 안은 모두 필요·그룹끼리는 택일)을 구분하지 않고 하나라도 겹치면 가능으로 본다.
 

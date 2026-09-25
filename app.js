@@ -687,6 +687,7 @@ async function renderBids(){
   if(!Data.bids){ list.innerHTML = loadingHtml(); await Data.loadBids(); fillBidsSgg(LS.get('bidsFilter', {}).sgg || ''); }
   const sido = $('bSido').value, sgg = $('bSgg').value, lic = $('bLic').value, sort = $('bSort').value;
   const elig = $('bElig').checked && Company.isSet();
+  if(elig) await Data.loadLicMap();   // 수집된 면허제한(비건설 자격 포함)으로 판정
   const [aLo, aHi] = ($('bAmt').value || '-').split('-').map(v => v === '' ? null : +v * 1e8);
   const q = $('bQuery').value.trim().toLowerCase();
   const now = new Date(), today = kstDay(now);
@@ -1164,16 +1165,56 @@ async function fetchLiveLimits(rows){
   if(!need.length && !todo.length) return bsis.length > 0;
   await Promise.all([...todo.map(b => enrichLive(b)), ...need.map(async b => {
     b.limTried = true;
+    const setLim = (lics, rgns) => {
+      b.reqLic = [...new Set(lics.flatMap(normLic))];
+      b.rgn = [...new Set(rgns)];   // [] = 지역 제한 없음
+      b.limOk = true;
+    };
+    // 1) 공고일 기준 하루치 조회(수집기와 같은 방식, 여러 공고가 한 번에 채워짐)
+    const day = (b.ntce || '').slice(0, 10);
+    if(day){
+      try{
+        const d = await limitsForDay(day);
+        if(d.lic.has(b.id)){ setLim(d.lic.get(b.id), d.rgn.get(b.id) || []); return; }   // 없으면 제한 없음인지 누락인지 몰라 공고번호로 다시
+      }
+      catch(e){ console.warn('면허제한 하루 조회', day, e); }
+    }
+    // 2) 공고번호 조회
     try{
       const q = {inqryDiv: '2', bidNtceNo: b.no, numOfRows: 100, pageNo: 1};
       const [l, r] = await Promise.all([liveCall('getBidPblancListInfoLicenseLimit', q), liveCall('getBidPblancListInfoPrtcptPsblRgn', q)]);
       const mine = (it) => String(it.bidNtceOrd ?? b.ord) === b.ord;
-      b.reqLic = [...new Set(l.items.filter(mine).map(it => pickF(it, 'lcnsLmtNm')).filter(Boolean).flatMap(normLic))];
-      b.rgn = [...new Set(r.items.filter(mine).map(it => pickF(it, 'prtcptPsblRgnNm')).filter(Boolean))];   // [] = 지역 제한 없음
-      b.limOk = true;
+      setLim(l.items.filter(mine).map(it => pickF(it, 'lcnsLmtNm')).filter(Boolean), r.items.filter(mine).map(it => pickF(it, 'prtcptPsblRgnNm')).filter(Boolean));
     }catch(e){ console.warn('면허제한 조회', b.no, e); }
   })]);
   return true;
+}
+/** 공고 게시일(+다음날) 에 등록된 면허제한·참가가능지역 전부 → {lic: Map(공고ID → [원문]), rgn: Map(공고ID → [원문])}. 날짜별로 한 번만 받는다 */
+const limDays = new Map();
+function limitsForDay(day){
+  if(!limDays.has(day)){
+    const p = (async () => {
+      const d0 = day.replace(/-/g, ''), d1 = kstDay(new Date(Date.parse(day) + 86400000)).replace(/-/g, '');
+      const out = {lic: new Map(), rgn: new Map()};
+      for(const [op, field, map] of [['getBidPblancListInfoLicenseLimit', 'lcnsLmtNm', out.lic], ['getBidPblancListInfoPrtcptPsblRgn', 'prtcptPsblRgnNm', out.rgn]]){
+        for(let page = 1; page <= 15; page++){
+          const {items, total} = await liveCall(op, {inqryDiv: '1', inqryBgnDt: d0 + '0000', inqryEndDt: d1 + '2359', numOfRows: 999, pageNo: page});
+          for(const it of items){
+            const v = pickF(it, field);
+            if(!v) continue;
+            const id = `${String(it.bidNtceNo || '').trim()}-${String(it.bidNtceOrd ?? '000').trim()}`;
+            if(!map.has(id)) map.set(id, []);
+            if(!map.get(id).includes(v)) map.get(id).push(v);
+          }
+          if(!items.length || page * 999 >= total) break;
+        }
+      }
+      return out;
+    })();
+    p.catch(() => limDays.delete(day));
+    limDays.set(day, p);
+  }
+  return limDays.get(day);
 }
 // 참여가능금액(면허별 적격심사 실적 한도) 칸: j3·j5 = 지자체 3년·5년, g = 조달청·그 외 기관, k = 한국수력원자력(다를 때만)
 const CAP_FIELDS = [['j3', '지자체 3년'], ['j5', '지자체 5년'], ['g', '조달청·그 외'], ['k', '한수원 (다를 때만)']];
