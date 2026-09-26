@@ -1211,7 +1211,7 @@ async function enrichLive(b){
 }
 
 function initLive(){
-  // 기본 조건(2026-09-27 요청): 공사 · 공고일 3개월 · 우리 시·도·시·군 · 마감 전만 끔 · 참가 가능한 공고만 — 앱을 열면 이 조건으로 미리 조회해 둔다
+  // 기본 조건(2026-09-27 요청): 공사 · 공고일 1개월 · 우리 시·도·시·군 · 마감 전만 끔 · 참가 가능한 공고만 — 앱을 열면 이 조건으로 미리 조회해 둔다
   const co = Company.get();
   fillSelect($('lRgn'), SIDOS, {all:'시·도 전체', value: co.sido || ''});
   const fillLSgg = (value) => { fillSelect($('lSgg'), sggsOf($('lRgn').value), {all:'시·군 전체', value: typeof value === 'string' ? value : ''}); $('lSgg').disabled = !$('lRgn').value; };
@@ -1226,8 +1226,8 @@ function initLive(){
   fillSelect($('lLic'), LICENSES, {all:'업종 전체'});
   fillSelect($('lAmt'), AMT_RANGES, {all:'추정가격 전체'});
   const setPeriod = (days) => { const t = new Date(); $('lTo').value = kstDay(t); $('lFrom').value = kstDay(new Date(t - days * 86400000)); };
-  setPeriod(90);
-  $('lPeriod').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.d === '90'));
+  setPeriod(30);   // 기본 1개월(2026-09-27 요청 — 3개월은 조회가 오래 걸림)
+  $('lPeriod').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.d === '30'));
   $('lPeriod').addEventListener('click', (e) => {
     const d = e.target.dataset?.d; if(!d) return;
     setPeriod(+d);
