@@ -2,7 +2,7 @@
 """업체 색인: 업체 검색용 → data/corps.json + data/corpw/{사업자번호 앞 3자리}.json (수집 뒤 워크플로에서 하루 한 번)
 
 출처: 나라장터 공사·물품 낙찰(data/scsbid·data/thng 의 win·winBiz = 최종 낙찰자) + 개찰 상세(data/opening 전체 투찰, 대표자)
-      + 국방(data/d2b 상위 30곳·낙찰자, 대표자) + 낙찰 업체 대표자·주소·전화(data/corp_info.json, 수집기 CorpInfo).
+      + 국방(data/d2b/{연도}/{월}.json 참가 업체 전원·낙찰자, 대표자) + 낙찰 업체 대표자·주소·전화(data/corp_info.json, 수집기 CorpInfo).
 corps.json {"v":1, "updated_at", "sidos":[시도…], "items":[[사업자번호, 업체명, 전국 낙찰 수(공사+물품+국방), 마지막 낙찰일,
             낙찰 시도 번호들, 상세 투찰 수, 상세 1순위 수, 국방 투찰 수, 국방 1순위 수, 대표자, 주소, 전화], …]}
 corpw/{앞 3자리}.json {사업자번호: [[개찰일, 공고명(40자), 낙찰금액, 발주기관(20자), 업무(공사|물품|국방), 참가수, 시도], …최근 20건]} — 강원 관련 업체만
@@ -92,17 +92,17 @@ def main():
                 if len(c) > 2 and c[2]:
                     ceo[biz] = c[2]
     mbid, mtop = collections.Counter(), collections.Counter()
-    for f in glob.glob(str(DATA / "d2b" / "[0-9]*.json")):
+    corps = load(DATA / "d2b" / "corps.json").get("corps") or []   # 모든 월이 같이 쓰는 업체 표
+    for f in glob.glob(str(DATA / "d2b" / "[0-9]*" / "[0-9]*.json")):   # v2 월 파일: c = 참가 업체 전원(순위 순, 앞 k 곳이 순위 있음), 없으면(12개월 전) r 상위 30곳
         d = load(f)
-        corps = d.get("corps") or []
         for it in d.get("items") or []:
-            for row in it.get("r") or []:
-                c = corps[row[1]]
+            for pos, ci in enumerate(it.get("c") or [row[1] for row in it.get("r") or []]):
+                c = corps[ci]
                 biz = c[1]
                 if not biz:
                     continue
                 mbid[biz] += 1
-                if row[0] == 1:
+                if pos == 0 and it.get("k"):
                     mtop[biz] += 1
                 name.setdefault(biz, c[0])
                 if len(c) > 2 and c[2]:

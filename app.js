@@ -2463,7 +2463,7 @@ async function renderCorpProfile(biz){
         <div><span>평균 업체라면</span><b>${fmtNum(fair, 1)}</b></div>
         <div><span>하한 미달</span><b class="below">${valid.length ? Math.round(below / valid.length * 100) : 0}%</b></div>
       </div>
-      <div class="meta-line">${c.last ? `마지막 낙찰 ${esc(c.last)} · ` : ''}${c.ws.length ? `주로 ${esc(c.ws.join('·'))} 낙찰 · ` : ''}${c.mn ? `국방 투찰 ${fmtNum(c.mn)}건(상위 30위 안) · ` : ''}${c.adr ? '' : '대표자·주소는 낙찰한 적이 있어야 조달청 데이터에 나옵니다'}</div>
+      <div class="meta-line">${c.last ? `마지막 낙찰 ${esc(c.last)} · ` : ''}${c.ws.length ? `주로 ${esc(c.ws.join('·'))} 낙찰 · ` : ''}${c.mn ? `국방 투찰 ${fmtNum(c.mn)}건${c.m1 ? ` · 국방 1순위 ${fmtNum(c.m1)}건` : ''} · ` : ''}${c.adr ? '' : '대표자·주소는 낙찰한 적이 있어야 조달청 데이터에 나옵니다'}</div>
       ${valid.length >= 5 ? `<h3>투찰 습관 — 실제 사정율보다 얼마나 높게/낮게 쓰나 (강원 ${fmtNum(valid.length)}건)</h3>
         ${histogram(valid.map(r => Math.max(-2.5, Math.min(2.5, r.d))), {min: -2.5, max: 2.5, step: 0.1, lines: [{x: 0, color: 'var(--target)', label: '실제 사정율'}]})}
         <div class="meta-line">가운데(절반) <b>${q(ds, .25) >= 0 ? '+' : ''}${q(ds, .25).toFixed(2)} ~ ${q(ds, .75) >= 0 ? '+' : ''}${q(ds, .75).toFixed(2)}%p</b> · 투찰 사정률 자체는 보통 <b>${q(xs, .25).toFixed(2)} ~ ${q(xs, .75).toFixed(2)}%</b>. 0보다 왼쪽(−)은 하한 미달, 오른쪽이 멀수록 1위보다 높게 쓴 것.</div>` : '<div class="meta-line">투찰 습관을 볼 만큼 강원 투찰 기록이 많지 않습니다(5건 미만).</div>'}
