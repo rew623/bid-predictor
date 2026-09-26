@@ -792,7 +792,7 @@ const noDetailHtml = (sido) => `<div class="empty">이 지역(${esc(sido)})은 �
 let currentTab = null;
 let prevVisit = null;       // 이번 세션 시작 전 마지막 방문 시각 (NEW 판정 기준)
 
-/** 간단 모드(기본, 다른 사용자) / 운영자 모드(bp.admin, 동기화): 간단 모드는 설명 문구·참고 도구·검증·통계를 CSS 로 숨긴다(body.simple — style.css '간단 모드') */
+/** 간단 모드(기본) / 운영자 모드(bp.admin, 동기화, 누구나 설정에서 켬): 기능은 같고, 간단 모드는 설명 문구만 CSS 로 숨긴다(body.simple — style.css '간단 모드') */
 const applyMode = () => document.body.classList.toggle('simple', !LS.get('admin', false));
 function switchTab(tab, push=true){
   if(!TAB_TITLES[tab]) tab = 'home';
@@ -1112,12 +1112,14 @@ function apiKey(){
 const findNotice = (id) => Data.bids?.find(x => x.id === id) || Data.goods?.find(x => x.id === id) || Data.d2bBids?.find(x => x.id === id) || Live.items.find(x => x.id === id);
 
 /** 조달청 호출은 동시에 LIVE_MAX 건까지 — 한꺼번에 많이 보내면 '초당 서비스 요청제한 횟수 초과'로 거절된다(2026-09-27 확인). 그 오류면 잠깐 쉬고 다시 */
-const LIVE_MAX = 5, LiveQ = {n: 0, wait: []};
+const LIVE_MAX = 5, LIVE_GAP = 80, LiveQ = {n: 0, wait: [], next: 0};   // 동시 5건, 요청 시작 간격 0.08초(초당 12건 이하)
 async function liveCall(op, params, base=LIVE_BASE){
   let last;
-  for(let attempt = 0; attempt < 4; attempt++){
+  for(let attempt = 0; attempt < 5; attempt++){
     if(LiveQ.n >= LIVE_MAX) await new Promise(r => LiveQ.wait.push(r));
     LiveQ.n++;
+    const t = Date.now(), at = Math.max(t, LiveQ.next); LiveQ.next = at + LIVE_GAP;
+    if(at > t) await new Promise(r => setTimeout(r, at - t));
     try{ return await liveCall0(op, params, base); }
     catch(e){ if(!/초당|요청제한|LIMITED/.test(e.message)) throw e; last = e; }
     finally{ LiveQ.n--; LiveQ.wait.shift()?.(); }
@@ -3336,21 +3338,9 @@ function initSettings(){
     const v = e.target.dataset?.v; if(!v) return;
     LS.set('theme', v); applyTheme(); renderSettings();
   });
-  // 운영자 모드: 앱 버전을 5번 누르면 운영자 코드를 묻는다(코드는 해시로만 비교 — 화면 표시 설정일 뿐 권한은 아님). 켜진 뒤엔 체크로 끌 수 있다
-  const showAdmin = () => { $('adminRow').hidden = $('adminDd').hidden = !LS.get('admin', false); $('adminMode').checked = !!LS.get('admin', false); };
-  showAdmin();
-  let taps = 0, tapT = 0;
-  $('appVersion').addEventListener('click', async () => {
-    const now = Date.now(); taps = now - tapT < 1500 ? taps + 1 : 1; tapT = now;
-    if(taps < 5 || LS.get('admin', false)) return;
-    taps = 0;
-    const code = prompt('운영자 코드');
-    if(!code) return;
-    const hex = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code.trim())))].map(x => x.toString(16).padStart(2, '0')).join('');
-    if(hex !== '47a427797f196bee636348eeff3b3790363fc8b87a7c499145b434c732732c61'){ alert('코드가 맞지 않습니다'); return; }
-    LS.set('admin', true); applyMode(); showAdmin();
-  });
-  $('adminMode').addEventListener('change', () => { LS.set('admin', $('adminMode').checked); applyMode(); showAdmin(); });
+  // 운영자 모드(자세한 설명 보기): 누구나 켜고 끔. 간단 모드와 기능은 같고 설명 문구만 다름
+  $('adminMode').checked = !!LS.get('admin', false);
+  $('adminMode').addEventListener('change', () => { LS.set('admin', $('adminMode').checked); applyMode(); });
   $('clearCache').addEventListener('click', async () => {
     if('caches' in window) for(const k of await caches.keys()) if(k.startsWith('data')) await caches.delete(k);
     location.reload();
