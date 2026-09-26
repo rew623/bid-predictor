@@ -217,8 +217,26 @@ tr.click:hover td{background:var(--bg);}
 .kpi.on .t{color:var(--primary-dark);}
 .kpi.on .v{color:var(--primary-dark);}
 /* ---------- 우리 업체 대시보드 ---------- */
-.mine-head{display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; font-size:13.5px;}
-.mine-head b{font-size:15px;}
+.mine-head{display:flex; flex-direction:column; gap:10px;}
+.mine-who{display:flex; flex-wrap:wrap; gap:4px 12px; align-items:center; font-size:13px; color:var(--text-sub);}
+.mine-who b{font-size:16px; color:var(--text);}
+.mine-who .btn{margin-left:auto;}
+.mine-head .mine-chips{margin:0;}
+.adv{margin:14px 0;}
+.adv > summary{cursor:pointer; padding:12px 14px; border:1px dashed var(--border); border-radius:var(--radius); color:var(--text-sub); font-size:14px; list-style:none;}
+.adv[open] > summary{margin-bottom:12px;}
+.b-more{grid-column:2 / -1; font-size:12.5px;}
+.b-more > summary{cursor:pointer; color:var(--text-sub); list-style:none; display:inline-block;}
+.b-more > summary::before{content:'▸ ';}
+.b-more[open] > summary::before{content:'▾ ';}
+.b-more .b-tags{margin-top:6px;}
+.b-kv{display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:6px; color:var(--text-sub);}
+.b-kv b{color:var(--text); font-variant-numeric:tabular-nums;}
+.pv.big b{font-size:17px;}
+.b-area{grid-column:2 / -1; font-size:12px; color:var(--ok); font-weight:600;}
+.excl{display:inline;}
+.excl > summary{display:inline; cursor:pointer; text-decoration:underline dotted;}
+@media (max-width: 760px){ .b-more, .b-area{grid-column:1 / -1;} }
 .cal-title{display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; font-size:13.5px; margin-bottom:8px;}
 .cal-card{min-width:0;}
 .cal{display:grid; grid-template-columns:repeat(14, minmax(0, 1fr)); gap:4px;}
@@ -419,3 +437,5 @@ details.ranks summary{cursor:pointer; color:var(--primary-dark);}
 .join-add{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;}
 .join-add input{flex:1; min-width:220px; max-width:360px;}
 #wMode{margin-bottom:12px;}
+
+#mineKpis{grid-template-columns:repeat(4, minmax(0,1fr));}

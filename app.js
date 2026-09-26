@@ -23,7 +23,8 @@ const LIC_CODES = {
 const DEFAULT_FLOOR = 87.745;
 const MIN_SAMPLE = 30;
 const PAGE_SIZE = 50;
-const TAB_TITLES = {bids:'입찰공고', predict:'예측분석', watch:'관심공고', stats:'통계', settings:'설정'};
+// 탭(하단 5개): 우리 공고(첫 화면) / 공고 검색 / 내 투찰 / 분석(금액 분석·통계) / 설정
+const TAB_TITLES = {home:'우리 공고', bids:'공고 검색', watch:'내 투찰', predict:'분석', stats:'분석', settings:'설정'};
 
 // ============================================================ 유틸
 const $ = (id) => document.getElementById(id);
@@ -621,14 +622,14 @@ let currentTab = null;
 let prevVisit = null;       // 이번 세션 시작 전 마지막 방문 시각 (NEW 판정 기준)
 
 function switchTab(tab, push=true){
-  if(!TAB_TITLES[tab]) tab = 'bids';
+  if(!TAB_TITLES[tab]) tab = Company.isSet() ? 'home' : 'bids';
   currentTab = tab;
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'view-' + tab);
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === (tab === 'stats' ? 'predict' : tab)));
   $('pageTitle').textContent = TAB_TITLES[tab];
   if(push && location.hash !== '#' + tab) history.pushState(null, '', '#' + tab);
   window.scrollTo(0, 0);
-  ({bids: renderBidsTab, predict: renderPredictTab, watch: renderWatch, stats: renderStats, settings: renderSettings})[tab]();
+  ({home: renderMine, bids: renderBidsTab, predict: renderPredictTab, watch: renderWatch, stats: renderStats, settings: renderSettings})[tab]();
 }
 
 // ============================================================ 입찰공고
@@ -802,25 +803,23 @@ function bidCard(b, today, opts = {}){
     : {big:`D-${days}`, small: `${b.close.slice(5,10).replace('-','/')} ${hh}`, cls: days <= 2 ? 'soon' : ''};
   const qp = quickPredict(b);
   const amt = b.base || b.est;
+  // 한눈에: 지역·수의·정정·참가 가능 여부만. 면허·예가·하한·사정률 같은 세부는 '자세히'로
   const tags = [
     `<span class="tag loc">${esc([b.sido, b.sgg].filter(Boolean).join(' ') || '지역 미상')}</span>`,
     b.sui ? '<span class="tag warn" title="수의계약(견적) — 추천값은 경쟁입찰 과거 공고 기준">수의</span>' : '',
     b.corr ? '<span class="tag warn" title="정정공고 — 바뀐 내용을 원문에서 확인">정정</span>' : '',
-    ...licTags(b),
-    b.rng ? `<span class="tag">예가 ${esc(rngText(b.rng))}</span>` : '',
-    b.floor ? `<span class="tag">하한 ${b.floor}%</span>` : '',
     eligTag(b),
   ].join('');
-  let pred = '';
+  const moreTags = [...licTags(b), b.rng ? `<span class="tag">예가 ${esc(rngText(b.rng))}</span>` : '', b.floor ? `<span class="tag">하한 ${b.floor}%</span>` : ''].join('');
+  let pred = '', more = '';
   if(qp){
     pred = `<div class="b-pred">
-        <div class="pv"><span>예상 사정율</span><b>${pct(qp.sr, 3)}</b></div>
-        ${qp.bestSr != null ? `<div class="pv hl"><span>추천 투찰 사정률</span><b>${pct(qp.bestSr, 3)}</b></div>
-        <div class="pv"><span>예상 낙찰확률</span><b>${(qp.winP * 100).toFixed(2)}%${qp.lift ? ` <small class="lift">×${qp.lift.toFixed(1)}</small>` : ''}</b></div>` : ''}
-        <div class="pv"><span>추천 투찰가</span><b>${qp.bid ? won(qp.bid) : '기초금액 미공개'}</b></div>
-        ${qp.cnt ? `<div class="pv"><span>예상 참가</span><b>~${fmtNum(qp.cnt)}개사</b></div>` : ''}
-      </div>
-      <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.area ? ` · <b>${esc(areaText(qp.area))}</b>` : ''}${qp.model ? (qp.area ? ' · ×는 공정 기대(1÷(참가+1)) 대비' : ' · 추천값·낙찰확률은 전국의 경쟁 규모가 비슷한 공고 기준 · ×는 공정 기대(1÷(참가+1)) 대비') : qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}${qp.value ? ` · 기대 수주액 ${eok(qp.value)}` : ''}</div>`;
+        <div class="pv hl big"><span>추천 투찰가</span><b>${qp.bid ? won(qp.bid) : '기초금액 공개 후'}</b></div>
+        ${qp.bestSr != null ? `<div class="pv"><span>낙찰확률</span><b>${(qp.winP * 100).toFixed(2)}%${qp.lift ? ` <small class="lift">×${qp.lift.toFixed(1)}</small>` : ''}</b></div>` : ''}
+        ${qp.cnt ? `<div class="pv"><span>예상 참가</span><b>~${fmtNum(qp.cnt)}곳</b></div>` : ''}
+      </div>${qp.area ? `<div class="b-area">🎯 ${esc(qp.area.label)} 전용 추천</div>` : ''}`;
+    more = `<div class="b-kv"><span>추천 투찰 사정률 <b>${qp.bestSr != null ? pct(qp.bestSr, 3) : '-'}</b></span><span>예상 사정율 <b>${pct(qp.sr, 3)}</b></span>${qp.value ? `<span>기대 수주액 <b>${eok(qp.value)}</b></span>` : ''}</div>
+      <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.area ? ` · ${esc(areaText(qp.area))}` : ''}${qp.model ? (qp.area ? ' · ×는 공정 기대(1÷(참가+1)) 대비' : ' · 추천값·낙찰확률은 전국의 경쟁 규모가 비슷한 공고 기준 · ×는 공정 기대(1÷(참가+1)) 대비') : qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}</div>`;
   }else if(b.sido && !Data.hasScsbid(b.sido)){
     pred = '<div class="b-note">이 지역 낙찰 데이터 없음</div>';
   }
@@ -839,8 +838,9 @@ function bidCard(b, today, opts = {}){
       <div class="b-amt"><span>${b.base ? '기초금액' : b.est ? '추정가격' : ''}</span><b>${amt ? eok(amt) : '미공개'}</b></div>
     </div>
     ${pred}
+    <details class="b-more"><summary>자세히</summary><div class="b-tags">${moreTags}</div>${more}</details>
     <div class="b-actions">
-      <button class="btn sm" data-predict="${esc(b.id)}" type="button">이 공고로 예측</button>
+      <button class="btn sm" data-predict="${esc(b.id)}" type="button">💰 금액 자세히</button>
       ${b.url ? `<a class="btn line sm" href="${esc(b.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}
       ${opts.hide ? `<button class="btn line sm" data-hide="${esc(b.id)}" type="button" title="우리가 못 하는 공고면 빼 두세요. 이 기기에만 저장">목록에서 빼기</button>` : ''}
       ${opts.unhide ? `<button class="btn line sm" data-unhide="${esc(b.id)}" type="button">되돌리기</button>` : ''}
@@ -1042,17 +1042,16 @@ async function renderMine(){
   // 업체 요약
   const mfTxt = Object.entries(c.mf || {}).map(([l, v]) => `${l}(${v.join('·')})`);
   $('mineHead').innerHTML = `<b>🏢 ${esc([c.sido, c.sgg].filter(Boolean).join(' ') || '소재지 미설정')}</b>
-    <span>면허: ${esc((mfTxt.length ? c.lics.map(l => mfTxt.find(t => t.startsWith(l)) || l) : c.lics).join(', ') || '미설정')}</span>
-    <span class="faint">${Object.keys(c.caps || {}).length ? '참여가능금액 적용' : '참여가능금액 미설정'}</span>
-    <button class="btn sm line" data-goto="settings" type="button">업체 정보 수정</button>`;
+    <span>${esc((mfTxt.length ? c.lics.map(l => mfTxt.find(t => t.startsWith(l)) || l) : c.lics).join(' · ') || '면허 미설정')}</span>
+    ${Object.keys(c.caps || {}).length ? '' : '<span class="faint">참여가능금액 미설정</span>'}
+    <button class="btn sm line" data-goto="settings" type="button">업체 정보</button>`;
 
   // 요약 숫자
   const watch = await WatchStore.list();
   const pendingMine = watch.filter(w => (w.myBid || w.joined) && !w.res && (!w.open || w.open.slice(0, 10) >= today)).length;
   const in7 = kstDay(new Date(now.getTime() + 6 * 86400000));
-  const kpi = [['참가 가능 공고', shown.length, ''], ['오늘 마감', shown.filter(b => closeDay(b) === today).length, 'red'],
-    ['7일 안 마감', shown.filter(b => closeDay(b) && closeDay(b) <= in7).length, ''], ['기초금액 공개', shown.filter(b => b.base).length, ''],
-    ['내 투찰 개찰 대기', pendingMine, '']];
+  const kpi = [['참가 가능', shown.length, ''], ['오늘 마감', shown.filter(b => closeDay(b) === today).length, 'red'],
+    ['7일 안 마감', shown.filter(b => closeDay(b) && closeDay(b) <= in7).length, ''], ['내 투찰 개찰 대기', pendingMine, '']];
   $('mineKpis').innerHTML = kpi.map(([t, v, cls]) => `<div class="kpi ${cls && v ? cls : ''}"><span class="t">${t}</span><span class="v">${fmtNum(v)}</span></div>`).join('');
 
   // 2주 달력 (투찰 마감 · 개찰)
@@ -1078,20 +1077,18 @@ async function renderMine(){
     html += bidCard(b, today, Mine.showHidden ? {unhide: true} : {hide: true});
   }
   $('mineList').innerHTML = html || `<div class="empty card">${Mine.day ? '이날 마감인 참가 가능 공고가 없습니다.' : '지금 참가 가능한 진행중 공고가 없습니다.'}</div>`;
-  $('mineInfo').innerHTML = [Mine.showHidden ? `뺀 공고 ${fmtNum(list.length)}건 — "되돌리기"로 다시 목록에` : `참가 가능 ${fmtNum(shown.length)}건${Mine.day ? ` 중 ${dayLabel(Mine.day)} 마감 ${fmtNum(list.length)}건` : ''} (자동 수집 공사 공고, 마감 전)`,
-    nHidden && !Mine.showHidden ? `직접 뺀 ${fmtNum(nHidden)}건 제외` : '',
-    noMf ? `주력분야 불일치 ${fmtNum(noMf)}건 제외` : '', noCap ? `실적 한도 초과 ${fmtNum(noCap)}건 제외` : '',
-    mfCheck ? `면허 2개↑ 요구라 같이 필요한지 불확실한 ${fmtNum(mfCheck)}건 제외(실시간 검색에서 확인)` : '',
-    unknown ? `면허 정보 없는 ${fmtNum(unknown)}건 제외(실시간 검색에서 확인)` : '',
-    Data.meta?.updated_at ? `데이터 ${esc(Data.meta.updated_at.slice(5, 16).replace('T', ' '))}` : ''].filter(Boolean).join(' · ');
+  const excl = [nHidden && !Mine.showHidden ? `직접 뺀 ${fmtNum(nHidden)}건` : '', noMf ? `주력분야 불일치 ${fmtNum(noMf)}건` : '',
+    noCap ? `실적 한도 초과 ${fmtNum(noCap)}건` : '', mfCheck ? `면허 여러 개라 같이 필요한지 불확실 ${fmtNum(mfCheck)}건` : '',
+    unknown ? `면허 정보 없음 ${fmtNum(unknown)}건` : ''].filter(Boolean);
+  const nEx = (nHidden && !Mine.showHidden ? nHidden : 0) + noMf + noCap + mfCheck + unknown;
+  $('mineInfo').innerHTML = [Mine.showHidden ? `뺀 공고 ${fmtNum(list.length)}건 — "되돌리기"로 다시 목록에` : `${Mine.day ? `${dayLabel(Mine.day)} 마감 ` : ''}${fmtNum(list.length)}건`,
+    nEx ? `<details class="excl"><summary>제외 ${fmtNum(nEx)}건</summary> — ${excl.join(' · ')} (의심되면 공고 검색에서 확인)</details>` : '',
+    Data.meta?.updated_at ? `<span class="faint">데이터 ${esc(Data.meta.updated_at.slice(5, 16).replace('T', ' '))}</span>` : ''].filter(Boolean).join(' · ');
   // 면허제한 그룹 정보가 없는 공고는 조달청에서 받아 다시 거른다(서비스키가 있을 때)
   // 그룹 정보가 없어 참가 가능(mf-check 포함, e.ok=true)으로 나온 공고는 실제 그룹 정보로 다시 확인
   if(await fetchLiveLimits(open.filter(b => !b.limTried && !Data.grpMap?.get(b.id)?.length).filter(b => eligibility(b).ok))) renderMine();
 }
 function initMine(){
-  // 대시보드가 생긴 뒤 처음 열 때는 업체 정보가 있으면 이 화면부터
-  if(Company.isSet() && !LS.get('mineIntro', false)){ bidsMode = 'mine'; LS.set('bidsMode', 'mine'); }
-  LS.set('mineIntro', true);
   $('mineSort').value = LS.get('mineSort', 'close');
   $('mineSort').addEventListener('change', () => { LS.set('mineSort', $('mineSort').value); renderMine(); });
   $('mineArea').addEventListener('click', (e) => {
@@ -1117,12 +1114,10 @@ function initMine(){
 }
 
 function renderBidsTab(){
-  const mode = bidsMode || (Company.isSet() ? 'mine' : apiKey() ? 'live' : 'saved');
+  const mode = ['live', 'saved'].includes(bidsMode) ? bidsMode : (apiKey() ? 'live' : 'saved');
   $('bMode').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
   $('bidsSaved').hidden = mode !== 'saved';
   $('bidsLive').hidden = mode !== 'live';
-  $('bidsMine').hidden = mode !== 'mine';
-  if(mode === 'mine') return renderMine();
   if(mode === 'saved') return renderBids();
   $('liveKeyHint').hidden = !!apiKey();
   if(apiKey() && !Live.params) liveSearch();
@@ -2750,7 +2745,7 @@ async function init(){
   initPredict();
   initStats();
   initSettings();
-  switchTab(location.hash.slice(1) || 'bids', false);
+  switchTab(location.hash.slice(1) || (Company.isSet() ? 'home' : 'bids'), false);
   Data.loadBids().then(() => { if(currentTab !== 'bids') updateNewBadge(); });
 }
 
