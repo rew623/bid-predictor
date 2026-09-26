@@ -622,7 +622,7 @@ let currentTab = null;
 let prevVisit = null;       // 이번 세션 시작 전 마지막 방문 시각 (NEW 판정 기준)
 
 function switchTab(tab, push=true){
-  if(!TAB_TITLES[tab]) tab = Company.isSet() ? 'home' : 'bids';
+  if(!TAB_TITLES[tab]) tab = 'home';
   currentTab = tab;
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'view-' + tab);
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === (tab === 'stats' ? 'predict' : tab)));
@@ -1021,7 +1021,8 @@ const dayLabel = (d) => `${d.slice(5).replace('-', '.')} (${WEEK[new Date(Date.p
 async function renderMine(){
   const c = Company.get();
   $('mineHint').hidden = Company.isSet();
-  if(!Company.isSet()){ ['mineHead', 'mineKpis', 'mineCal', 'mineList', 'mineInfo'].forEach(id => $(id).innerHTML = ''); return; }
+  document.querySelectorAll('#bidsMine > :not(#mineHint)').forEach(el => el.hidden = !Company.isSet());
+  if(!Company.isSet()) return;
   if(!Data.bids){ $('mineList').innerHTML = loadingHtml(); await Data.loadBids(); }
   await Data.loadLicMap();
   const now = new Date(), today = kstDay(now);
@@ -1055,19 +1056,18 @@ async function renderMine(){
   const shown = Mine.showHidden ? rows.filter(b => hidden.has(b.id)) : visible.filter(chipF).filter(b => !Mine.small || isSmall(b));
 
   // 업체 요약
-  const mfTxt = Object.entries(c.mf || {}).map(([l, v]) => `${l}(${v.join('·')})`);
-  $('mineHead').innerHTML = `<b>🏢 ${esc([c.sido, c.sgg].filter(Boolean).join(' ') || '소재지 미설정')}</b>
-    <span>${esc((mfTxt.length ? c.lics.map(l => mfTxt.find(t => t.startsWith(l)) || l) : c.lics).join(' · ') || '면허 미설정')}</span>
-    ${Object.keys(c.caps || {}).length ? '' : '<span class="faint">참여가능금액 미설정</span>'}
-    <button class="btn sm line" data-goto="settings" type="button">업체 정보</button>`;
+  const licTxt = c.lics.map(l => `<span class="hero-lic">${esc(LIC_SHORT[l] || l)}${c.mf?.[l]?.length ? ` <small>${esc(c.mf[l].map(m => m.split('·')[0]).join('·'))}</small>` : ''}</span>`).join('');
+  $('mineHead').innerHTML = `<div class="hero-name">${esc(c.name || '우리 업체')}<span>📍 ${esc([c.sido, c.sgg].filter(Boolean).join(' ') || '소재지 미설정')}</span></div>
+    <div class="hero-lics">${licTxt || '<span class="hero-lic">면허 미설정</span>'}${Object.keys(c.caps || {}).length ? '' : '<span class="hero-lic dim">참여가능금액 미설정</span>'}</div>
+    <button class="hero-btn" data-goto="settings" type="button">업체 정보 ›</button>`;
 
   // 요약 숫자
   const watch = await WatchStore.list();
   const pendingMine = watch.filter(w => (w.myBid || w.joined) && !w.res && (!w.open || w.open.slice(0, 10) >= today)).length;
   const in7 = kstDay(new Date(now.getTime() + 6 * 86400000));
-  const kpi = [['참가 가능', shown.length, ''], ['오늘 마감', shown.filter(b => closeDay(b) === today).length, 'red'],
-    ['7일 안 마감', shown.filter(b => closeDay(b) && closeDay(b) <= in7).length, ''], ['내 투찰 개찰 대기', pendingMine, '']];
-  $('mineKpis').innerHTML = kpi.map(([t, v, cls]) => `<div class="kpi ${cls && v ? cls : ''}"><span class="t">${t}</span><span class="v">${fmtNum(v)}</span></div>`).join('');
+  const kpi = [['참가 가능', shown.length, '', ''], ['오늘 마감', shown.filter(b => closeDay(b) === today).length, 'red', ''],
+    ['7일 안 마감', shown.filter(b => closeDay(b) && closeDay(b) <= in7).length, '', ''], ['개찰 대기', pendingMine, '', 'watch']];
+  $('mineKpis').innerHTML = kpi.map(([t, v, cls, go]) => `<${go ? `button type="button" data-goto="${go}"` : 'div'} class="hk ${cls && v ? cls : ''}"><span class="v">${fmtNum(v)}</span><span class="t">${t}${go ? ' ›' : ''}</span></${go ? 'button' : 'div'}>`).join('');
 
   // 2주 달력 (투찰 마감 · 개찰)
   const days = Array.from({length: 14}, (_, i) => kstDay(new Date(now.getTime() + i * 86400000)));
@@ -1523,6 +1523,7 @@ function initCompany(){
   Data.loadBids().then(() => fillSgg(c.sgg));
   $('coSido').addEventListener('change', () => fillSgg(''));
   $('coBiz').value = c.biz || '';
+  $('coName').value = c.name || '';
   const lics = new Set(c.lics);
   const caps = {...c.caps};
   const readCaps = () => $('coCaps').querySelectorAll('input[data-cap]').forEach(el => {
@@ -1558,7 +1559,7 @@ function initCompany(){
     readCaps();
     const keep = Object.fromEntries(Object.entries(caps).filter(([l, v]) => lics.has(l) && Object.keys(v).length));
     const mf = Object.fromEntries(Object.entries(mfSel).filter(([l, v]) => lics.has(l) && v.size).map(([l, v]) => [l, [...v]]));
-    Company.set({sido: $('coSido').value, sgg: $('coSgg').value, lics: [...lics], biz: $('coBiz').value.replace(/\D/g, ''), caps: keep, mf});
+    Company.set({name: $('coName').value.trim(), sido: $('coSido').value, sgg: $('coSgg').value, lics: [...lics], biz: $('coBiz').value.replace(/\D/g, ''), caps: keep, mf});
     $('coMsg').innerHTML = '<span class="badge ok">저장됨</span> 입찰공고에서 "참가 가능한 공고만"을 켜면 적용됩니다';
     LS.set('bidsFilter', {...LS.get('bidsFilter', {}), elig: true});
     $('bElig').checked = true; $('lElig').checked = true;
@@ -2068,8 +2069,109 @@ function calibrate(list){
   return {n: list.length, wins: wins0, best: best.k, shift: best.shift};
 }
 
-let watchMode = LS.get('watchMode', 'watch');   // 'watch' 관심공고 | 'joined' 참여한 공고
+let watchMode = LS.get('watchMode', 'watch');   // 'watch' 관심(개찰 전) | 'joined' 투찰 중(개찰 전) | 'result' 개찰 결과
 const isJoined = (w) => !!(w.joined || w.myBid || w.res?.mine);
+const isDone = (w) => !!(w.res?.n || opened(w));   // 개찰 끝남 → '개찰 결과'로
+
+// ---------- 과거 투찰 이력 (더비스 '투찰 이력' 엑셀을 이 기기로 가져옴 — 저장소·서버에는 안 올라감)
+// 행: [개찰일시, 공고명, 지역, 면허, 발주처, 기초금액, 투찰금액, 사정율, 투찰 사정률, 순위(음수=하한 미달 중 순위), 참가수, 예정가격]
+const History = {
+  get(){ return LS.get('history', null); },
+  rows(){ return (this.get()?.rows || []).map(r => ({date: r[0], nm: r[1], rgn: r[2], lic: r[3], org: r[4], base: r[5], amt: r[6], S: r[7], x: r[8], rank: r[9], n: r[10], plan: r[11],
+    kind: /^\[|물품|의약품|유통/.test(r[3] || '') ? '물품' : /\(대\)|건축|토건|토목|조경|전기|통신|소방|기계가스|상하수도|철콘|비계|지반/.test(r[3] || '') ? '공사' : '기타'})); },
+  /** 더비스 엑셀(.xls = HTML 표)을 읽는다. 머리글 이름으로 열을 찾으니 열 순서가 바뀌어도 된다 */
+  parse(text){
+    if(/^PK/.test(text)) throw new Error('이 파일은 새 엑셀 형식(.xlsx)입니다. 더비스에서 내려받은 .xls 파일을 그대로 올려 주세요.');
+    const doc = new DOMParser().parseFromString(text, 'text/html');
+    const trs = [...doc.querySelectorAll('tr')].map(tr => [...tr.querySelectorAll('td,th')].map(c => c.textContent.trim()));
+    const hi = trs.findIndex(r => r.includes('공고명') && r.includes('투찰금액'));
+    if(hi < 0) throw new Error('더비스 투찰 이력 엑셀이 아닌 것 같습니다 (공고명·투찰금액 열을 못 찾음).');
+    const H = trs[hi], col = (n) => H.indexOf(n);
+    const miss = ['공고명', '개찰일시', '기초금액', '투찰금액', '사정율', '투찰율', '순위'].filter(n => col(n) < 0);
+    if(miss.length) throw new Error('엑셀에 없는 열: ' + miss.join(', '));
+    const num = (v) => { const x = parseFloat(String(v ?? '').replace(/,/g, '')); return isFinite(x) ? x : null; };
+    const at = (r, n) => col(n) >= 0 ? r[col(n)] || '' : '';
+    return trs.slice(hi + 1).filter(r => r.length >= H.length - 1 && at(r, '공고명')).map(r => {
+      const [rk, n] = at(r, '순위').split('/');
+      return [at(r, '개찰일시'), at(r, '공고명'), at(r, '지역'), at(r, '면허'), at(r, '발주처'),
+        num(at(r, '기초금액')), num(at(r, '투찰금액')), num(at(r, '사정율')), num(at(r, '투찰율')), num(rk), num(n), num(at(r, '예가'))];
+    });
+  },
+  save(rows, src){ LS.set('history', {at: new Date().toISOString(), src, rows}); },
+  clear(){ LS.set('history', null); },
+};
+let histKind = 'all', histShown = 50;
+/** 과거 투찰 이력 판정: 1순위 / 하한 미달 / 1위보다 높음 / 예정가격 비공개(나라장터 밖) */
+function histJudge(r){
+  if(!r.S) return {cls: '', label: '예정가격 비공개'};
+  if(r.rank === 1) return {cls: 'win', label: '🏆 1순위'};
+  if((r.rank != null && r.rank < 0) || (r.x && r.x < r.S)) return {cls: 'below', label: '하한 미달'};
+  return {cls: 'high', label: '1위보다 높음'};
+}
+function renderHistory(){
+  const all = History.rows(), meta = History.get();
+  const imp = `<label class="btn sm line hist-imp"><input type="file" id="histFile" accept=".xls,.htm,.html" hidden>📥 ${all.length ? '엑셀 다시 가져오기' : '더비스 투찰 이력 엑셀 가져오기'}</label>`;
+  if(!all.length) return `<div class="card-inner hist"><h3 style="margin-top:0;">과거 투찰 이력</h3>
+    <p class="meta-line">조달청 API에는 "우리 업체가 넣은 공고 찾기"가 없어서, 예전 투찰 금액·순위를 조달청에서 한꺼번에 받아 올 수는 없습니다. 대신 <b>더비스에서 내려받은 투찰 이력 엑셀(.xls)</b>을 가져오면 금액·순위·사정율이 모두 들어 있어 바로 정리해 드립니다. 이 기기에만 저장되고 어디에도 올라가지 않습니다.</p>
+    ${imp} <span class="meta-line" id="histMsg"></span></div>`;
+  const nTop = all.filter(r => r.rank >= 1 && r.rank <= 3).length;
+  const kinds = [['all', '전체', all.length], ['공사', '공사', all.filter(r => r.kind === '공사').length], ['물품', '물품', all.filter(r => r.kind === '물품').length], ['top', '🏆 1~3위', nTop]];
+  const pick = histKind === 'all' ? all : histKind === 'top' ? all.filter(r => r.rank >= 1 && r.rank <= 3) : all.filter(r => r.kind === histKind);
+  const valid = pick.filter(r => r.S && r.n);
+  const js = valid.map(histJudge);
+  const nWin = pick.filter(r => r.rank === 1).length;
+  const fair = valid.reduce((t, r) => t + 1 / r.n, 0);
+  const below = js.filter(j => j.cls === 'below').length, high = js.filter(j => j.cls === 'high').length;
+  const med = (a) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[b.length >> 1] : null; };
+  const g = med(valid.filter(r => r.x).map(r => r.x - r.S));
+  const rows = [...pick].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const pctOf = (k) => valid.length ? Math.round(k / valid.length * 100) : 0;
+  const list = rows.slice(0, histShown).map(r => {
+    const j = histJudge(r);
+    const rk = r.rank == null ? '-' : r.rank < 0 ? `미달` : `${fmtNum(r.rank)}위`;
+    return `<div class="hrow">
+      <div class="hr-rank ${j.cls}"><b>${rk}</b><small>${r.n ? '/ ' + fmtNum(r.n) : ''}</small></div>
+      <div class="hr-main"><div class="hr-nm">${esc(r.nm)}</div>
+        <div class="hr-sub">${esc((r.date || '').slice(0, 10))} · ${esc(r.org)}${r.rgn ? ' · ' + esc(r.rgn) : ''} · ${esc(r.kind)}</div></div>
+      <div class="hr-amt"><b>${won(r.amt)}</b>${r.S ? `<small>사정율 ${r.S.toFixed(3)} · 내 ${r.x != null ? r.x.toFixed(3) : '-'}</small>` : ''}<span class="hr-v ${j.cls}">${j.label}</span></div>
+    </div>`;
+  }).join('');
+  return `<div class="card-inner hist">
+    <div class="hist-head"><h3 style="margin:0;">과거 투찰 이력 <small class="faint">${fmtNum(all.length)}건 · ${esc((meta.at || '').slice(0, 10))} 가져옴</small></h3>${imp}</div>
+    <span class="meta-line" id="histMsg"></span>
+    <div class="chip-group" id="histKinds" style="margin:10px 0;">${kinds.map(([k, t, n]) => `<button type="button" class="chip sm ${histKind === k ? 'selected' : ''}" data-hk="${k}">${t}<span class="cnt">${fmtNum(n)}</span></button>`).join('')}</div>
+    <div class="stat-grid">
+      <div class="stat ${nWin ? 'hl' : ''}"><div class="t">🏆 1순위</div><div class="v">${fmtNum(nWin)}<small class="faint"> / ${fmtNum(pick.length)}건</small></div></div>
+      <div class="stat"><div class="t">평균 업체였다면</div><div class="v">${fmtNum(fair, 1)}건</div></div>
+      <div class="stat"><div class="t">하한 미달</div><div class="v" style="color:var(--target);">${fmtNum(below)}<small class="faint"> ${pctOf(below)}%</small></div></div>
+      <div class="stat"><div class="t">1위보다 높음</div><div class="v">${fmtNum(high)}<small class="faint"> ${pctOf(high)}%</small></div></div>
+    </div>
+    <div class="meta-line">참가 중앙값 ${fmtNum(med(valid.map(r => r.n)) || 0)}곳${g != null ? ` · 내 투찰 사정률은 실제 사정율보다 보통 <b>${g >= 0 ? '+' : ''}${g.toFixed(3)}%p</b>` : ''}. "평균 업체였다면" = 공고마다 1/참가수를 더한 값 — 1순위 수가 이와 비슷하면 금액보다 <b>참가 적은 공고 고르기</b>가 더 중요합니다.</div>
+    <div class="hist-list">${list}</div>
+    ${rows.length > histShown ? `<div class="more"><button class="btn sm line" id="histMore" type="button">더 보기 (${fmtNum(rows.length - histShown)}건 남음)</button></div>` : ''}
+    <div class="meta-line" style="text-align:right;"><button class="btn sm ghost" id="histClear" type="button">가져온 이력 지우기</button></div>
+  </div>`;
+}
+function bindHistory(el){
+  el.querySelector('#histFile')?.addEventListener('change', async (e) => {
+    const f = e.target.files?.[0]; if(!f) return;
+    const msg = $('histMsg');
+    try{
+      const rows = History.parse(await f.text());
+      if(!rows.length) throw new Error('읽을 행이 없습니다.');
+      History.save(rows, f.name);
+      if(!History.get()) throw new Error('이 기기 저장 공간이 부족해 저장하지 못했습니다.');
+      histKind = 'all'; histShown = 50;
+      renderWatch();
+    }catch(err){ msg.textContent = err.message; }
+  });
+  el.querySelector('#histKinds')?.addEventListener('click', (e) => {
+    const k = e.target.closest('[data-hk]')?.dataset.hk; if(!k) return;
+    histKind = k; histShown = 50; renderWatch();
+  });
+  el.querySelector('#histMore')?.addEventListener('click', () => { histShown += 100; renderWatch(); });
+  el.querySelector('#histClear')?.addEventListener('click', () => { if(confirm('가져온 과거 투찰 이력을 이 기기에서 지울까요?')){ History.clear(); renderWatch(); } });
+}
 
 /** 수집된 개찰 상세(전체 순위)에서 우리 사업자번호가 있는 공고를 찾는다 (regions.json 지역만) */
 async function findMyBidsInOpening(skipIds){
@@ -2141,23 +2243,30 @@ async function renderWatch(){
       items = await WatchStore.list();
     }
   }
-  const joinedMode = watchMode === 'joined';
-  const auto = joinedMode ? await findMyBidsInOpening(new Set(items.map(w => w.id))) : [];
+  if(!['watch', 'joined', 'result'].includes(watchMode)) watchMode = 'watch';
+  const joinedMode = watchMode === 'joined', resultMode = watchMode === 'result';
+  const auto = await findMyBidsInOpening(new Set(items.map(w => w.id)));   // 수집된 개찰 상세의 우리 투찰 = 모두 개찰 끝난 것
   const pseudo = new Map(auto.map(w => [w.id, w]));
-  const list = joinedMode ? [...items.filter(isJoined), ...auto] : items;
-  const modeSeg = `<div class="seg mode-seg" id="wMode">
-      <button data-v="watch" class="${joinedMode ? '' : 'on'}" type="button">⭐ 관심공고 (${fmtNum(items.length)})</button>
-      <button data-v="joined" class="${joinedMode ? 'on' : ''}" type="button">📝 참여한 공고 (${fmtNum(items.filter(isJoined).length + auto.length)})</button>
+  const lists = {watch: items.filter(w => !isDone(w) && !isJoined(w)), joined: items.filter(w => !isDone(w) && isJoined(w)), result: [...items.filter(isDone), ...auto]};
+  lists.result.sort((a, b) => (b.open || b.close || '').localeCompare(a.open || a.close || ''));
+  const list = lists[watchMode];
+  const nHist = History.rows().length;
+  const modeSeg = `<div class="seg mode-seg three" id="wMode">
+      <button data-v="watch" class="${watchMode === 'watch' ? 'on' : ''}" type="button">⭐ 관심 <span class="cnt">${fmtNum(lists.watch.length)}</span></button>
+      <button data-v="joined" class="${joinedMode ? 'on' : ''}" type="button">📝 투찰 중 <span class="cnt">${fmtNum(lists.joined.length)}</span></button>
+      <button data-v="result" class="${resultMode ? 'on' : ''}" type="button">🏁 개찰 결과 <span class="cnt">${fmtNum(lists.result.length + nHist)}</span></button>
     </div>`;
   const hasBiz = !!Company.get().biz;
-  const joinForm = joinedMode ? `<div class="join-add">
+  const joinForm = joinedMode || resultMode ? `<div class="join-add">
       <input type="text" id="joinNo" placeholder="공고번호로 추가 (예: R26BK01735101-000)" autocomplete="off">
       <button class="btn sm" id="joinAdd" type="button">참여 공고 추가</button>
       <span class="meta-line" id="joinMsg" style="margin:0;"></span>
     </div>
-    <div class="meta-line" style="margin:0 0 12px;">${hasBiz ? `사업자번호로 <b>강원 개찰 상세</b>에서 우리가 넣은 공고를 자동으로 찾고(${fmtNum(auto.length)}건), 개찰되면 조달청에서 순위·금액을 바로 가져옵니다.` : '설정 → 우리 업체에 <b>사업자번호</b>를 넣으면 우리 순위·금액을 자동으로 찾고, 수집된 개찰 상세에서 참여 공고도 자동으로 모읍니다.'} 조달청 API에 "사업자번호로 찾기"가 없어서, 다른 지역 공고는 공고번호로 추가하거나 ☆ 저장 뒤 "참여 표시"를 눌러 주세요.</div>` : '';
+    <div class="meta-line" style="margin:0 0 12px;">${joinedMode ? '넣은 공고를 공고번호로 추가하거나, 관심에서 "참여 표시"를 누르세요. 개찰 시각이 지나면 <b>🏁 개찰 결과</b>로 옮겨지고 조달청에서 순위·금액을 바로 가져옵니다.'
+      : hasBiz ? `사업자번호로 <b>강원 개찰 상세</b>에서 우리가 넣은 공고를 자동으로 찾습니다(${fmtNum(auto.length)}건). 조달청 API에 "사업자번호로 찾기"가 없어 다른 지역은 공고번호로 추가하거나, 아래 과거 투찰 이력 엑셀을 가져오세요.`
+      : '설정 → 우리 업체에 <b>사업자번호</b>를 넣으면 수집된 개찰 상세에서 우리 순위·금액을 자동으로 찾습니다.'}</div>` : '';
   if(!list.length){
-    el.innerHTML = modeSeg + joinForm + `<div class="empty">${joinedMode ? '아직 참여한 공고가 없습니다. 공고번호로 추가하거나, 관심공고에서 "참여 표시"를 누르세요.' : '아직 저장한 관심공고가 없습니다. 입찰공고 탭에서 ☆를 눌러 보세요.'}</div>`;
+    el.innerHTML = modeSeg + joinForm + `<div class="empty">${joinedMode ? '개찰을 기다리는 투찰이 없습니다.' : resultMode ? '앱에 기록된 개찰 결과가 없습니다.' : '저장한 관심공고가 없습니다. 우리 공고·공고 검색에서 ☆를 눌러 보세요.'}</div>` + (resultMode ? renderHistory() : '');
     bindWatch(el, pseudo);
     return;
   }
@@ -2213,6 +2322,7 @@ async function renderWatch(){
         <div class="bid-sub">${esc(w.org || '')}${w.sido ? ' · ' + esc([w.sido, w.sgg].filter(Boolean).join(' ')) : ''} · ${esc(w.no ? `${w.no}-${w.ord}` : '')}${w.close ? ` · <span class="dday ${dd.urgent ? 'urgent' : ''}">${esc(dd.text)}</span>` : ''}</div>
       </div>${star}</div>
       ${body}
+      ${resultMode && w.myBid && r ? '<details class="b-more res-edit"><summary>투찰금액 고치기 · 다시 조회</summary>' : ''}
       <div class="mybid-row">
         <label>내가 넣은 투찰금액</label>
         <input type="text" class="money" inputmode="numeric" autocomplete="off" data-mybid-in="${esc(w.id)}" value="${moneyText(w.myBid)}" placeholder="${w.pred?.bid ? '예: ' + moneyText(w.pred.bid) : '원 단위'}">
@@ -2220,24 +2330,21 @@ async function renderWatch(){
         ${opened(w) && apiKey() ? `<button class="btn sm line" data-res-fetch="${esc(w.id)}" type="button">개찰 결과 조회</button>` : ''}
         ${!w.auto ? `<button class="btn sm line" data-join-toggle="${esc(w.id)}" type="button">${w.joined ? '참여 표시 해제' : '참여 표시'}</button>` : ''}
       </div>
-      <div class="bid-actions">${findNotice(w.id) ? `<button class="btn sm" data-predict="${esc(w.id)}" type="button">이 공고로 예측</button>` : ''}
-        ${w.url ? `<a class="btn line sm" href="${esc(w.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}</div>
+      ${resultMode && w.myBid && r ? '</details>' : ''}
+      ${resultMode ? '' : `<div class="bid-actions">${findNotice(w.id) ? `<button class="btn sm" data-predict="${esc(w.id)}" type="button">이 공고로 예측</button>` : ''}
+        ${w.url ? `<a class="btn line sm" href="${esc(w.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}</div>`}
     </div>`;
   });
   const cal = calibrate(judged);
   LS.set('myCal', cal);
   const cnt = (c) => judged.filter(j => j.cls === c).length;
-  const head = joinedMode ? `<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));">
-      <div class="kpi" style="cursor:default;"><span class="t">참여</span><span class="v">${fmtNum(list.length)}</span></div>
-      <div class="kpi" style="cursor:default;"><span class="t">개찰됨</span><span class="v">${fmtNum(nOpen)}</span></div>
+  const head = resultMode ? `<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));">
+      <div class="kpi" style="cursor:default;"><span class="t">개찰 결과</span><span class="v">${fmtNum(list.length)}</span></div>
+      <div class="kpi" style="cursor:default;"><span class="t">내 투찰 기록</span><span class="v">${fmtNum(nBid)}</span></div>
       <div class="kpi ${nFirst ? 'on' : ''}" style="cursor:default;"><span class="t">🏆 1순위</span><span class="v">${fmtNum(nFirst)}</span></div>
       <div class="kpi" style="cursor:default;"><span class="t">평균 순위</span><span class="v">${ranks.length ? fmtNum(stats(ranks).mean, 1) + '위' : '-'}</span></div>
-    </div>` : `<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));">
-      <div class="kpi" style="cursor:default;"><span class="t">관심공고</span><span class="v">${fmtNum(items.length)}</span></div>
-      <div class="kpi" style="cursor:default;"><span class="t">참여</span><span class="v">${fmtNum(nBid)}</span></div>
-      <div class="kpi" style="cursor:default;"><span class="t">개찰됨</span><span class="v">${fmtNum(nOpen)}</span></div>
-    </div>`;
-  const summary = cal ? `<div class="card-inner my-score">
+    </div>` : '';
+  const summary = cal && resultMode ? `<div class="card-inner my-score">
       <h3 style="margin-top:0;">내 투찰 성적 (개찰된 ${fmtNum(cal.n)}건)${sampleBadge(cal.n)}</h3>
       <div class="stat-grid">
         <div class="stat"><div class="t">낙찰권</div><div class="v" style="color:var(--ok);">${cnt('win')}</div></div>
@@ -2247,11 +2354,12 @@ async function renderWatch(){
       </div>
       <div class="meta-line">내 투찰 사정률을 ${cal.shift >= 0 ? '+' : ''}${cal.shift.toFixed(3)}%p 옮겼다면 낙찰권이 ${cal.wins}건 → ${cal.best}건이었습니다. ${cnt('high') > cnt('below') ? '대체로 1위보다 높게 쓰는 편입니다.' : cnt('below') > cnt('high') ? '대체로 하한 미달이 많은 편입니다.' : ''} 표본이 적을수록 우연일 수 있습니다.</div>
     </div>` : '';
-  el.innerHTML = modeSeg + joinForm + head + summary + `<div class="bid-list" style="margin-top:0;">${cards.join('')}</div>`;
+  el.innerHTML = modeSeg + joinForm + head + summary + `<div class="bid-list" style="margin-top:0;">${cards.join('')}</div>` + (resultMode ? renderHistory() : '');
   bindWatch(el, pseudo);
 }
 
 function bindWatch(el, pseudo){
+  bindHistory(el);
   const getW = async (id) => (await WatchStore.list()).find(x => x.id === id) || pseudo.get(id);
   $('wMode')?.addEventListener('click', (e) => {
     const v = e.target.closest('[data-v]')?.dataset.v; if(!v) return;
@@ -2557,7 +2665,7 @@ function initSettings(){
     if(!box.hidden){ box.hidden = true; box.innerHTML = ''; return; }
     const k = String(LS.get('apiKey', '') || '').trim();
     if(!k){ keyMsg('먼저 이 기기에 서비스키를 저장하세요.'); return; }
-    const url = location.origin + location.pathname + '#key=' + encodeURIComponent(k);
+    const url = location.origin + location.pathname + '#key=' + encodeURIComponent(k) + (Company.isSet() ? '&co=' + encodeURIComponent(JSON.stringify(Company.get())) : '');
     box.hidden = false;
     box.innerHTML = loadingHtml('QR 만드는 중…');
     try{
@@ -2567,7 +2675,7 @@ function initSettings(){
         sc.onload = res; sc.onerror = () => rej(new Error('QR 라이브러리를 불러오지 못했습니다'));
         document.head.appendChild(sc);
       });
-      box.innerHTML = '<div id="keyQrImg"></div><div class="meta-line">폰 카메라로 찍어 열면 폰 앱에 키가 저장됩니다. 다 쓰면 이 버튼을 다시 눌러 QR을 닫으세요. 이 QR·링크를 다른 사람에게 보내지 마세요.</div>';
+      box.innerHTML = '<div id="keyQrImg"></div><div class="meta-line">폰 카메라로 찍어 열면 폰 앱에 서비스키와 우리 업체 정보가 저장됩니다. 다 쓰면 이 버튼을 다시 눌러 QR을 닫으세요. 이 QR·링크를 다른 사람에게 보내지 마세요.</div>';
       new QRCode($('keyQrImg'), {text: url, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M});
     }catch(e){ box.innerHTML = `<div class="alert warn">${esc(e.message)}</div>`; }
   });
@@ -2730,11 +2838,13 @@ function initServiceWorker(){
 // ============================================================ 시작
 async function init(){
   // QR/링크로 받은 서비스키 저장 (#key=…) 후 주소에서 바로 지운다
-  const km = location.hash.match(/^#key=(.+)$/);
+  const km = location.hash.match(/^#key=([^&]+)(?:&co=(.+))?$/);
   if(km){
+    let co = false;
     try{ LS.set('apiKey', decodeURIComponent(km[1])); LS.set('bidsMode', 'live'); }catch(e){}
-    history.replaceState(null, '', location.pathname + '#bids');
-    setTimeout(() => alert('이 기기에 조달청 서비스키를 저장했습니다. 입찰공고 탭에서 실시간 검색을 쓸 수 있어요.'), 300);
+    try{ if(km[2]){ const c = JSON.parse(decodeURIComponent(km[2])); if(c && Array.isArray(c.lics)){ LS.set('company', c); co = true; } } }catch(e){}
+    history.replaceState(null, '', location.pathname + '#home');
+    setTimeout(() => alert(`이 기기에 조달청 서비스키${co ? '와 우리 업체 정보(소재지·면허·주력분야·참여가능금액)' : ''}를 저장했습니다.`), 300);
   }
   applyTheme();
   $('todayLabel').textContent = new Date().toLocaleDateString('ko-KR', {year:'numeric', month:'long', day:'numeric', weekday:'short'});
@@ -2756,7 +2866,7 @@ async function init(){
     const h = e.target.closest('[data-hide]'), uh = e.target.closest('[data-unhide]');
     if(h || uh){ Hidden.toggle((h || uh).dataset[h ? 'hide' : 'unhide'], !!h); renderMine(); return; }
     const g = e.target.closest('[data-goto]');
-    if(g) switchTab(g.dataset.goto);
+    if(g){ if(g.dataset.goto === 'watch' && currentTab === 'home'){ watchMode = 'joined'; LS.set('watchMode', watchMode); } switchTab(g.dataset.goto); }
   });
 
   initBidsFilters();
@@ -2766,7 +2876,9 @@ async function init(){
   initPredict();
   initStats();
   initSettings();
-  switchTab(location.hash.slice(1) || (Company.isSet() ? 'home' : 'bids'), false);
+  // 앱을 열면 언제나 우리 공고부터 (주소에 #watch 등이 남아 있어도 — 홈 화면 바로가기·북마크가 마지막 탭 주소로 저장되는 일이 있음)
+  history.replaceState(null, '', location.pathname + '#home');
+  switchTab('home', false);
   Data.loadBids().then(() => { if(currentTab !== 'bids') updateNewBadge(); });
 }
 
