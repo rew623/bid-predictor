@@ -1017,7 +1017,7 @@ function bidCard(b, today, opts = {}){
   let pred = '', more = '';
   if(qp){
     pred = `<div class="b-pred">
-        <div class="pv hl big"><span>추천 투찰가</span><b>${qp.bid ? won(qp.bid) : '기초금액 공개 후'}</b></div>
+        <div class="pv hl big"><span>추천 투찰가</span><b>${qp.bid ? won(qp.bid) : b.live && b.kind === '공사' && !b.bsisTried && apiKey() ? '<span class="faint">불러오는 중…</span>' : opened(b) ? '기초금액 없음' : '기초금액 공개 후'}</b></div>
         ${qp.bestSr != null ? `<div class="pv"><span>낙찰확률</span><b>${(qp.winP * 100).toFixed(2)}%${qp.lift ? ` <small class="lift">×${qp.lift.toFixed(1)}</small>` : ''}</b></div>` : ''}
         ${qp.cnt ? `<div class="pv"><span>예상 참가</span><b>~${fmtNum(qp.cnt)}곳</b></div>` : ''}
         ${done.amt ? `<div class="pv"><span>낙찰가</span><b>${won(done.amt)}</b></div>` : ''}
@@ -1547,6 +1547,12 @@ async function renderLive(){
   }
   watchIds = new Set((await WatchStore.list()).map(w => w.id));
   const rows = liveRows(), sgg = $('lSgg').value;
+  // 이미 가진 값은 조회를 기다리지 않고 바로: 진행중 공고(bids.json) → 마감 공고는 수집된 낙찰 기록의 기초금액·A값·예가범위
+  rows.forEach(b => {
+    if(b.base || b.kind !== '공사') return;
+    const c = Data.bids?.find(x => x.id === b.id) || (b.sido ? Data.scsbid[b.sido]?.byId.get(b.id) : null);
+    if(c?.base) ['base', 'a', 'net', 'rng', 'floor'].forEach(k => { if(c[k] != null && b[k] == null) b[k] = c[k]; });
+  });
   const today = kstDay(new Date());
   const known = Live.totals.reduce((a, b) => a + (b || 0), 0);
   const nW = Live.wins.length, doneW = Math.min(Live.wi, nW);
