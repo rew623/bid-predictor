@@ -1101,7 +1101,7 @@ const LIVE_KINDS = {
   '기타': ['getBidPblancListInfoEtcPPSSrch', 'getBidPblancListInfoEtc', null],
 };
 const Live = {items: [], raw: 0, page: 0, params: null, token: 0, kind: '공사', fallback: false, wins: [], wi: 0, totals: []};
-let bidsMode = LS.get('bidsMode', null);
+let bidsMode = null;   // 공고 검색 탭은 늘 실시간 검색으로 시작(키 없으면 자동 수집 목록) — 탭 안에서 바꾼 건 앱을 닫을 때까지만
 function apiKey(){
   const k = String(LS.get('apiKey', '') || '').trim();
   try{ return k.includes('%') ? decodeURIComponent(k) : k; }catch(e){ return k; }   // 인코딩 키를 넣어도 동작
@@ -1532,7 +1532,10 @@ async function renderLive(){
     Live.kind !== '공사' ? '예측은 공사만 제공' : '',
     !sido && !Model.m ? '지역을 고르면 예상 사정율·낙찰확률도 표시됩니다' : ''].filter(Boolean).join(' · ');
   const now = new Date(), isClosed = (b) => !!(b.close && parseKst(b.close) < now);
-  const shownRows = [...rows.filter(b => !isClosed(b)), ...rows.filter(isClosed)];   // 마감 안 된 공고 먼저, 각자는 받은 순서 그대로
+  // 마감 안 된 공고는 마감 임박순으로 위에, 마감된 공고는 최근 개찰순으로 아래에
+  const openRows = rows.filter(b => !isClosed(b)).sort((a, b) => (a.close || '9999').localeCompare(b.close || '9999'));
+  const doneRows = rows.filter(isClosed).sort((a, b) => (b.open || b.close || '').localeCompare(a.open || a.close || ''));
+  const shownRows = [...openRows, ...doneRows];
   list.innerHTML = shownRows.length ? shownRows.map(b => bidCard(b, today)).join('') : `<div class="empty card">${liveDone() ? '조건에 맞는 공고가 없습니다.' : '아직 조건에 맞는 공고를 못 찾았습니다. "더 보기"로 이전 기간을 이어서 조회하세요.'}</div>`;
   $('liveMore').hidden = liveDone();
   $('liveMore').textContent = '더 보기 (이어서 조회)';
