@@ -1224,10 +1224,11 @@ async function renderMine(){
   const okRows = gev.filter(([g, e]) => e.ok).map(([g]) => g);
   const gRows = okRows.filter(g => g.kind === '물품'), dcRows = okRows.filter(g => g.kind === '공사');   // 국방 시설공사는 공사로
   const gNo = {}; gev.forEach(([g, e]) => { if(!e.ok) gNo[e.why] = (gNo[e.why] || 0) + 1; });
-  const kinds = [['all', '전체', cRows.length + dcRows.length + gRows.length], ['공사', '🏗 공사', cRows.length + dcRows.length], ['물품', '📦 물품', gRows.length], ['국방', '🎖 국방', okRows.length]];
+  const dRows = okRows.filter(g => g.src === '국방'), ddcRows = dRows.filter(g => g.kind === '공사'), ddgRows = dRows.filter(g => g.kind === '물품');
+  const kinds = [['all', '전체', cRows.length + dcRows.length + gRows.length], ['공사', '🏗 공사', cRows.length + dcRows.length], ['물품', '📦 물품', gRows.length], ['국방공사', '🎖 국방 공사', ddcRows.length], ['국방물품', '🎖 국방 물품', ddgRows.length]];
   if(!kinds.some(k => k[0] === Mine.kind)) Mine.kind = 'all';
   $('mineKind').innerHTML = kinds.map(([k, t, n]) => `<button type="button" class="chip ${Mine.kind === k ? 'selected' : ''}" data-kind="${k}">${t}<span class="cnt">${fmtNum(n)}</span></button>`).join('');
-  const rows = Mine.kind === '공사' ? [...cRows, ...dcRows] : Mine.kind === '물품' ? gRows : Mine.kind === '국방' ? okRows : [...cRows, ...dcRows, ...gRows];
+  const rows = Mine.kind === '공사' ? [...cRows, ...dcRows] : Mine.kind === '물품' ? gRows : Mine.kind === '국방공사' ? ddcRows : Mine.kind === '국방물품' ? ddgRows : [...cRows, ...dcRows, ...gRows];
   const unknown = ev.filter(([b, e]) => e.ok && e.lic === 'unknown').length;
   const mfCheck = ev.filter(([b, e]) => e.ok && e.lic === 'mf-check').length;
   const noCap = ev.filter(([b, e]) => e.cap === 'no').length, noMf = ev.filter(([b, e]) => e.lic === 'mf').length;
@@ -1249,7 +1250,7 @@ async function renderMine(){
   const chipF0 = defs.find(d => d.k === Mine.chip).f;
   const chipF = (b) => b.kind === '물품' || b.src === '국방' ? Mine.chip === 'all' : chipF0(b);
   const nHidden = rows.filter(b => hidden.has(b.id)).length;
-  $('mineChips').hidden = Mine.kind === '물품' || Mine.kind === '국방';
+  $('mineChips').hidden = Mine.kind === '물품' || Mine.kind.startsWith('국방');
   $('mineChips').innerHTML = defs.map(d => `<button type="button" class="chip ${Mine.chip === d.k && !Mine.showHidden ? 'selected' : ''}" data-chip="${esc(d.k)}">${esc(d.label)}<span class="cnt">${visible.filter(d.f).length}</span></button>`).join('')
     + (nHidden ? `<button type="button" class="chip ${Mine.showHidden ? 'selected' : ''}" data-showhidden="1">뺀 공고<span class="cnt">${nHidden}</span></button>` : '');
   const shown = Mine.showHidden ? rows.filter(b => hidden.has(b.id)) : visible.filter(chipF);
@@ -1772,6 +1773,23 @@ function initCompany(){
   $('coName').value = c.name || '';
   $('coGoods').querySelectorAll('[data-g]').forEach(el => el.checked = !!c.goods?.[el.dataset.g]);
   $('coInds').value = (c.goods?.inds || []).join(', ');
+  // 등록 업종 고르기: 지금 물품 공고(나라장터·국방)에 걸린 업종 제한을 눌러서 추가 — 손으로 치기 번거로워서
+  const renderIndSug = async () => {
+    const all = [...await Data.loadGoods(), ...(await Data.loadD2bBids()).filter(g => g.kind === '물품')];
+    const cnt = {};
+    all.forEach(g => (g.inds || []).forEach(t => { const k = t.replace(/\^+$/, '').trim(); if(k) cnt[k] = (cnt[k] || 0) + 1; }));
+    const have = $('coInds').value.split(/[,，/]/).map(normQ).filter(Boolean);
+    const list = Object.entries(cnt).filter(([k]) => !have.includes(normQ(k))).sort((a, b) => b[1] - a[1]).slice(0, 40);
+    $('coIndSug').innerHTML = list.map(([k, n]) => `<button type="button" class="chip" data-ind="${esc(k)}">＋ ${esc(k)}<span class="cnt">${n}</span></button>`).join('') || '<span class="faint">지금 공고에 업종 제한이 없습니다.</span>';
+  };
+  $('coIndSug').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-ind]'); if(!t) return;
+    const cur = $('coInds').value.split(/[,，/]/).map(x => x.trim()).filter(Boolean);
+    $('coInds').value = [...cur, t.dataset.ind].join(', ');
+    renderIndSug();
+  });
+  $('coInds').addEventListener('change', renderIndSug);
+  renderIndSug();
   const lics = new Set(c.lics);
   const caps = {...c.caps};
   const readCaps = () => $('coCaps').querySelectorAll('input[data-cap]').forEach(el => {
