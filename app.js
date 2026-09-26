@@ -2374,6 +2374,8 @@ const History = {
 };
 
 // ---------- 🏢 업체 검색: data/corps.json(전국 낙찰·개찰 상세·국방 색인) + 개찰 상세로 업체별 투찰 이력·습관
+/** 개찰 상세를 폰에서 읽을 시·도 = 우리 업체 시·도(없으면 강원). 개찰 상세는 전국(관심 면허)으로 모으지만 17개 시·도 파일을 다 받으면 무거움 */
+const homeDetailSidos = () => [Company.get().sido || '강원'].filter(s => Data.hasDetail(s));
 const Corp = {idx: null, q: '', sel: null};
 const D2B_LIST_URL = 'https://www.d2b.go.kr/mainBidAnnounceList.do';
 async function loadCorps(){
@@ -2424,7 +2426,7 @@ async function renderCorpProfile(biz){
   out.innerHTML = loadingHtml('투찰 이력 계산 중…');
   // 개찰 상세(전체 투찰)에서 이 업체 행 → 투찰 사정률 − 실제 사정율 (습관)
   const rows = [];
-  for(const sido of (Data.meta.detail?.regions || []).filter(s => Data.hasDetail(s))){
+  for(const sido of homeDetailSidos()){
     let op, sc = null;
     try{ op = await Data.loadOpening(sido); if(Data.hasScsbid(sido)) sc = await Data.loadScsbid(sido); }catch(e){ continue; }
     for(const [id, b] of op.bids){
@@ -2705,7 +2707,7 @@ async function findMyBidsInOpening(skipIds){
   const biz = String(Company.get().biz || '').replace(/\D/g, '');
   if(!biz) return [];
   const out = [];
-  for(const sido of (Data.meta.detail?.regions || []).filter(s => Data.hasDetail(s))){
+  for(const sido of homeDetailSidos()){
     let op, sc = null;
     try{ op = await Data.loadOpening(sido); if(Data.hasScsbid(sido)) sc = await Data.loadScsbid(sido); }catch(e){ continue; }
     for(const [id, b] of op.bids){

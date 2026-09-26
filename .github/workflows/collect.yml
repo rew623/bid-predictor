@@ -75,6 +75,7 @@ jobs:
           START_DATE: ${{ inputs.start_date }}
           RESET_BACKFILL: ${{ inputs.reset_backfill }}
           STEPS: "빈달,업체정보,물품최근,물품과거,지역보강,과거낙찰,상세"
+          WATCH_BIZ: ${{ vars.WATCH_BIZ }}
           MAX_MINUTES: "260"
         run: python scripts/collect.py
 

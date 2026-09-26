@@ -37,7 +37,7 @@ scripts/corp_index.py 업체 색인 → data/corps.json [biz, 이름, 낙찰 수
 scripts/collect_d2b.py  국방전자조달(방위사업청) 입찰결과 수집기 — 워크플로 d2b 잡(나라장터 수집과 동시에, 40분)
 scripts/model.py      전국 추천 모델·역검증 → data/model.json (수집 단계마다 실행, numpy)
 scripts/korea.py      시도·시군구 파싱, 면허 23개 + 옛 명칭 별칭표
-scripts/regions.json  개찰 상세(전체 순위·복수예가)를 수집할 시·도 목록. 예: ["강원"]
+scripts/regions.json  개찰 상세(전체 순위·복수예가)를 수집할 시·도 목록 — 2026-09-26부터 전국 17개. detail_priority.json 의 sido(강원)는 전부·전원 행, 그 밖은 **관심 면허(lic) 공고만** + 압축(상위 30곳 `OPEN_TOP` 금액 행 + WATCH_BIZ 행 + 전원 c·x·k, 국방 v2 와 같은 방식). 전국 전부는 1년 수백 MB~1GB라 저장소 한도 때문에 안 함(요금은 없음 — 공개 저장소 Actions·Pages·공공데이터 모두 무료). 앱은 우리 시·도 파일만 읽음(`homeDetailSidos`).
 scripts/local_models.json  지역 전용 추천 설정 {areas:[{sido, sgg, label}], small}
 scripts/detail_priority.json  개찰 상세 수집 우선순위 {sgg:[시·군], lic:[면허], max_cnt:참가 수} — 관심 시·군 → 관심 면허 → 참가 적은 공고, 같은 등급은 최신부터
 .github/workflows/collect.yml  02:00·14:00 KST 전체 + 09·13·17시 공고만 + 수동 실행(start_date, reset_backfill, quick_only)

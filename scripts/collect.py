@@ -58,6 +58,12 @@ DETAIL_RESERVE = 250                        # 첫 상세 단계는 낙찰정보 
 RECENT_FIRST_MONTHS = 24                    # 과거 낙찰은 이 기간을 먼저 채운 뒤 상세 → 나머지 과거 순으로
 DETAIL_MAX_TRIES = 3
 NET_FAIL_STOP = 3                           # 조달청 접속이 연속 이만큼 안 되면 그 실행은 멈춘다 (2026-09-26 새벽 5시간 헛돈 일)
+OPEN_TOP = 30                               # 관심 시·도 밖 개찰 상세: 금액 행으로 남길 상위 업체 수
+WATCH_BIZ = {re.sub(r"\D", "", b) for b in (os.environ.get("WATCH_BIZ") or "").split(",") if re.sub(r"\D", "", b)}   # 저장소 변수 — 순위 밖이어도 행을 남길 업체(우리 업체)
+try:   # 관심 시·도(전원 행 그대로 저장) = detail_priority.json 의 sido
+    FULL_SIDOS = set(json.load(open(ROOT / "scripts" / "detail_priority.json", encoding="utf-8")).get("sido") or ["강원"])
+except (OSError, ValueError):
+    FULL_SIDOS = {"강원"}
 REGION_RESERVE = 250                        # 지역보강은 입찰공고 호출을 이만큼 남긴다 (뒤의 과거 수집 몫)
 THNG_RESERVE = 250                          # 물품과거는 낙찰정보 호출을 이만큼 남긴다 (뒤의 개찰 상세 몫)
 THNG_BID_RESERVE = 250                      # 물품과거는 입찰공고 호출을 이만큼 남긴다 (뒤의 지역보강·공사 과거 수집 몫)
@@ -915,6 +921,8 @@ class OpeningStore:
                 corps = part.get("corps") or []
                 for bid_id, b in (part.get("bids") or {}).items():
                     b["r"] = [[row[0], self._corp(y, *corps[row[1]])] + row[2:] for row in b.get("r", [])]
+                    if b.get("c"):
+                        b["c"] = [self._corp(y, *corps[ci]) for ci in b["c"]]
                     y["bids"][bid_id] = b
             self.years[key] = y
         return self.years[key]
@@ -945,7 +953,13 @@ class OpeningStore:
             if note:
                 row.append(note[:30])
             rows.append(row)
-        rows.sort(key=lambda r: (r[0] <= 0, r[0]))
+        rows.sort(key=lambda r: (r[0] <= 0, r[0], r[2]))
+        compact = {}
+        if sido not in FULL_SIDOS:   # 전국 전원 행은 1년 약 1GB → 상위 30곳(+우리 업체) 금액 행 + 전원은 업체·투찰률(국방 v2 와 같은 방식)
+            compact = {"c": [r[1] for r in rows], "k": sum(1 for r in rows if r[0] > 0)}
+            xs = [round((r[3] or 0) * 1000) for r in rows]
+            compact["x"] = xs[:1] + [b - a for a, b in zip(xs, xs[1:])]
+            rows = rows[:OPEN_TOP] + [r for r in rows[OPEN_TOP:] if y["corps"][r[1]][1] in WATCH_BIZ]
         p = []
         for it in prices:
             sno = to_int(pick(it, F_SNO))
@@ -958,7 +972,7 @@ class OpeningStore:
         plan = next((to_int(pick(it, F_PLAN)) for it in prices if pick(it, F_PLAN)), None)
         base = next((to_int(pick(it, F_BASE)) for it in prices if pick(it, F_BASE)), None)
         y["bids"][rec["id"]] = clean({"date": rec["date"], "plan": plan or rec.get("plan"),
-                                      "base": base or rec.get("base"), "p": p, "r": rows})
+                                      "base": base or rec.get("base"), "p": p, "r": rows, **compact})
         self.idx(sido)["done"][rec["id"]] = year
         self.idx(sido)["fail"].pop(rec["id"], None)
         self.dirty.add((sido, year))
@@ -996,6 +1010,16 @@ class OpeningStore:
                             corps.append(list(c[:3]))
                         rows.append([row[0], cidx[k]] + row[2:])
                     b["r"] = rows
+                    if b.get("c"):
+                        cc = []
+                        for ci in b["c"]:
+                            c = y["corps"][ci]
+                            k = c[1] or c[0]
+                            if k not in cidx:
+                                cidx[k] = len(corps)
+                                corps.append(list(c[:3]))
+                            cc.append(cidx[k])
+                        b["c"] = cc
                     bids[i] = b
                 p = stem.with_name(year + ("" if n == 0 else f"_{n + 1}") + ".json")
                 write_if_changed(p, dumps({"sido": sido, "year": year, "part": n + 1, "parts": len(chunks),
@@ -1308,19 +1332,21 @@ def step_details(api, meta, store, ostore, regions, now, checkpoint, reserve=3):
     dm = meta.setdefault("detail", {})
     dm["regions"] = regions
     queue = []
+    pri = load_json(ROOT / "scripts" / "detail_priority.json", {})
     for sido in regions:
         ix = ostore.idx(sido)
         recs = [r for r in store.recs.values() if r.get("sido") == sido and (r.get("date") or "") >= tdate]
+        if sido not in FULL_SIDOS:   # 관심 시·도 밖은 관심 면허 공고만 (전국 전부는 1년 수백 MB~1GB — 저장소 한도, 2026-09-26 검토)
+            recs = [r for r in recs if set(pri.get("lic") or []) & set(r.get("lic") or [])]
         pending = [r for r in recs if r["id"] not in ix["done"] and ix["fail"].get(r["id"], 0) < DETAIL_MAX_TRIES]
         dm[sido] = {"total": len(recs), "done": sum(1 for r in recs if r["id"] in ix["done"]),
                     "failed": sum(1 for r in recs if ix["fail"].get(r["id"], 0) >= DETAIL_MAX_TRIES)}
         queue += [(sido, r) for r in pending]
-    # 우선순위(scripts/detail_priority.json): 관심 시·군 → 관심 면허 → 참가 적은 공고 순으로 먼저, 같은 등급은 최신부터
-    pri = load_json(ROOT / "scripts" / "detail_priority.json", {})
-    p_sgg, p_lic, p_cnt = set(pri.get("sgg", [])), set(pri.get("lic", [])), pri.get("max_cnt") or 0
+    # 우선순위(scripts/detail_priority.json): 관심 시·도 → 관심 시·군 → 관심 면허 → 참가 적은 공고 순으로 먼저, 같은 등급은 최신부터
+    p_sido, p_sgg, p_lic, p_cnt = set(pri.get("sido", [])), set(pri.get("sgg", [])), set(pri.get("lic", [])), pri.get("max_cnt") or 0
 
-    def tier(r):
-        return ((r.get("sgg") in p_sgg) * 4 + bool(p_lic & set(r.get("lic") or [])) * 2
+    def tier(r):   # 관심 시·도(강원) 전부 먼저 → 그다음 전국은 관심 면허·최신부터
+        return ((r.get("sido") in p_sido) * 8 + (r.get("sgg") in p_sgg) * 4 + bool(p_lic & set(r.get("lic") or [])) * 2
                 + bool(p_cnt and (r.get("cnt") or 10 ** 9) < p_cnt))
 
     queue.sort(key=lambda x: (tier(x[1]), x[1]["date"]), reverse=True)
