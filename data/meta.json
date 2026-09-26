@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 6,
+   "bid": 896,
    "date": "20260927",
-   "scsbid": 11
+   "scsbid": 9500
   }
  },
  "backfill": {
@@ -19,7 +19,7 @@
  "counts": {
   "bids": 1651,
   "opening": {
-   "강원": 5839,
+   "강원": 10368,
    "경기": 0,
    "경남": 0,
    "경북": 0,
@@ -38,26 +38,26 @@
    "충북": 0
   },
   "scsbid": {
-   "강원": 10809,
-   "경기": 7043,
-   "경남": 15112,
-   "경북": 17236,
-   "광주": 1000,
-   "기타": 1852,
-   "대구": 3646,
-   "대전": 886,
-   "부산": 4806,
-   "서울": 9814,
+   "강원": 13883,
+   "경기": 13261,
+   "경남": 19583,
+   "경북": 22055,
+   "광주": 997,
+   "기타": 1315,
+   "대구": 4250,
+   "대전": 1562,
+   "부산": 5659,
+   "서울": 12219,
    "세종": 916,
-   "울산": 2627,
-   "인천": 3708,
-   "전남": 12893,
-   "전북": 9810,
-   "제주": 2285,
-   "충남": 12176,
-   "충북": 9818
+   "울산": 3115,
+   "인천": 4651,
+   "전남": 16433,
+   "전북": 12563,
+   "제주": 2897,
+   "충남": 16275,
+   "충북": 12876
   },
-  "scsbid_total": 126437,
+  "scsbid_total": 164510,
   "thng": {
    "강원": 243,
    "경기": 949,
@@ -81,12 +81,13 @@
   "thng_total": 8591
  },
  "detail": {
-  "eta_days": 3,
+  "eta_days": 4,
   "history": [
    421,
-   5022
+   5022,
+   4529
   ],
-  "history_date": "20260926",
+  "history_date": "20260927",
   "per_day": 5022,
   "regions": [
    "강원",
@@ -107,91 +108,91 @@
    "경남",
    "제주"
   ],
-  "remaining": 13390,
+  "remaining": 17397,
   "강원": {
-   "done": 5839,
+   "done": 10368,
    "failed": 0,
-   "total": 9806
+   "total": 13883
   },
   "경기": {
    "done": 0,
    "failed": 0,
-   "total": 199
+   "total": 813
   },
   "경남": {
    "done": 0,
    "failed": 0,
-   "total": 1963
+   "total": 2710
   },
   "경북": {
    "done": 0,
    "failed": 0,
-   "total": 1035
+   "total": 1463
   },
   "광주": {
    "done": 0,
    "failed": 0,
-   "total": 153
+   "total": 183
   },
   "대구": {
    "done": 0,
    "failed": 0,
-   "total": 258
+   "total": 311
   },
   "대전": {
    "done": 0,
    "failed": 0,
-   "total": 35
+   "total": 114
   },
   "부산": {
    "done": 0,
    "failed": 0,
-   "total": 300
+   "total": 401
   },
   "서울": {
    "done": 0,
    "failed": 0,
-   "total": 706
+   "total": 1053
   },
   "세종": {
    "done": 0,
    "failed": 0,
-   "total": 61
+   "total": 68
   },
   "울산": {
    "done": 0,
    "failed": 0,
-   "total": 217
+   "total": 276
   },
   "인천": {
    "done": 0,
    "failed": 0,
-   "total": 279
+   "total": 388
   },
   "전남": {
    "done": 0,
    "failed": 0,
-   "total": 1349
+   "total": 1788
   },
   "전북": {
    "done": 0,
    "failed": 0,
-   "total": 968
+   "total": 1399
   },
   "제주": {
    "done": 0,
    "failed": 0,
-   "total": 161
+   "total": 227
   },
   "충남": {
    "done": 0,
    "failed": 0,
-   "total": 1078
+   "total": 1733
   },
   "충북": {
    "done": 0,
    "failed": 0,
-   "total": 661
+   "total": 955
   }
  },
  "files": {
@@ -334,31 +335,35 @@
    ]
   }
  },
- "info_fill": {},
+ "info_fill": {
+  "cursor": "202510"
+ },
  "last_run": {
-  "at": "2026-09-27T00:53:09+09:00",
+  "at": "2026-09-27T03:20:02+09:00",
   "calls": {
-   "bid": 6,
+   "bid": 896,
    "date": "20260927",
-   "scsbid": 11
+   "scsbid": 9500
   },
-  "errors": [],
-  "minutes": 0.9
+  "errors": [
+   "업체정보: 한도 소진 (scsbid)",
+   "물품최근: 한도 소진 (scsbid)"
+  ],
+  "minutes": 146.4
  },
  "lim_scan": true,
  "mf_scan": true,
  "model": {
-  "rows": 77200,
-  "updated_at": "2026-09-27T00:40:00+09:00"
+  "rows": 109480,
+  "updated_at": "2026-09-27T03:20:08+09:00"
  },
  "notice_last": "2026-09-27T00:52+09:00",
- "refill": [
-  "202605",
-  "202604",
-  "202603"
- ],
- "rgn_fill": {},
+ "refill": [],
+ "rgn_fill": {
+  "cursor": null,
+  "done": true
+ },
  "thng_backfill": {},
- "updated_at": "2026-09-27T00:53:09+09:00",
+ "updated_at": "2026-09-27T03:20:08+09:00",
  "v": 1
 }
