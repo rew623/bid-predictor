@@ -164,6 +164,11 @@ lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits`(renderLive 뒤 1
 `{연도}.json` {"v":1, year, corps:[[업체명, 사업자번호]], items:[{id, kind(물품|용역|시설), nm, org, cm, dm, bm, date, base(기초예비가격), budget, rng:[하한%,상한%], floor, plan, sr, cnt, amt, rate, win, winBiz, p:[[번호, 예비가격, 추첨0/1]], r:상위 30곳 [[순위(0=없음), corps 인덱스, 금액, 비고?]], h:전원 분포 [[round(금액/기초×1000), 곳수]]}]}` — 참가가 평균 500곳(최대 1만)이라 전원 행은 1년 200MB↑ → 상위 30곳 + 분포(1건 약 1.7KB), `meta.json` {updated_at, files, counts, total, backfill:{cursor, oldest, done}}, `index.json`(수집기 전용 done/fail). 최근 30일 매번 + 한 달씩 과거로 24개월(`D2B_MONTHS`).
 다음: 물품 모델 역검증에 D2B 포함, 입찰공고(BidPblancInfoService)로 진행중 국방 공고를 우리 공고에.
 
+### data/goods.json — 진행중 물품 공고 (수집기 `물품최근` 단계 `write_goods`, 추가 호출 없음)
+`{"v":1, "updated_at", "items":[{id, no, ord, nm, org, dmd, sido, sgg, rgn(참가가능지역), inds(업종 제한 원문), base, est, floor, rng, cm(계약방법), mnf(1=제조·직접생산 필요), plim(1=물품분류 제한), prd(세부품명), ntce, close, open, url}]}` 마감 임박 순.
+물품최근이 원래 받던 60일치 물품 공고·기초금액 응답을 그대로 쓰고, 참가가능지역·업종제한은 '공고' 단계가 업무 구분 없이 받아 notice_cache 에 둔 것을 쓴다. 하루 2번(02·14시 전체 수집) 갱신.
+앱: 우리 공고에 🏗 공사 / 📦 물품 버튼(`Mine.kind`, `bp.mineKind`), `goodsEligibility` = 지역 + 직생(mnf, 설정 goods.direct) + 업종 제한(inds ↔ goods.inds·면허, 문장부호 뗀 포함 비교) + 공고명의 소기업·소상공인/여성기업 → 참가 불가, 물품분류 제한(plim)은 '품명 등록 확인' 경고만. 물품은 추천값 없음(역검증 전), 분석 버튼 없음. 목록은 60건씩 '더 보기'.
+
 ### data/thng/{시도}.json — 물품 과거 낙찰
 scsbid 와 같은 형식(`ThngStore`) + `cm` 계약방법(예: 수의계약·제한경쟁). A값·면허·순공사원가·rgn 은 없다(투찰 사정률 = 금액 ÷ 하한율 ÷ 기초금액). 시도는 수요·공고기관 이름으로.
 물품 낙찰 목록엔 하한율·예정가격이 없다 → 하한율·계약방법은 물품 공고(`getBidPblancListInfoThng`), 기초금액·예가범위는 `…ThngBsisAmount`, 예정가격은 낙찰금액 ÷ 낙찰률.

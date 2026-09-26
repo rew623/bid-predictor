@@ -97,7 +97,7 @@ const FIREBASE_CONFIG = {
 };   // 웹 앱 설정값은 공개돼도 되는 값(비밀 아님) — 데이터는 보안 규칙이 지킨다
 const FB_VER = '10.12.2';
 const Cloud = {
-  keys: ['company', 'watch', 'hiddenBids', 'history', 'corpWatch', 'apiKey', 'mineArea', 'mineSort', 'bidsFilter', 'bidsMode', 'watchMode', 'theme', 'myCal', 'curveSmooth', 'pSidos', 'pLics', 'statsFilter', 'guideClosed'],
+  keys: ['company', 'watch', 'hiddenBids', 'history', 'corpWatch', 'mineKind', 'apiKey', 'mineArea', 'mineSort', 'bidsFilter', 'bidsMode', 'watchMode', 'theme', 'myCal', 'curveSmooth', 'pSidos', 'pLics', 'statsFilter', 'guideClosed'],
   user: null, db: null, loading: null, status: '', lastSync: null, unsub: null, timers: {},
   dev: (() => { try{ let d = localStorage.getItem('bp._dev'); if(!d){ d = Math.random().toString(36).slice(2, 10); localStorage.setItem('bp._dev', d); } return d; }catch(e){ return 'x'; } })(),
   ts(){ try{ return JSON.parse(localStorage.getItem('bp._ts') || '{}'); }catch(e){ return {}; } },
@@ -331,6 +331,14 @@ const Data = {
     return this.once('model', async () => {
       try{ Model.m = await this.fetchJson('model.json'); }catch(e){ console.warn('model', e); Model.m = null; }
       return Model.m;
+    });
+  },
+  /** 진행중 물품 공고(data/goods.json, 수집기 물품최근 단계) — kind '물품' 을 붙여 공사 공고와 같은 카드로 */
+  loadGoods(){
+    return this.once('goods', async () => {
+      try{ this.goods = ((await this.fetchJson('goods.json')).items || []).map(g => ({...g, kind: '물품'})); }
+      catch(e){ this.goods = []; }
+      return this.goods;
     });
   },
   loadBids(){
@@ -942,7 +950,12 @@ const LIC_SHORT = {'금속창호·지붕건축물조성': '금속지붕(대)', '
   '철강구조물': '철강구조(대)', '수중·준설': '수중준설(대)', '승강기·삭도': '승강삭도(대)', '조경식재·시설물': '식재시설물(대)', '기계설비': '기계설비(대)',
   '가스시설시공': '가스(대)', '토목건축': '토건', '산업환경설비': '산업환경', '정보통신': '통신', '소방시설': '소방', '보링·그라우팅': '보링그라우팅'};
 /** 카드 첫 줄 면허: 요구 면허 짧은 이름(우리 면허는 ✓) + 요구 주력분야 */
+function goodsTags(b){
+  return ['<span class="tag goods">📦 물품</span>', b.cm && b.cm !== '일반경쟁' ? `<span class="tag">${esc(b.cm)}</span>` : '',
+    ...(b.inds || []).map(t => `<span class="tag" title="업종 제한">${esc(t)}</span>`), b.prd ? `<span class="tag" title="세부품명">${esc(b.prd)}</span>` : ''].filter(Boolean);
+}
 function licShortTags(b){
+  if(b.kind === '물품') return goodsTags(b);
   const lics = licOf(b);
   if(!lics.length) return b.live && !b.limTried ? ['<span class="tag">면허 조회 중…</span>'] : [];
   const mine = new Set(Company.isSet() ? Company.get().lics : []);
@@ -990,6 +1003,8 @@ function bidCard(b, today, opts = {}){
       </div>${qp.area ? `<div class="b-area">🎯 ${esc(qp.area.label)} 전용 추천</div>` : ''}`;
     more = `<div class="b-kv"><span>추천 투찰 사정률 <b>${qp.bestSr != null ? pct(qp.bestSr, 3) : '-'}</b></span><span>예상 사정율 <b>${pct(qp.sr, 3)}</b></span>${qp.value ? `<span>기대 수주액 <b>${eok(qp.value)}</b></span>` : ''}</div>
       <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.area ? ` · ${esc(areaText(qp.area))}` : ''}${qp.model ? (qp.area ? ' · ×는 공정 기대(1÷(참가+1)) 대비' : ' · 추천값·낙찰확률은 전국의 경쟁 규모가 비슷한 공고 기준 · ×는 공정 기대(1÷(참가+1)) 대비') : qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}</div>`;
+  }else if(b.kind === '물품'){
+    pred = '<div class="b-note">물품 추천 투찰가는 물품 낙찰 데이터가 모여 역검증을 통과하면 추가됩니다</div>';
   }else if(b.sido && !Data.hasScsbid(b.sido)){
     pred = '<div class="b-note">이 지역 낙찰 데이터 없음</div>';
   }
@@ -1010,7 +1025,7 @@ function bidCard(b, today, opts = {}){
     ${pred}
     <details class="b-more"><summary>자세히</summary><div class="b-tags">${moreTags}</div>${more}</details>
     <div class="b-actions">
-      <button class="btn sm" data-predict="${esc(b.id)}" type="button">💰 투찰금액 분석</button>
+      ${b.kind === '물품' ? '' : `<button class="btn sm" data-predict="${esc(b.id)}" type="button">💰 투찰금액 분석</button>`}
       ${qp?.bid ? `<button class="btn sm reg" data-quickbid="${esc(b.id)}" type="button" title="추천 투찰가 ${won(qp.bid)}을 내 투찰에 기록">📝 추천가로 투찰 등록</button>` : ''}
       ${b.url ? `<a class="btn line sm" href="${esc(b.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}
       ${opts.hide ? `<button class="btn line sm" data-hide="${esc(b.id)}" type="button" title="우리가 못 하는 공고면 빼 두세요. 이 기기에만 저장">목록에서 빼기</button>` : ''}
@@ -1037,7 +1052,7 @@ function apiKey(){
   const k = String(LS.get('apiKey', '') || '').trim();
   try{ return k.includes('%') ? decodeURIComponent(k) : k; }catch(e){ return k; }   // 인코딩 키를 넣어도 동작
 }
-const findNotice = (id) => Data.bids?.find(x => x.id === id) || Live.items.find(x => x.id === id);
+const findNotice = (id) => Data.bids?.find(x => x.id === id) || Data.goods?.find(x => x.id === id) || Live.items.find(x => x.id === id);
 
 async function liveCall(op, params, base=LIVE_BASE){
   const q = new URLSearchParams({serviceKey: apiKey(), type: 'json', ...params});
@@ -1154,7 +1169,7 @@ function initLive(){
 }
 // ============================================================ 우리 업체 대시보드 (입찰공고 탭 첫 모드)
 // 설정의 업체 정보(소재지·면허·주력분야·참여가능금액)로 자동 수집된 진행중 공고 중 참가 가능한 것만 — 검색 없이 바로.
-const Mine = {day: null, chip: 'all', small: false, showHidden: false, area: LS.get('mineArea', 'all')};
+const Mine = {day: null, chip: 'all', small: false, showHidden: false, area: LS.get('mineArea', 'all'), kind: LS.get('mineKind', 'all'), shown: 60};
 /** 대시보드에서 뺀 공고 (우리가 못 하는 종목 등) — 이 기기에만 */
 const Hidden = {
   ids(){ return new Set(LS.get('hiddenBids', [])); },
@@ -1183,7 +1198,16 @@ async function renderMine(){
   const now = new Date(), today = kstDay(now);
   const open = Data.bids.filter(b => !b.close || parseKst(b.close) >= now);
   const ev = open.map(b => [b, eligibility(b)]);
-  const rows = ev.filter(([b, e]) => e.ok && e.lic !== 'unknown' && e.lic !== 'mf-check').map(([b]) => b);
+  const cRows = ev.filter(([b, e]) => e.ok && e.lic !== 'unknown' && e.lic !== 'mf-check').map(([b]) => b);
+  // 물품(나라장터): 지역·직생·업종·소상공인/여성기업 제한으로 거름
+  const goods = (await Data.loadGoods()).filter(g => !g.close || parseKst(g.close) >= now);
+  const gev = goods.map(g => [g, goodsEligibility(g)]);
+  const gRows = gev.filter(([g, e]) => e.ok).map(([g]) => g);
+  const gNo = {}; gev.forEach(([g, e]) => { if(!e.ok) gNo[e.why] = (gNo[e.why] || 0) + 1; });
+  const kinds = [['all', '전체', cRows.length + gRows.length], ['공사', '🏗 공사', cRows.length], ['물품', '📦 물품', gRows.length]];
+  if(!kinds.some(k => k[0] === Mine.kind)) Mine.kind = 'all';
+  $('mineKind').innerHTML = kinds.map(([k, t, n]) => `<button type="button" class="chip ${Mine.kind === k ? 'selected' : ''}" data-kind="${k}">${t}<span class="cnt">${fmtNum(n)}</span></button>`).join('');
+  const rows = Mine.kind === '공사' ? cRows : Mine.kind === '물품' ? gRows : [...cRows, ...gRows];
   const unknown = ev.filter(([b, e]) => e.ok && e.lic === 'unknown').length;
   const mfCheck = ev.filter(([b, e]) => e.ok && e.lic === 'mf-check').length;
   const noCap = ev.filter(([b, e]) => e.cap === 'no').length, noMf = ev.filter(([b, e]) => e.lic === 'mf').length;
@@ -1202,8 +1226,10 @@ async function renderMine(){
   const visible = inArea.filter(areaF);
   const defs = mineChipDefs(c);
   if(!defs.some(d => d.k === Mine.chip)) Mine.chip = 'all';
-  const chipF = defs.find(d => d.k === Mine.chip).f;
+  const chipF0 = defs.find(d => d.k === Mine.chip).f;
+  const chipF = (b) => b.kind === '물품' ? Mine.chip === 'all' : chipF0(b);
   const nHidden = rows.filter(b => hidden.has(b.id)).length;
+  $('mineChips').hidden = Mine.kind === '물품';
   $('mineChips').innerHTML = defs.map(d => `<button type="button" class="chip ${Mine.chip === d.k && !Mine.showHidden ? 'selected' : ''}" data-chip="${esc(d.k)}">${esc(d.label)}<span class="cnt">${visible.filter(d.f).length}</span></button>`).join('')
     + (nHidden ? `<button type="button" class="chip ${Mine.showHidden ? 'selected' : ''}" data-showhidden="1">뺀 공고<span class="cnt">${nHidden}</span></button>` : '');
   const shown = Mine.showHidden ? rows.filter(b => hidden.has(b.id)) : visible.filter(chipF);
@@ -1240,15 +1266,17 @@ async function renderMine(){
     : (a, b) => (a.close || '9').localeCompare(b.close || '9'));
   watchIds = new Set(watch.map(w => w.id));
   let html = '', last = null;
-  for(const b of list){
+  $('mineMore').hidden = list.length <= Mine.shown;
+  $('mineMore').textContent = `더 보기 (${fmtNum(list.length - Mine.shown)}건 남음)`;
+  for(const b of list.slice(0, Mine.shown)){
     if(sort === 'close' && closeDay(b) !== last){ last = closeDay(b); html += `<div class="day-sep">${last ? dayLabel(last) : '마감 미정'} 마감 · ${list.filter(x => closeDay(x) === last).length}건</div>`; }
     html += bidCard(b, today, Mine.showHidden ? {unhide: true} : {hide: true});
   }
   $('mineList').innerHTML = html || `<div class="empty card">${Mine.day ? '이날 마감인 참가 가능 공고가 없습니다.' : '지금 참가 가능한 진행중 공고가 없습니다.'}</div>`;
   const excl = [nHidden && !Mine.showHidden ? `직접 뺀 ${fmtNum(nHidden)}건` : '', noMf ? `주력분야 불일치 ${fmtNum(noMf)}건` : '',
     noCap ? `실적 한도 초과 ${fmtNum(noCap)}건` : '', mfCheck ? `면허 여러 개라 같이 필요한지 불확실 ${fmtNum(mfCheck)}건` : '',
-    unknown ? `면허 정보 없음 ${fmtNum(unknown)}건` : ''].filter(Boolean);
-  const nEx = (nHidden && !Mine.showHidden ? nHidden : 0) + noMf + noCap + mfCheck + unknown;
+    unknown ? `면허 정보 없음 ${fmtNum(unknown)}건` : '', ...Object.entries(gNo).map(([k, n]) => `물품 ${k} ${fmtNum(n)}건`)].filter(Boolean);
+  const nEx = (nHidden && !Mine.showHidden ? nHidden : 0) + noMf + noCap + mfCheck + unknown + Object.values(gNo).reduce((a, b) => a + b, 0);
   $('mineInfo').innerHTML = [Mine.showHidden ? `뺀 공고 ${fmtNum(list.length)}건 — "되돌리기"로 다시 목록에` : `${Mine.day ? `${dayLabel(Mine.day)} 마감 ` : ''}${fmtNum(list.length)}건`,
     nEx ? `<details class="excl"><summary>제외 ${fmtNum(nEx)}건</summary> — ${excl.join(' · ')} (의심되면 공고 검색에서 확인)</details>` : '',
     Data.meta?.updated_at ? `<span class="faint">데이터 ${esc(Data.meta.updated_at.slice(5, 16).replace('T', ' '))}</span>` : ''].filter(Boolean).join(' · ');
@@ -1259,6 +1287,13 @@ async function renderMine(){
 function initMine(){
   $('mineSort').value = LS.get('mineSort', 'close');
   $('mineSort').addEventListener('change', () => { LS.set('mineSort', $('mineSort').value); renderMine(); });
+  $('mineKind').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-kind]');
+    if(!t) return;
+    Mine.kind = t.dataset.kind; LS.set('mineKind', Mine.kind); Mine.shown = 60;
+    renderMine();
+  });
+  $('mineMore').addEventListener('click', () => { Mine.shown += 100; renderMine(); });
   $('mineArea').addEventListener('click', (e) => {
     const t = e.target.closest('[data-area]');
     if(!t) return;
@@ -1467,7 +1502,7 @@ async function registerBid(b, amt, sr, by){
   switchTab('watch');
 }
 const regBtn = (id, label = '📝 이 금액으로 투찰 등록') => `<button class="btn sm reg" data-quickbid="${esc(id)}" type="button">${label}</button>`;
-const pickNotice = (b) => ({id:b.id, no:b.no, ord:b.ord, nm:b.nm, org:b.org, dmd:b.dmd, sido:b.sido, sgg:b.sgg,
+const pickNotice = (b) => ({kind:b.kind, id:b.id, no:b.no, ord:b.ord, nm:b.nm, org:b.org, dmd:b.dmd, sido:b.sido, sgg:b.sgg,
   lic:licOf(b).length ? licOf(b) : b.lic, rgn:b.rgn, base:b.base, est:b.est, a:b.a, floor:b.floor, net:b.net, rng:b.rng, close:b.close, open:b.open, url:b.url});
 
 // ============================================================ 우리 업체 (소재지·보유 면허·사업자번호 — 이 기기에만 저장)
@@ -1660,8 +1695,31 @@ function eligibility(b){
   }
   return out;
 }
+/** 물품 공고 참가 판정: 참가가능지역 + 직접생산(제조) + 업종 제한 + 공고명의 소기업·소상공인/여성기업 제한. 물품분류(품명) 제한은 등록하면 되므로 경고만 */
+const normQ = (s) => String(s || '').replace(/[\s·ㆍ.,()\[\]\/-]/g, '').replace(/(사업|업)$/, '');
+function goodsEligibility(g){
+  const c = Company.get(), q = c.goods || {};
+  const out = {ok: true, why: null, warn: []};
+  const rgn = g.rgn || [];
+  if(c.sido && rgn.length && !rgn.some(t => { if(/전국/.test(t)) return true; const r = parseRegion(t); return r.sido === c.sido && (!r.sgg || !c.sgg || r.sgg === c.sgg); })){ out.ok = false; out.why = '지역 제한'; return out; }
+  if(g.mnf && !q.direct){ out.ok = false; out.why = '직접생산 필요'; return out; }
+  if(g.inds?.length){
+    const mine = [...(q.inds || []), ...(c.lics || [])].map(normQ).filter(Boolean);
+    const hit = g.inds.some(t => { const k = normQ(t); return mine.some(m => k.includes(m) || m.includes(k)); });
+    if(!hit){ out.ok = false; out.why = '업종 제한'; return out; }
+  }
+  if(/소기업|소상공인/.test(g.nm) && !q.small){ out.ok = false; out.why = '소기업·소상공인 제한'; return out; }
+  if(/여성기업/.test(g.nm) && !q.women){ out.ok = false; out.why = '여성기업 제한'; return out; }
+  if(g.plim) out.warn.push('품명 등록 확인');
+  return out;
+}
 function eligTag(b){
   if(!Company.isSet()) return '';
+  if(b.kind === '물품'){
+    const e = goodsEligibility(b);
+    return e.ok ? '<span class="tag okc">참가 가능</span>' + e.warn.map(w => `<span class="tag warn" title="물품분류(세부품명) 제한 공고 — 나라장터 경쟁입찰참가자격에 이 품명이 등록돼 있어야 합니다(없으면 투찰 전 추가 등록)">${esc(w)}</span>`).join('')
+      : `<span class="tag bad">참가 불가 · ${esc(e.why)}</span>`;
+  }
   const e = eligibility(b);
   if(!e.ok) return `<span class="tag bad">참가 불가 · ${e.rgn === 'no' ? '지역 제한' : e.cap === 'no' ? '실적 한도 초과' : e.lic === 'mf' ? '주력분야 불일치' : '면허 불일치'}</span>`;
   if(e.cap === 'check') return '<span class="tag warn" title="추정가격이 지자체 3년 실적 한도는 넘고 5년 한도 안 — 공고문의 실적 기간 확인">실적 확인 (지자체 5년 기준만 가능)</span>';

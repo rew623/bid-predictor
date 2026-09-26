@@ -1105,18 +1105,63 @@ def step_refill(api, meta, store, now, checkpoint):
         checkpoint()
 
 
-def step_thng_recent(api, meta, tstore, now):
-    """물품 최근 낙찰 + 최근 60일 물품 기초금액으로 보강"""
+def step_thng_recent(api, meta, tstore, now, cache=None):
+    """물품 최근 낙찰 + 최근 60일 물품 기초금액으로 보강. 같은 응답으로 진행중 물품 공고(data/goods.json)도 만든다 (추가 호출 없음)"""
     log(f"[물품] 최근 {RECENT_SCSBID_DAYS}일")
     n = 0
     for it in api.fetch_range("thng_list", now - dt.timedelta(days=RECENT_SCSBID_DAYS), now):
         tstore.merge(it, None)
         n += 1
-    for it in api.fetch_range("thng_notice", now - dt.timedelta(days=NOTICE_CACHE_DAYS), now):
+    notices = api.fetch_range("thng_notice", now - dt.timedelta(days=NOTICE_CACHE_DAYS), now)
+    for it in notices:
         enrich_thng_notice(tstore, it)
-    for it in api.fetch_range("thng_bsis", now - dt.timedelta(days=NOTICE_CACHE_DAYS), now):
+    bsis = api.fetch_range("thng_bsis", now - dt.timedelta(days=NOTICE_CACHE_DAYS), now)
+    for it in bsis:
         enrich_thng(tstore, it)
     log(f"  물품 낙찰 {n}건 조회")
+    write_goods(notices, bsis, cache, now)
+
+
+def write_goods(notices, bsis, cache, now):
+    """진행중 물품 공고 → data/goods.json {"v":1, "updated_at", "items":[…]} (마감 임박 순)
+    항목: id, no, ord, nm, org, dmd, sido, sgg, rgn(참가가능지역), inds(업종 제한 원문), base, est, floor, rng, cm(계약방법),
+          mnf(제조 = 직접생산 필요 1), plim(물품분류 제한 1), prd(세부품명), ntce, close, open, url
+    참가가능지역·업종제한은 '공고' 단계가 모든 업무(공사·물품·용역)를 받아 notice_cache 에 둔 것을 쓴다."""
+    cur = now.strftime("%Y-%m-%d %H:%M")
+    base = {}
+    for it in bsis:
+        id_, _, _ = notice_id(it)
+        if id_:
+            base[id_] = clean({"base": to_int(pick(it, F_BASE)), "rng": price_range(it)})
+    latest, out = {}, {}
+    for it in notices:
+        id_, no, ord_ = notice_id(it)
+        if not id_:
+            continue
+        if ord_ < latest.get(no, ""):
+            continue
+        latest[no] = ord_
+        close = norm_dt(pick(it, F_CLOSE_DT))
+        if "취소" in (pick(it, F_KIND) or "") or not close or close < cur:
+            out.pop(no, None)
+            continue
+        e = (cache.items.get(id_) if cache else None) or {}
+        rgn = e.get("rgn") or []
+        dmd, org = pick(it, F_DMND_ORG), pick(it, F_NTCE_ORG)
+        sido, sgg = parse_region(None, rgn[0] if len(rgn) == 1 else None, dmd, org)
+        inds = list(dict.fromkeys(t.split("/")[0].strip() for t in (e.get("lic_list") or []) if t.strip()))
+        out[no] = clean({
+            "id": id_, "no": no, "ord": ord_, "nm": (pick(it, F_NAME) or "").strip(), "org": org, "dmd": dmd,
+            "sido": sido, "sgg": sgg, "rgn": rgn, "inds": inds,
+            "est": to_int(pick(it, F_EST)), "floor": to_rate(pick(it, F_FLOOR), 3), "cm": (pick(it, F_CNTRCT) or "").strip() or None,
+            "mnf": 1 if it.get("mnfctYn") == "Y" else None, "plim": 1 if it.get("prdctClsfcLmtYn") == "Y" else None,
+            "prd": (it.get("dtilPrdctClsfcNoNm") or "").strip() or None,
+            "ntce": norm_dt(pick(it, F_NTCE_DT)), "close": close, "open": norm_dt(pick(it, F_OPEN_DT)), "url": pick(it, F_URL),
+            **base.get(id_, {}),
+        })
+    items = sorted(out.values(), key=lambda x: (x.get("close") or "9999", x["id"]))
+    write_if_changed(DATA / "goods.json", dumps({"v": SCHEMA_VERSION, "updated_at": now.isoformat(timespec="minutes"), "items": items}))
+    log(f"  진행중 물품 공고 {len(items)}건 → goods.json")
 
 
 def step_thng_backfill(api, meta, tstore, now, checkpoint):
@@ -1311,7 +1356,7 @@ def main():
         ("최근낙찰", lambda: step_recent_scsbid(api, meta, store, cache, now)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all, reserve=DETAIL_RESERVE)),
         ("빈달", lambda: step_refill(api, meta, store, now, save_all)),
-        ("물품최근", lambda: step_thng_recent(api, meta, tstore, now)),
+        ("물품최근", lambda: step_thng_recent(api, meta, tstore, now, cache)),
         ("물품과거", lambda: step_thng_backfill(api, meta, tstore, now, save_all)),
         ("지역보강", lambda: step_region_fill(api, meta, store, now, save_all)),
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all, horizon)),
