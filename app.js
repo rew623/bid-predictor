@@ -1947,12 +1947,12 @@ async function runPredict(){
       <h2>투찰 사정률별 과거 낙찰확률</h2>
       <p class="sub">선 = 그 값으로 넣었을 때 과거 낙찰확률, 옅은 막대 = 이 지역 실제 사정율 분포. 사정율이 자주 떨어지면서 경쟁사가 덜 몰린 곳이 높게 나옵니다.</p>
       <div id="curvePlot">${drawCurve(null)}</div>
-      <div class="table-wrap" style="margin-top:10px; max-height:none;"><table>
-        <thead><tr><th>후보</th><th class="num">투찰 사정률</th><th class="num">과거 낙찰확률</th><th class="num hide-m">공정 기대 대비</th><th class="num">투찰금액</th><th></th></tr></thead>
-        <tbody>${rec.peaks.map((c, i) => `<tr${i ? '' : ' class="hl-row"'}><td>${i + 1}${i ? '' : ' ★'}</td><td class="num">${pct(c.x, 3)}</td><td class="num">${(c.p * 100).toFixed(2)}%</td>
-          <td class="num hide-m">${rec.random ? '×' + (c.p / rec.random).toFixed(2) : '-'}</td><td class="num">${base ? won(amtAt(c.x)) : '-'}</td>
-          <td class="nowrap"><button class="btn sm line" data-pick-sr="${c.x}" type="button">적용</button> <button class="btn sm ghost" data-use-sr="${c.x}" type="button">계산기로</button></td></tr>`).join('')}</tbody>
-      </table></div>
+      <div class="cand-list">${rec.peaks.map((c, i) => `<div class="cand${i ? '' : ' best'}">
+          <div class="cand-no">${i ? '후보 ' + (i + 1) : '★ 추천'}</div>
+          <div class="cand-main"><b>${pct(c.x, 3)}</b><span>과거 낙찰확률 ${(c.p * 100).toFixed(2)}%${rec.random ? ` · ×${(c.p / rec.random).toFixed(2)}` : ''}</span></div>
+          <div class="cand-amt">${base ? won(amtAt(c.x)) : '-'}</div>
+          <div class="cand-btns"><button class="btn sm line" data-pick-sr="${c.x}" type="button">적용</button><button class="btn sm ghost" data-use-sr="${c.x}" type="button">계산기로</button></div>
+        </div>`).join('')}</div>
       <div class="pick-box" id="pickBox">${pickInfo(rec.x)}</div>
       <div class="meta-line">곡선 표본: ${esc(rec.note)} · 곡선 폭 ±${rec.src === 'model' && Model.m?.smooth ? Model.m.smooth : curveSmooth()}%p · 과거 낙찰확률은 과거에 맞춘 값이라 새 공고에선 더 낮음(위 예상 낙찰확률은 역검증 기준) · 공정 기대 = 1 ÷ (참가업체 수 + 1), 우리가 들어가면 한 곳 늘어나므로</div>
     </div>`;
@@ -2032,7 +2032,7 @@ async function runPredict(){
       const x = +pk.dataset.pickSr;
       $('curvePlot').innerHTML = drawCurve(x);
       $('pickBox').innerHTML = pickInfo(x);
-      out.querySelectorAll('[data-pick-sr]').forEach(b => b.closest('tr').classList.toggle('pick-row', b === pk));
+      out.querySelectorAll('[data-pick-sr]').forEach(b => b.closest('.cand').classList.toggle('pick-row', b === pk));
       $('curvePlot').scrollIntoView({behavior:'smooth', block:'center'});
     }else if(rg){
       registerBid(P.notice, +rg.dataset.regAmt, +rg.dataset.regSr, '추천');

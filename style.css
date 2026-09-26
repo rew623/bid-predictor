@@ -570,3 +570,22 @@ td.nowrap{white-space:nowrap;}
   .res-sum{grid-template-columns:repeat(3, minmax(0,1fr));}
   .rc-foot{flex-wrap:wrap;}
 }
+
+/* ---------- 추천 후보 (표 대신 카드 줄 — 폰 한 화면에) ---------- */
+.cand-list{display:flex; flex-direction:column; gap:6px; margin-top:10px;}
+.cand{display:grid; grid-template-columns:64px 1fr auto auto; gap:6px 10px; align-items:center; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--surface);}
+.cand.best{background:var(--primary-soft); border-color:var(--primary);}
+.cand.pick-row{background:var(--ok-soft); border-color:var(--ok);}
+.cand-no{font-size:12.5px; font-weight:700; color:var(--text-sub);}
+.cand.best .cand-no{color:var(--primary-dark);}
+.cand-main{display:flex; flex-direction:column; min-width:0;}
+.cand-main b{font-size:15px; font-variant-numeric:tabular-nums;}
+.cand-main span{font-size:11.5px; color:var(--text-sub);}
+.cand-amt{font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap;}
+.cand-btns{display:flex; gap:4px;}
+.cand-btns .btn{white-space:nowrap;}
+@media (max-width:620px){
+  .cand{grid-template-columns:auto 1fr auto;}
+  .cand-btns{grid-column:1 / -1;}
+  .cand-btns .btn{flex:1;}
+}
