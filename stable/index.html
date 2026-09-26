@@ -6,9 +6,9 @@
 <title>낙찰가 예측 도우미</title>
 <meta name="description" content="나라장터 공사 입찰 과거 낙찰 데이터로 사정율·투찰금액을 추정하는 참고용 도구">
 <meta name="theme-color" content="#2F6FED">
-<link rel="manifest" href="manifest.json">
-<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="manifest" href="../manifest.json">
+<link rel="icon" href="../icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="../icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="낙찰예측">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<style>body{padding-top:38px}</style><div style="position:fixed;top:0;left:0;right:0;z-index:1000;background:#FEF0C7;color:#B54708;padding:8px 14px;font-size:13.5px;text-align:center">🛟 안정판 1.7.5 사용 중 — 새 버전에 문제가 있을 때 쓰는 예전 화면입니다. <a href="../" style="color:#1D56C9;font-weight:600">최신판으로 돌아가기</a></div>
 
 <div class="update-bar" id="updateBar" hidden>
   새 버전이 있습니다 <button id="updateBtn" type="button">새로고침</button>
@@ -24,10 +25,10 @@
 
 <nav class="nav" id="nav">
   <div class="brand"><span class="dot"></span>낙찰가 예측 도우미</div>
-  <button class="nav-item" data-tab="home" type="button"><span class="ico">🏢</span><span>우리 공고</span></button>
-  <button class="nav-item" data-tab="bids" type="button"><span class="ico">🔎</span><span>공고 검색</span><span class="nav-badge" id="newBadge" hidden></span></button>
-  <button class="nav-item" data-tab="watch" type="button"><span class="ico">⭐</span><span>내 투찰</span></button>
-  <button class="nav-item" data-tab="predict" type="button"><span class="ico">📊</span><span>분석</span></button>
+  <button class="nav-item" data-tab="bids" type="button"><span class="ico">📋</span><span>입찰공고</span><span class="nav-badge" id="newBadge" hidden></span></button>
+  <button class="nav-item" data-tab="predict" type="button"><span class="ico">🔍</span><span>예측분석</span></button>
+  <button class="nav-item" data-tab="watch" type="button"><span class="ico">⭐</span><span>관심공고</span></button>
+  <button class="nav-item" data-tab="stats" type="button"><span class="ico">📊</span><span>통계</span></button>
   <button class="nav-item" data-tab="settings" type="button"><span class="ico">⚙️</span><span>설정</span></button>
 </nav>
 
@@ -37,15 +38,20 @@
     <div class="date" id="todayLabel"></div>
   </div>
 
-  <!-- ===================== 우리 공고 (첫 화면) ===================== -->
-  <section id="view-home" hidden>
-    <div id="bidsMine">
+  <!-- ===================== 입찰공고 ===================== -->
+  <section id="view-bids" hidden>
+    <div class="seg mode-seg" id="bMode">
+      <button data-v="mine" type="button">🏢 우리 업체</button>
+      <button data-v="live" type="button">🔎 실시간 검색 (나라장터)</button>
+      <button data-v="saved" type="button">📋 진행중 공고 (자동 수집)</button>
+    </div>
+
+    <!-- 우리 업체 대시보드: 설정의 업체 정보로 참가 가능한 진행중 공고를 바로 모아 보여 준다 -->
+    <div id="bidsMine" hidden>
       <div class="alert warn" id="mineHint" hidden>설정 → 우리 업체에 소재지·보유 면허(주력분야·참여가능금액)를 넣으면, 참가할 수 있는 진행중 공고를 검색 없이 여기에 모아 보여 줍니다. <button class="btn sm line" data-goto="settings" type="button">설정으로</button></div>
-      <div class="card mine-head">
-        <div class="mine-who" id="mineHead"></div>
-        <div class="chip-group mine-chips" id="mineArea"></div>
-        <div class="chip-group mine-chips" id="mineChips"></div>
-      </div>
+      <div class="card mine-head" id="mineHead"></div>
+      <div class="chip-group mine-chips" id="mineArea"></div>
+      <div class="chip-group mine-chips" id="mineChips"></div>
       <div class="kpis" id="mineKpis"></div>
       <div class="card cal-card"><div class="cal-title"><b>투찰 마감 달력</b><span class="faint">날짜를 누르면 그날 마감 공고만 · 다시 누르면 전체</span></div><div class="cal" id="mineCal"></div></div>
       <div class="list-head">
@@ -53,15 +59,6 @@
         <select id="mineSort" class="sort-select" aria-label="정렬"><option value="close">마감 빠른 순</option><option value="win">낙찰확률 높은 순</option><option value="value">기대 수주액 순</option></select>
       </div>
       <div class="bid-list" id="mineList"></div>
-    </div>
-
-  </section>
-
-  <!-- ===================== 공고 검색 ===================== -->
-  <section id="view-bids" hidden>
-    <div class="seg mode-seg" id="bMode">
-      <button data-v="live" type="button">🔎 실시간 검색 (나라장터)</button>
-      <button data-v="saved" type="button">📋 진행중 공고 (자동 수집)</button>
     </div>
 
     <!-- 실시간 검색: 조달청 API 직접 조회 -->
@@ -128,10 +125,6 @@
 
   <!-- ===================== 예측분석 ===================== -->
   <section id="view-predict" hidden>
-    <div class="seg mode-seg">
-      <button data-goto="predict" type="button" class="on">💰 금액 분석</button>
-      <button data-goto="stats" type="button">📈 통계</button>
-    </div>
     <details class="card guide fold" id="pGuide">
       <summary><h2>📖 사용법 — 3단계면 끝</h2><span class="meta-line" style="margin:0;">눌러서 열고 닫기</span></summary>
       <ol class="steps">
@@ -276,10 +269,6 @@
 
   <!-- ===================== 통계 ===================== -->
   <section id="view-stats" hidden>
-    <div class="seg mode-seg">
-      <button data-goto="predict" type="button">💰 금액 분석</button>
-      <button data-goto="stats" type="button" class="on">📈 통계</button>
-    </div>
     <div class="card">
       <h2>조회 조건</h2>
       <div class="inline-inputs" style="margin-top:0;">
@@ -327,8 +316,6 @@
       </div>
       <div id="keyQrBox" class="qr-box" hidden></div>
     </div>
-    <details class="adv">
-    <summary>🔧 고급 — 데이터 현황 · 수집 · 역검증 <span class="faint">(평소엔 안 봐도 됩니다)</span></summary>
     <div class="card">
       <h2>데이터 현황</h2>
       <div id="setData"></div>
@@ -362,12 +349,10 @@
       <div class="btn-row" style="margin-top:12px;"><button class="btn ghost" id="btRun" type="button">백테스트 실행</button></div>
       <div id="btResult" style="margin-top:12px;"></div>
     </div>
-    </details>
     <div class="card">
       <h2>앱</h2>
       <dl class="kv">
         <dt>앱 버전</dt><dd id="appVersion">-</dd>
-        <dt>문제가 생기면</dt><dd><a class="btn line sm" href="stable/" id="stableLink">🛟 안정판으로 열기</a> <span class="faint" id="stableVer"></span></dd>
         <dt>화면 테마</dt>
         <dd><div class="seg" id="themeSeg"><button data-v="auto" type="button">시스템</button><button data-v="light" type="button">라이트</button><button data-v="dark" type="button">다크</button></div></dd>
       </dl>
@@ -376,6 +361,7 @@
   </section>
 </main>
 
+<script>window.DATA_BASE = "../data/"; window.STABLE = "1.7.5";</script>
 <script src="app.js"></script>
 </body>
 </html>

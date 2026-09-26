@@ -9,7 +9,8 @@ GitHub Pages(main 브랜치 루트)로 배포하고, 공공 데이터는 GitHub 
 - **하단 탭 5개 유지**: 🏢 우리 공고(첫 화면) / 🔎 공고 검색 / ⭐ 내 투찰 / 📊 분석 / ⚙️ 설정 (PC에서는 좌측 사이드바). 2026-09-26 사용자 요청으로 재구성 — 섹션 id 는 view-home / view-bids / view-watch / view-predict(+ view-stats, 분석 탭 위 '금액 분석·통계' 전환) / view-settings.
 - 서비스워커는 앱 파일도 네트워크 우선(오프라인이면 캐시) — 화면만 새것이고 app.js 는 옛 캐시로 섞이던 문제(2026-09) 때문.
 - **앱이 쓰는 파일**(index.html, app.js, style.css, manifest.json, icons/)을 바꾸면 **sw.js 의 `VERSION` 을 올린다.**
-  예외: reference/, scripts/, .github/ 워크플로, data/ 는 버전 올릴 필요 없음.
+  예외: reference/, scripts/, .github/ 워크플로, data/, stable/ 은 버전 올릴 필요 없음.
+- **되돌리기**: 사용자가 'x.y.z 로 되돌려줘' 하면 그 버전 커밋의 앱 파일로 되돌리는 새 커밋(데이터는 그대로). 급할 땐 사용자가 설정의 '안정판으로 열기'로 직접 피할 수 있다(stable/, 현재 1.7.5).
 - **디자인 유지**: 흰 배경, 파랑 #2F6FED, 카드형, Noto Sans KR, 다크모드(`prefers-color-scheme` + `data-theme`).
 - **data JSON 형식을 바꾸면 app.js 와 scripts/collect.py 를 함께 수정**하고 아래 구조 설명도 고친다.
 - **비밀값(API 키 등)은 코드에 넣지 않는다.** GitHub 시크릿(`DATA_GO_KR_KEY`)만 사용.
@@ -35,6 +36,8 @@ scripts/regions.json  개찰 상세(전체 순위·복수예가)를 수집할 �
 scripts/local_models.json  지역 전용 추천 설정 {areas:[{sido, sgg, label}], small}
 scripts/detail_priority.json  개찰 상세 수집 우선순위 {sgg:[시·군], lic:[면허], max_cnt:참가 수} — 관심 시·군 → 관심 면허 → 참가 적은 공고, 같은 등급은 최신부터
 .github/workflows/collect.yml  02:00·14:00 KST 전체 + 09·13·17시 공고만 + 수동 실행(start_date, reset_backfill, quick_only)
+stable/               안정판(예전 버전 사본, scripts/make_stable.py 로만 만든다 — 직접 고치지 않음). data 는 ../data/ 를 읽고 서비스워커는 안 씀. 설정 '🛟 안정판으로 열기'
+scripts/make_stable.py  python scripts/make_stable.py <커밋> <버전> → stable/ (예: 7314795 1.7.5). 사용자가 '지금 버전을 안정판으로' 하면 이걸로 교체
 reference/prototype.html       초기 프로토타입 (디자인 참고용, 가상 데이터 코드는 쓰지 않음)
 data/                 수집 결과 (아래)
 ```
