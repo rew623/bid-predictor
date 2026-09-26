@@ -1146,7 +1146,7 @@ def step_refill(api, meta, store, now, checkpoint):
 
 
 INFO_MONTHS = 36          # 업체정보(대표자·주소)를 채울 과거 기간
-INFO_PER_RUN = 6          # 한 번에 채울 달 수 (공사+물품 낙찰 목록, 한 달 약 10회 호출)
+INFO_PER_RUN = 12         # 한 번에 채울 달 수 (공사+물품 낙찰 목록, 한 달 약 25회 호출) — 3번(1.5일)이면 36개월
 
 
 def step_corp_info(api, meta, now, checkpoint):

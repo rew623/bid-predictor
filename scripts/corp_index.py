@@ -5,7 +5,7 @@
       + 국방(data/d2b/{연도}/{월}.json 참가 업체 전원·낙찰자, 대표자) + 낙찰 업체 대표자·주소·전화(data/corp_info.json, 수집기 CorpInfo).
 corps.json {"v":1, "updated_at", "sidos":[시도…], "items":[[사업자번호, 업체명, 전국 낙찰 수(공사+물품+국방), 마지막 낙찰일,
             낙찰 시도 번호들, 상세 투찰 수, 상세 1순위 수, 국방 투찰 수, 국방 1순위 수, 대표자, 주소, 전화], …]}
-corpw/{앞 3자리}.json {사업자번호: [[개찰일, 공고명(40자), 낙찰금액, 발주기관(20자), 업무(공사|물품|국방), 참가수, 시도], …최근 20건]} — 강원 관련 업체만
+corpw/{앞 3자리}.json {사업자번호: [[개찰일, 공고명(40자), 낙찰금액, 발주기관(20자), 업무(공사|물품|국방), 참가수, 시도, 공고ID, 낙찰률, 사정율, 기초금액], …최근 20건]} — 강원 관련 업체만
 업체별 투찰 내역(금액·순위)은 앱이 개찰 상세 파일을 직접 읽어 계산한다.
 """
 import collections
@@ -74,7 +74,8 @@ def main():
                     if s not in sidos:
                         sidos.append(s)
                     wsido[b][sidos.index(s)] += 1
-                wlist[b].append([d, (r.get("nm") or "")[:40], r.get("amt"), (r.get("org") or r.get("dmd") or "")[:20], kind, r.get("cnt"), s])
+                wlist[b].append([d, (r.get("nm") or "")[:40], r.get("amt"), (r.get("org") or r.get("dmd") or "")[:20], kind, r.get("cnt"), s,
+                                 r.get("id"), r.get("rate"), r.get("sr"), r.get("base")])
     dbid, dtop = collections.Counter(), collections.Counter()
     for f in glob.glob(str(DATA / "opening" / "*" / "[0-9]*.json")):
         d = load(f)
@@ -112,7 +113,8 @@ def main():
                 wins[b] += 1
                 name.setdefault(b, it.get("win") or "")
                 last[b] = max(last.get(b, ""), it.get("date") or "")
-                wlist[b].append([it.get("date") or "", (it.get("nm") or "")[:40], it.get("amt"), (it.get("org") or "")[:20], "국방", it.get("cnt"), ""])
+                wlist[b].append([it.get("date") or "", (it.get("nm") or "")[:40], it.get("amt"), (it.get("org") or "")[:20], "국방", it.get("cnt"), "",
+                                 it.get("id"), it.get("rate"), it.get("sr"), it.get("base")])
     info = load(DATA / "corp_info.json")   # {biz: [대표자, 주소, 전화]}
     items = []
     for b, nm in name.items():

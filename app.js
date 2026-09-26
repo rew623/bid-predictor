@@ -2375,6 +2375,7 @@ const History = {
 
 // ---------- 🏢 업체 검색: data/corps.json(전국 낙찰·개찰 상세·국방 색인) + 개찰 상세로 업체별 투찰 이력·습관
 const Corp = {idx: null, q: '', sel: null};
+const D2B_LIST_URL = 'https://www.d2b.go.kr/mainBidAnnounceList.do';
 async function loadCorps(){
   if(!Corp.idx){
     const d = await Data.fetchJson('corps.json');
@@ -2470,15 +2471,41 @@ async function renderCorpProfile(biz){
       ${orgs.length ? `<div class="corp-tags"><b>자주 넣는 발주처</b> ${orgs.map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join('')}</div>` : ''}
       ${lics.length ? `<div class="corp-tags"><b>공고 면허</b> ${lics.map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join('')}</div>` : ''}
     </div>
-    ${wl.length ? `<h3 class="corp-h">🏆 최종 낙찰 이력 (최근 ${fmtNum(wl.length)}건 · 공사·물품·국방)</h3><div class="rc-list">${wl.map(w => `<div class="rc win">
+    ${wl.length ? `<h3 class="corp-h">🏆 최종 낙찰 이력 (최근 ${fmtNum(wl.length)}건 · 공사·물품·국방)</h3><div class="rc-list">${wl.map((w, i) => `<div class="rc win">
         <div class="rc-nm"><span class="fin-badge">최종낙찰</span> ${esc(w[1])}</div><div class="rc-sub">${esc(w[0])} · ${esc(w[3])}${w[6] ? ' · ' + esc(w[6]) : ''}</div>
-        <div class="rc-foot"><span class="rc-rank win">${esc(w[4])}${w[5] ? ` · ${fmtNum(w[5])}곳 참가` : ''}</span><span class="rc-amt">${w[2] ? won(w[2]) : '-'}</span></div></div>`).join('')}</div>` : ''}
+        <div class="rc-grid"><div><span>기초금액</span><b>${w[10] ? eok(w[10]) : '-'}</b></div><div><span>사정율</span><b>${w[9] ? (+w[9]).toFixed(3) : '-'}</b></div><div><span>낙찰률</span><b>${w[8] ? (+w[8]).toFixed(3) : '-'}</b></div></div>
+        <div class="rc-foot"><span class="rc-rank win">${esc(w[4])}${w[5] ? ` · ${fmtNum(w[5])}곳 참가` : ''}</span><span class="rc-amt">${w[2] ? won(w[2]) : '-'}</span></div>
+        ${w[7] ? `<details class="rc-more" data-win="${i}"><summary>개찰 순위·공고 보기</summary><div class="win-detail">불러오는 중…</div></details>` : ''}</div>`).join('')}</div>` : ''}
     ${rows.length ? `<h3 class="corp-h">강원 투찰 이력 (최근 ${fmtNum(Math.min(rows.length, 60))}건)</h3><div class="rc-list">${rows.slice(0, 60).map(r => {
       const cls = r.rank === 1 || r.fin ? 'win' : r.d != null && r.d < 0 ? 'below' : 'high';
       return `<div class="rc ${cls}"><div class="rc-nm">${esc(r.nm)}</div><div class="rc-sub">${esc(r.date || '')} · ${esc(r.org)}</div>
         <div class="rc-grid"><div><span>사정율</span><b>${r.S ? r.S.toFixed(3) : '-'}</b></div><div><span>투찰률</span><b>${r.x != null ? r.x.toFixed(3) : '-'}</b></div><div><span>차이</span><b>${r.d != null ? (r.d >= 0 ? '+' : '') + r.d.toFixed(3) : '-'}</b></div></div>
         <div class="rc-foot"><span class="rc-rank ${cls}"><b>${r.rank ? fmtNum(r.rank) : '-'}</b> / ${fmtNum(r.n)}</span><span class="rc-amt">${won(r.amt)}</span><span class="rc-v ${cls}">${r.fin ? '🏆 최종 낙찰' : r.rank === 1 ? '1순위(낙찰 안 됨)' : r.d != null && r.d < 0 ? '하한 미달' : ''}</span></div></div>`;
     }).join('')}</div>` : ''}`;
+  // 최종 낙찰 카드 펼치기: 개찰 순위 상위 10곳(강원 개찰 상세·국방) + 공고 원문
+  out.querySelectorAll('[data-win]').forEach(det => det.addEventListener('toggle', async () => {
+    if(!det.open || det.dataset.loaded) return;
+    det.dataset.loaded = 1;
+    const w = wl[+det.dataset.win], id = w[7], box = det.querySelector('.win-detail');
+    const cut = id.lastIndexOf('-');
+    const link = w[4] === '국방' ? D2B_LIST_URL : `https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=${encodeURIComponent(id.slice(0, cut))}&bidPbancOrd=${encodeURIComponent(id.slice(cut + 1))}`;
+    let rows = null, plan = null;
+    try{
+      if(w[4] === '국방'){
+        const [m, cs] = await Promise.all([Data.fetchJson(`d2b/${w[0].slice(0, 4)}/${w[0].slice(5, 7)}.json`), Data.fetchJson('d2b/corps.json')]);
+        const it = m.items.find(x => x.id === id);
+        if(it){ plan = it.plan; rows = (it.r || []).slice(0, 10).map(r => [r[0], cs.corps[r[1]] || [], r[2], r[3]]); }
+      }else if(w[4] === '공사' && w[6] && Data.hasDetail(w[6])){
+        const b = (await Data.loadOpening(w[6])).bids.get(id);
+        if(b){ plan = b.plan; rows = (b.r || []).slice(0, 10).map(r => [r[0], b.corps[r[1]] || [], r[2], r[4]]); }
+      }
+    }catch(e){ console.warn(e); }
+    box.innerHTML = (rows?.length ? `${plan ? `<div class="b-kv"><span>예정가격 <b>${won(plan)}</b></span></div>` : ''}<div class="table-wrap" style="max-height:none;margin-top:6px;"><table>
+        <thead><tr><th>순위</th><th>업체</th><th class="num">투찰금액</th><th>비고</th></tr></thead>
+        <tbody>${rows.map(r => `<tr${r[1][1] === biz ? ' class="hl-row"' : ''}><td>${r[0] || '-'}</td><td>${esc(r[1][0] || '')}</td><td class="num">${won(r[2])}</td><td>${esc(r[3] || '')}</td></tr>`).join('')}</tbody></table></div>`
+      : `<div class="meta-line">개찰 순위는 강원 공사(개찰 상세 수집 지역)와 국방만 있습니다.</div>`)
+      + `<div class="btn-row" style="margin-top:8px;"><a class="btn line sm" href="${esc(link)}" target="_blank" rel="noopener">공고 원문 (${w[4] === '국방' ? '국방전자조달' : '나라장터'})</a></div>`;
+  }));
   $('corpBack').onclick = () => { if(location.hash.startsWith('#corp/')) history.back(); else { Corp.sel = null; renderCorpSearch(); } };
   $('corpStar').onclick = () => { const w = LS.get('corpWatch', []); LS.set('corpWatch', on ? w.filter(b => b !== biz) : [biz, ...w]); renderCorpProfile(biz); };
   window.scrollTo(0, 0);
