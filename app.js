@@ -1077,7 +1077,7 @@ function recIfBid(b, amt, r0){
 /** 목록의 개찰 끝난 실시간 공사 공고의 개찰 결과를 조달청에서 받는다(한 번에 5건, 공고당 한 번) */
 async function fetchLiveResults(rows){
   if(!apiKey()) return false;
-  const todo = rows.filter(b => b.live && b.kind === '공사' && !b.resTried && opened(b) && !(b.sido && Data.scsbid[b.sido]?.byId.get(b.id)?.plan)).slice(0, 5);
+  const todo = rows.filter(b => b.live && b.kind === '공사' && !b.resTried && opened(b) && !(b.sido && Data.scsbid[b.sido]?.byId.get(b.id)?.plan)).slice(0, 10);
   if(!todo.length) return false;
   await Promise.all(todo.map(async b => {
     b.resTried = true;
@@ -1540,7 +1540,8 @@ async function renderLive(){
   $('liveMore').hidden = liveDone();
   $('liveMore').textContent = '더 보기 (이어서 조회)';
   const token = Live.token;
-  const more = await fetchLiveLimits(rows), gotRes = await fetchLiveResults(rows);   // 요구 면허·지역, 개찰 결과를 받은 뒤 다시 거르고 그림
+  // 요구 면허·지역·기초금액과 개찰 결과를 동시에 받고, 화면 위쪽 카드(보이는 순서)부터 채운 뒤 다시 거르고 그림
+  const [more, gotRes] = await Promise.all([fetchLiveLimits(shownRows), fetchLiveResults(shownRows)]);
   if((more || gotRes) && token === Live.token) renderLive();
 }
 
@@ -1630,9 +1631,9 @@ function licOf(b){
  *  기초금액이 있어야 카드에 추천 투찰가가 나온다 */
 async function fetchLiveLimits(rows){
   if(!apiKey()) return false;
-  const bsis = rows.filter(b => b.live && b.kind === '공사' && !b.base && !b.bsisTried).slice(0, 10);
-  bsis.forEach(b => {
-    const c = Data.bids?.find(x => x.id === b.id);
+  const bsis = rows.filter(b => b.live && b.kind === '공사' && !b.base && !b.bsisTried).slice(0, 30);
+  bsis.forEach(b => {   // 조달청 조회 전에 이미 가진 값부터: 진행중 공고(bids.json) → 마감 공고는 수집된 낙찰 기록
+    const c = Data.bids?.find(x => x.id === b.id) || (b.sido ? Data.scsbid[b.sido]?.byId.get(b.id) : null);
     if(c?.base) ['base', 'a', 'net', 'rng', 'floor'].forEach(k => { if(c[k] != null && b[k] == null) b[k] = c[k]; });
   });
   // 면허제한 그룹(lmtGrpNo)이 없으면 조회 — 수집된 lic_map 에 그룹이 채워지기 전에도 '동시 요구' 공고를 거르도록
