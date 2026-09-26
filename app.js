@@ -24,7 +24,7 @@ const DEFAULT_FLOOR = 87.745;
 const MIN_SAMPLE = 30;
 const PAGE_SIZE = 50;
 // 탭(하단 5개): 우리 공고(첫 화면) / 공고 검색 / 내 투찰 / 분석(금액 분석·통계) / 설정
-const TAB_TITLES = {home:'우리 공고', bids:'공고 검색', watch:'내 투찰', predict:'분석', stats:'분석', settings:'설정'};
+const TAB_TITLES = {home:'우리 공고', bids:'공고 검색', watch:'내 투찰', predict:'분석', paper:'분석', stats:'분석', settings:'설정'};
 
 // ============================================================ 유틸
 const $ = (id) => document.getElementById(id);
@@ -763,11 +763,11 @@ function switchTab(tab, push=true){
   if(!TAB_TITLES[tab]) tab = 'home';
   currentTab = tab;
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'view-' + tab);
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === (tab === 'stats' ? 'predict' : tab)));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === (tab === 'stats' || tab === 'paper' ? 'predict' : tab)));
   $('pageTitle').textContent = TAB_TITLES[tab];
   if(push && location.hash !== '#' + tab) history.pushState(null, '', '#' + tab);
   window.scrollTo(0, 0);
-  ({home: renderMine, bids: renderBidsTab, predict: renderPredictTab, watch: renderWatch, stats: renderStats, settings: renderSettings})[tab]();
+  ({home: renderMine, bids: renderBidsTab, predict: renderPredictTab, watch: renderWatch, paper: renderPaper, stats: renderStats, settings: renderSettings})[tab]();
 }
 
 // ============================================================ 입찰공고
@@ -2272,7 +2272,163 @@ const History = {
   save(rows, src){ LS.set('history', {at: new Date().toISOString(), src, rows}); },
   clear(){ LS.set('history', null); },
 };
-let histKind = 'all', histShown = 50;
+
+// ---------- 🧪 모의 투찰: 수집기(scripts/paper.py)가 강원 공사 공고마다 마감 전 추천 투찰가를 기록하고 개찰 뒤 채점한 data/paper.json
+const Paper = {area: LS.get('paperArea', 'sgg'), shown: 60};
+async function renderPaper(){
+  const el = $('paperBody');
+  el.innerHTML = loadingHtml();
+  let d;
+  try{ d = await Data.fetchJson('paper.json', false); }catch(e){ el.innerHTML = '<div class="card empty">아직 모의 투찰 기록이 없습니다. 다음 자동 수집 뒤에 생깁니다.</div>'; return; }
+  const c = Company.get(), sgg = c.sido === d.sido && c.sgg ? c.sgg : '춘천시';
+  const areas = [['sgg', `${d.sido} ${sgg}`], ['sido', `${d.sido} 전체`]];
+  const all = d.items.filter(it => Paper.area === 'sido' || it.sgg === sgg);
+  const done = all.filter(it => it.res), wait = all.filter(it => !it.res);
+  const now = new Date();
+  const closed = wait.filter(it => parseKst(it.close) && parseKst(it.close) < now).length;
+  const nWin = done.filter(it => it.res.win).length, nM = done.filter(it => it.res.mwin).length;
+  const fair = done.reduce((t, it) => t + (it.res.cnt ? 1 / (it.res.cnt + 1) : 0), 0);
+  const nBelow = done.filter(it => it.res.below).length;
+  const card = (it) => {
+    const r = it.res;
+    const st = !r ? (parseKst(it.close) && parseKst(it.close) < now ? {cls: '', t: '개찰 대기'} : {cls: 'wait', t: `마감 ${String(it.close || '').slice(5, 16).replace('-', '/')}`})
+      : r.win ? {cls: 'win', t: '🏆 낙찰'} : r.below ? {cls: 'below', t: '하한 미달'} : {cls: 'high', t: r.rank ? `${fmtNum(r.rank)}순위` : '1위보다 높음'};
+    return `<div class="rc ${st.cls}">
+      <div class="rc-nm">${esc(it.nm)}</div>
+      <div class="rc-sub">${esc(String(it.open || '').slice(0, 16))} 개찰 · ${esc(it.org || '')}${it.sgg ? ' · ' + esc(it.sgg) : ''}</div>
+      <div class="rc-line"><span class="rc-tags"><span class="tag">예상 ~${fmtNum(it.n)}곳</span>${it.area ? `<span class="tag lic mine">${esc(it.area)} 전용</span>` : ''}</span><b class="rc-base">${won(it.base)}</b></div>
+      <div class="rc-grid">
+        <div><span>추천 투찰률</span><b>${it.x.toFixed(3)}</b></div>
+        <div><span>실제 사정율</span><b>${r?.S ? r.S.toFixed(3) : '-'}</b></div>
+        <div><span>평균 방식</span><b>${it.xm ? it.xm.toFixed(3) : '-'}${r && r.mwin != null ? (r.mwin ? ' 🏆' : '') : ''}</b></div>
+      </div>
+      <div class="rc-foot"><span class="rc-rank ${st.cls}">${r ? `<b>${r.win ? 1 : r.rank ? fmtNum(r.rank) : r.below ? '미달' : '-'}</b> / ${r.cnt ? fmtNum(r.cnt) : '-'}` : '<b>대기</b>'}</span><span class="rc-amt">${won(it.bid)}</span><span class="rc-v ${st.cls}">${st.t}</span></div>
+      ${r?.winner ? `<div class="rc-sub" style="margin-top:4px;">1위 ${esc(r.winner)}${r.src === 'list' ? ' · 순위는 개찰 상세 수집 뒤' : ''}</div>` : ''}
+    </div>`;
+  };
+  let html = '', last = null;
+  const list = [...wait.filter(it => !(parseKst(it.close) && parseKst(it.close) < now)).sort((a, b) => (a.close || '').localeCompare(b.close || '')), ...done, ...wait.filter(it => parseKst(it.close) && parseKst(it.close) < now)];
+  const ord = [...list.filter(it => !it.res), ...done].slice(0, Paper.shown);
+  for(const it of ord){
+    const g = it.res ? `개찰 ${dayLabel(String(it.open || '').slice(0, 10))}` : (parseKst(it.close) && parseKst(it.close) < now ? '개찰 기다리는 중' : '마감 전 (추천 투찰가 기록 중)');
+    if(g !== last){ last = g; html += `<div class="day-sep">${esc(g)}</div>`; }
+    html += card(it);
+  }
+  el.innerHTML = `<div class="card">
+      <h2>🧪 모의 투찰 — 추천값으로 넣었다면?</h2>
+      <p class="sub">${esc(d.sido)} 공사 공고마다 <b>마감 전에 앱의 추천 투찰가를 자동으로 기록</b>해 두고, 개찰되면 실제 결과로 채점합니다(실제 투찰은 하지 않음). 수집할 때마다(하루 5번) 갱신 · 마지막 ${esc(String(d.updated_at || '').slice(5, 16).replace('T', ' '))}</p>
+      <div class="chip-group" id="paperArea" style="margin:8px 0 12px;">${areas.map(([k, t]) => `<button type="button" class="chip ${Paper.area === k ? 'selected' : ''}" data-a="${k}">📍 ${esc(t)}</button>`).join('')}</div>
+      <div class="res-sum">
+        <div><span>채점</span><b>${fmtNum(done.length)}</b></div>
+        <div class="${nWin ? 'win' : ''}"><span>🏆 추천값 낙찰</span><b>${fmtNum(nWin)}</b></div>
+        <div><span>평균 사정율로 넣었다면</span><b>${fmtNum(nM)}</b></div>
+        <div><span>평균 업체(공정 기대)</span><b>${fmtNum(fair, 2)}</b></div>
+        <div><span>하한 미달</span><b class="below">${done.length ? Math.round(nBelow / done.length * 100) : 0}%</b></div>
+      </div>
+      <div class="meta-line">기록 ${fmtNum(all.length)}건 · 마감 전 ${fmtNum(wait.length - closed)} · 개찰 대기 ${fmtNum(closed)}. 추천값 낙찰이 "평균 업체"보다 많으면 우위가 있는 것 — 건수가 적을 땐 운이 크게 작용하니 ${MIN_SAMPLE}건 이상 모인 뒤 판단하세요${done.length < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}.</div>
+    </div>
+    ${html ? `<div class="rc-list">${html}</div>` : '<div class="card empty">이 지역 기록이 아직 없습니다.</div>'}
+    ${list.length > Paper.shown ? `<div class="more"><button class="btn sm line" id="paperMore" type="button">더 보기</button></div>` : ''}`;
+  $('paperArea').onclick = (e) => { const k = e.target.closest('[data-a]')?.dataset.a; if(!k) return; Paper.area = k; LS.set('paperArea', k); renderPaper(); };
+  $('paperMore') && ($('paperMore').onclick = () => { Paper.shown += 100; renderPaper(); });
+}
+
+// ---------- 🏁 개찰 결과 (더비스식 한 줄 카드): 앱 기록 + 개찰 상세 자동 찾기 + 가져온 엑셀 이력을 한 목록으로
+const Res = {kind: LS.get('resKind', 'all'), period: LS.get('resPeriod', 3), top: false, shown: 50};
+const normNm = (s) => String(s || '').replace(/[\s()\[\]·,.\-_'"]/g, '');
+async function renderResults(el, appItems, pseudo, head){
+  const findRec = (w) => { const s = Data.scsbid[w.sido]; return s ? s.byId.get(w.id) || s.recs.find(r => r.no === w.no) || null : null; };
+  const judged = [];
+  // 앱 기록 → 한 모양
+  const rows = appItems.map(w => {
+    const r0 = findRec(w), res = w.res?.plan ? w.res : null;
+    const r = res ? {base: res.base || r0?.base || w.base, plan: res.plan, amt: res.win?.amt || r0?.amt, a: w.a ?? r0?.a, floor: w.floor || r0?.floor, cnt: res.n || r0?.cnt, win: res.win?.name || r0?.win}
+      : r0 ? {...r0} : null;
+    const op = res ? {base: r.base, plan: r.plan, r: res.xs.map((amt, i) => [i + 1, 0, amt])} : r0 ? Data.opening[w.sido]?.bids.get(r0.id) : null;
+    const mine = r && r.base && r.plan ? judgeBid(w.myBid, r, op) : null;
+    if(mine) judged.push(mine);
+    const rank = w.res?.mine?.rank || mine?.rank || null;
+    const date = (w.open || r0?.date || w.close || '').slice(0, 16);
+    return {src: 'app', w, r, id: w.id, nm: w.nm, org: w.org || w.dmd, rgn: [w.sido, w.sgg].filter(Boolean).join(' '), lic: (w.lic || []).map(l => LIC_SHORT[l] || l).join('·'),
+      date, base: r?.base || w.base, amt: w.myBid, S: r?.base && r?.plan ? r.plan / r.base * 100 : null, x: mine?.x ?? null,
+      rank: mine?.cls === 'below' ? -1 : rank, n: r?.cnt || w.res?.n || null, kind: '공사', winner: r?.win, winAmt: r?.amt,
+      cls: rank === 1 ? 'win' : mine?.cls || '', label: rank === 1 ? '🏆 1순위' : mine?.label?.replace(' (1순위)', '') || (r ? '금액 기록 없음' : '결과 대기')};
+  });
+  LS.set('myCal', calibrate(judged));
+  // 가져온 엑셀 이력 (앱 기록과 같은 공고(이름·개찰일)는 앱 쪽만)
+  const seen = new Set(rows.map(x => normNm(x.nm) + '|' + x.date.slice(0, 10)));
+  for(const h of History.rows()){
+    if(seen.has(normNm(h.nm) + '|' + (h.date || '').slice(0, 10))) continue;
+    const j = histJudge(h);
+    rows.push({src: 'hist', nm: h.nm, org: h.org, rgn: h.rgn, lic: h.lic, date: h.date || '', base: h.base, amt: h.amt, S: h.S || null, x: h.x,
+      rank: h.rank, n: h.n, kind: h.kind === '공사' ? '공사' : h.kind, cls: j.cls, label: j.label});
+  }
+  // 거르기: 업무 · 기간 · 1순위만
+  const cut = Res.period ? kstDay(new Date(Date.now() - Res.period * 30.4 * 86400000)) : '';
+  const inPeriod = rows.filter(x => !cut || x.date.slice(0, 10) >= cut);
+  const kinds = [['all', '전체'], ['공사', '공사'], ['용역', '용역'], ['물품', '물품']];
+  const byKind = (k) => k === 'all' ? inPeriod : inPeriod.filter(x => x.kind === k);
+  let list = byKind(Res.kind);
+  if(Res.top) list = list.filter(x => x.rank === 1);
+  list.sort((a, b) => b.date.localeCompare(a.date));
+  // 요약
+  const valid = list.filter(x => x.S && x.n);
+  const nWin = list.filter(x => x.rank === 1).length, fair = valid.reduce((t, x) => t + 1 / x.n, 0);
+  const below = valid.filter(x => x.cls === 'below').length, high = valid.filter(x => x.cls === 'high').length;
+  const pctOf = (k) => valid.length ? Math.round(k / valid.length * 100) : 0;
+  const ctrl = `<div class="res-ctrl">
+      <div class="seg res-kind" id="resKind">${kinds.map(([k, t]) => `<button type="button" data-k="${k}" class="${Res.kind === k ? 'on' : ''}">${t} <span class="cnt">${fmtNum(byKind(k).length)}</span></button>`).join('')}</div>
+      <div class="res-row2">
+        <select id="resPeriod" class="sort-select" aria-label="기간">${[[1, '1개월'], [3, '3개월'], [6, '6개월'], [12, '12개월'], [0, '전체 기간']].map(([v, t]) => `<option value="${v}"${+Res.period === v ? ' selected' : ''}>${t}</option>`).join('')}</select>
+        <button type="button" class="btn sm ${Res.top ? 'reg' : 'line'}" id="resTop">🏆 1순위만</button>
+      </div>
+    </div>
+    <div class="res-sum">
+      <div><span>건수</span><b>${fmtNum(list.length)}</b></div>
+      <div class="${nWin ? 'win' : ''}"><span>🏆 1순위</span><b>${fmtNum(nWin)}</b></div>
+      <div><span>평균 업체였다면</span><b>${fmtNum(fair, 1)}</b></div>
+      <div><span>하한 미달</span><b class="below">${pctOf(below)}%</b></div>
+      <div><span>1위보다 높음</span><b>${pctOf(high)}%</b></div>
+    </div>`;
+  // 카드 (개찰일별로 묶음)
+  let html = '', last = null;
+  for(const x of list.slice(0, Res.shown)){
+    const d = x.date.slice(0, 10);
+    if(d !== last){ last = d; html += `<div class="day-sep">${d ? dayLabel(d) : '개찰일 미상'}</div>`; }
+    const rk = x.rank == null ? '-' : x.rank < 0 ? '미달' : fmtNum(x.rank);
+    const ratio = x.amt && x.base ? x.amt / x.base * 100 : null;
+    const more = x.src === 'app' ? `<details class="rc-more"><summary>자세히 · 금액 고치기</summary>
+        <div class="b-kv"><span>1위 <b>${esc(x.winner || '-')}</b> ${x.winAmt ? won(x.winAmt) : ''}</span>${x.r?.plan ? `<span>예정가격 <b>${won(x.r.plan)}</b></span>` : ''}</div>
+        ${x.w.res?.top?.length ? `<div class="table-wrap" style="max-height:none;margin-top:6px;"><table><thead><tr><th>순위</th><th>업체</th><th class="num">투찰금액</th></tr></thead>
+          <tbody>${x.w.res.top.map(t => `<tr${x.w.res.mine && t.biz === x.w.res.mine.biz ? ' class="hl-row"' : ''}><td>${t.rank || '-'}</td><td>${esc(t.name)}</td><td class="num">${won(t.amt)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+        <div class="mybid-row"><label>내가 넣은 투찰금액</label>
+          <input type="text" class="money" inputmode="numeric" autocomplete="off" data-mybid-in="${esc(x.id)}" value="${moneyText(x.amt)}" placeholder="원 단위">
+          <button class="btn sm ghost" data-mybid-save="${esc(x.id)}" type="button">기록</button>
+          ${apiKey() ? `<button class="btn sm line" data-res-fetch="${esc(x.id)}" type="button">다시 조회</button>` : ''}
+          ${x.w.auto ? '' : `<button class="btn sm line" data-unwatch="${esc(x.id)}" type="button">목록에서 지우기</button>`}</div>
+      </details>` : '';
+    html += `<div class="rc ${x.cls}">
+      <div class="rc-nm">${esc(x.nm)}</div>
+      <div class="rc-sub">${esc(x.date.slice(11, 16) ? x.date.slice(0, 16) + ' 개찰' : x.date.slice(0, 10))} · ${esc(x.org || '')}</div>
+      <div class="rc-line"><span class="rc-tags">${x.rgn ? `<span class="tag">${esc(x.rgn)}</span>` : ''}${x.lic ? `<span class="tag">${esc(x.lic.split('|').join('·'))}</span>` : ''}<span class="tag">${esc(x.kind)}</span></span><b class="rc-base">${x.base ? won(x.base) : ''}</b></div>
+      <div class="rc-grid">
+        <div><span>사정율</span><b>${x.S ? x.S.toFixed(3) : '비공개'}</b></div>
+        <div><span>내 투찰률</span><b>${x.x != null ? x.x.toFixed(3) : '-'}</b></div>
+        <div><span>기초대비</span><b>${ratio ? ratio.toFixed(3) : '-'}</b></div>
+      </div>
+      <div class="rc-foot"><span class="rc-rank ${x.cls}"><b>${rk}</b> / ${x.n ? fmtNum(x.n) : '-'}</span><span class="rc-amt">${x.amt ? won(x.amt) : '금액 기록 없음'}</span><span class="rc-v ${x.cls}">${esc(x.label)}</span></div>
+      ${more}
+    </div>`;
+  }
+  el.innerHTML = head + ctrl + (html ? `<div class="rc-list">${html}</div>` : '<div class="empty">조건에 맞는 개찰 결과가 없습니다.</div>')
+    + (list.length > Res.shown ? `<div class="more"><button class="btn sm line" id="resMore" type="button">더 보기 (${fmtNum(list.length - Res.shown)}건 남음)</button></div>` : '')
+    + renderHistory();
+  bindWatch(el, pseudo);
+  $('resKind').onclick = (e) => { const k = e.target.closest('[data-k]')?.dataset.k; if(!k) return; Res.kind = k; LS.set('resKind', k); Res.shown = 50; renderWatch(); };
+  $('resPeriod').onchange = () => { Res.period = +$('resPeriod').value; LS.set('resPeriod', Res.period); Res.shown = 50; renderWatch(); };
+  $('resTop').onclick = () => { Res.top = !Res.top; renderWatch(); };
+  $('resMore') && ($('resMore').onclick = () => { Res.shown += 100; renderWatch(); });
+}
 /** 과거 투찰 이력 판정: 1순위 / 하한 미달 / 1위보다 높음 / 예정가격 비공개(나라장터 밖) */
 function histJudge(r){
   if(!r.S) return {cls: '', label: '예정가격 비공개'};
@@ -2283,46 +2439,11 @@ function histJudge(r){
 function renderHistory(){
   const all = History.rows(), meta = History.get();
   const imp = `<label class="btn sm line hist-imp"><input type="file" id="histFile" accept=".xls,.htm,.html" hidden>📥 ${all.length ? '엑셀 다시 가져오기' : '더비스 투찰 이력 엑셀 가져오기'}</label>`;
-  if(!all.length) return `<div class="card-inner hist"><h3 style="margin-top:0;">과거 투찰 이력</h3>
+  if(all.length) return `<div class="card-inner hist"><div class="hist-head"><h3 style="margin:0;">더비스 투찰 이력 <small class="faint">${fmtNum(all.length)}건 · ${esc((meta.at || '').slice(0, 10))} 가져옴 · 위 목록에 합쳐 보임</small></h3>${imp}</div>
+    <span class="meta-line" id="histMsg"></span><div class="meta-line"><button class="btn sm ghost" id="histClear" type="button">가져온 이력 지우기</button></div></div>`;
+  return `<div class="card-inner hist"><h3 style="margin-top:0;">과거 투찰 이력</h3>
     <p class="meta-line">조달청 API에는 "우리 업체가 넣은 공고 찾기"가 없어서, 예전 투찰 금액·순위를 조달청에서 한꺼번에 받아 올 수는 없습니다. 대신 <b>더비스에서 내려받은 투찰 이력 엑셀(.xls)</b>을 가져오면 금액·순위·사정율이 모두 들어 있어 바로 정리해 드립니다. 이 기기에만 저장되고 어디에도 올라가지 않습니다.</p>
     ${imp} <span class="meta-line" id="histMsg"></span></div>`;
-  const nTop = all.filter(r => r.rank >= 1 && r.rank <= 3).length;
-  const kinds = [['all', '전체', all.length], ['공사', '공사', all.filter(r => r.kind === '공사').length], ['물품', '물품', all.filter(r => r.kind === '물품').length], ['top', '🏆 1~3위', nTop]];
-  const pick = histKind === 'all' ? all : histKind === 'top' ? all.filter(r => r.rank >= 1 && r.rank <= 3) : all.filter(r => r.kind === histKind);
-  const valid = pick.filter(r => r.S && r.n);
-  const js = valid.map(histJudge);
-  const nWin = pick.filter(r => r.rank === 1).length;
-  const fair = valid.reduce((t, r) => t + 1 / r.n, 0);
-  const below = js.filter(j => j.cls === 'below').length, high = js.filter(j => j.cls === 'high').length;
-  const med = (a) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[b.length >> 1] : null; };
-  const g = med(valid.filter(r => r.x).map(r => r.x - r.S));
-  const rows = [...pick].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  const pctOf = (k) => valid.length ? Math.round(k / valid.length * 100) : 0;
-  const list = rows.slice(0, histShown).map(r => {
-    const j = histJudge(r);
-    const rk = r.rank == null ? '-' : r.rank < 0 ? `미달` : `${fmtNum(r.rank)}위`;
-    return `<div class="hrow">
-      <div class="hr-rank ${j.cls}"><b>${rk}</b><small>${r.n ? '/ ' + fmtNum(r.n) : ''}</small></div>
-      <div class="hr-main"><div class="hr-nm">${esc(r.nm)}</div>
-        <div class="hr-sub">${esc((r.date || '').slice(0, 10))} · ${esc(r.org)}${r.rgn ? ' · ' + esc(r.rgn) : ''} · ${esc(r.kind)}</div></div>
-      <div class="hr-amt"><b>${won(r.amt)}</b>${r.S ? `<small>사정율 ${r.S.toFixed(3)} · 내 ${r.x != null ? r.x.toFixed(3) : '-'}</small>` : ''}<span class="hr-v ${j.cls}">${j.label}</span></div>
-    </div>`;
-  }).join('');
-  return `<div class="card-inner hist">
-    <div class="hist-head"><h3 style="margin:0;">과거 투찰 이력 <small class="faint">${fmtNum(all.length)}건 · ${esc((meta.at || '').slice(0, 10))} 가져옴</small></h3>${imp}</div>
-    <span class="meta-line" id="histMsg"></span>
-    <div class="chip-group" id="histKinds" style="margin:10px 0;">${kinds.map(([k, t, n]) => `<button type="button" class="chip sm ${histKind === k ? 'selected' : ''}" data-hk="${k}">${t}<span class="cnt">${fmtNum(n)}</span></button>`).join('')}</div>
-    <div class="stat-grid">
-      <div class="stat ${nWin ? 'hl' : ''}"><div class="t">🏆 1순위</div><div class="v">${fmtNum(nWin)}<small class="faint"> / ${fmtNum(pick.length)}건</small></div></div>
-      <div class="stat"><div class="t">평균 업체였다면</div><div class="v">${fmtNum(fair, 1)}건</div></div>
-      <div class="stat"><div class="t">하한 미달</div><div class="v" style="color:var(--target);">${fmtNum(below)}<small class="faint"> ${pctOf(below)}%</small></div></div>
-      <div class="stat"><div class="t">1위보다 높음</div><div class="v">${fmtNum(high)}<small class="faint"> ${pctOf(high)}%</small></div></div>
-    </div>
-    <div class="meta-line">참가 중앙값 ${fmtNum(med(valid.map(r => r.n)) || 0)}곳${g != null ? ` · 내 투찰 사정률은 실제 사정율보다 보통 <b>${g >= 0 ? '+' : ''}${g.toFixed(3)}%p</b>` : ''}. "평균 업체였다면" = 공고마다 1/참가수를 더한 값(아무 금액이나 넣은 업체의 기대 1순위 수).</div>
-    <div class="hist-list">${list}</div>
-    ${rows.length > histShown ? `<div class="more"><button class="btn sm line" id="histMore" type="button">더 보기 (${fmtNum(rows.length - histShown)}건 남음)</button></div>` : ''}
-    <div class="meta-line" style="text-align:right;"><button class="btn sm ghost" id="histClear" type="button">가져온 이력 지우기</button></div>
-  </div>`;
 }
 function bindHistory(el){
   el.querySelector('#histFile')?.addEventListener('change', async (e) => {
@@ -2333,15 +2454,10 @@ function bindHistory(el){
       if(!rows.length) throw new Error('읽을 행이 없습니다.');
       History.save(rows, f.name);
       if(!History.get()) throw new Error('이 기기 저장 공간이 부족해 저장하지 못했습니다.');
-      histKind = 'all'; histShown = 50;
+      Res.shown = 50;
       renderWatch();
     }catch(err){ msg.textContent = err.message; }
   });
-  el.querySelector('#histKinds')?.addEventListener('click', (e) => {
-    const k = e.target.closest('[data-hk]')?.dataset.hk; if(!k) return;
-    histKind = k; histShown = 50; renderWatch();
-  });
-  el.querySelector('#histMore')?.addEventListener('click', () => { histShown += 100; renderWatch(); });
   el.querySelector('#histClear')?.addEventListener('click', () => { if(confirm('가져온 과거 투찰 이력을 이 기기에서 지울까요?')){ History.clear(); renderWatch(); } });
 }
 
@@ -2435,8 +2551,9 @@ async function renderWatch(){
       <span class="meta-line" id="joinMsg" style="margin:0;"></span>
     </div>
     <div class="meta-line" style="margin:0 0 12px;">${joinedMode ? '넣은 공고를 공고번호로 추가하거나, 관심에서 "참여 표시"를 누르세요. 개찰 시각이 지나면 <b>🏁 개찰 결과</b>로 옮겨지고 조달청에서 순위·금액을 바로 가져옵니다.'
-      : hasBiz ? `사업자번호로 <b>강원 개찰 상세</b>에서 우리가 넣은 공고를 자동으로 찾습니다(${fmtNum(auto.length)}건). 조달청 API에 "사업자번호로 찾기"가 없어 다른 지역은 공고번호로 추가하거나, 아래 과거 투찰 이력 엑셀을 가져오세요.`
+      : hasBiz ? `강원 공고는 수집된 개찰 상세에서 우리 투찰을 자동으로 찾습니다(${fmtNum(auto.length)}건). 다른 지역은 공고번호로 추가하거나 맨 아래에서 더비스 투찰 이력 엑셀을 가져오세요.`
       : '설정 → 우리 업체에 <b>사업자번호</b>를 넣으면 수집된 개찰 상세에서 우리 순위·금액을 자동으로 찾습니다.'}</div>` : '';
+  if(resultMode) return renderResults(el, list, pseudo, modeSeg + joinForm);
   if(!list.length){
     el.innerHTML = modeSeg + joinForm + `<div class="empty">${joinedMode ? '개찰을 기다리는 투찰이 없습니다.' : resultMode ? '앱에 기록된 개찰 결과가 없습니다.' : '저장한 관심공고가 없습니다. 우리 공고·공고 검색에서 ☆를 눌러 보세요.'}</div>` + (resultMode ? renderHistory() : '');
     bindWatch(el, pseudo);

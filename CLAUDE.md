@@ -6,7 +6,7 @@ GitHub Pages(main 브랜치 루트)로 배포하고, 공공 데이터는 GitHub 
 
 ## 작업 규칙
 - **요청한 부분만 수정**한다. 관련 없는 리팩터링·디자인 변경 금지.
-- **하단 탭 5개 유지**: 🏢 우리 공고(첫 화면) / 🔎 공고 검색 / ⭐ 내 투찰 / 📊 분석 / ⚙️ 설정 (PC에서는 좌측 사이드바). 2026-09-26 사용자 요청으로 재구성 — 섹션 id 는 view-home / view-bids / view-watch / view-predict(+ view-stats, 분석 탭 위 '금액 분석·통계' 전환) / view-settings.
+- **하단 탭 5개 유지**: 🏢 우리 공고(첫 화면) / 🔎 공고 검색 / ⭐ 내 투찰 / 📊 분석 / ⚙️ 설정 (PC에서는 좌측 사이드바). 2026-09-26 사용자 요청으로 재구성 — 섹션 id 는 view-home / view-bids / view-watch / view-predict(+ view-paper·view-stats, 분석 탭 위 '금액 분석·모의 투찰·통계' 전환) / view-settings.
 - 서비스워커는 앱 파일도 네트워크 우선(오프라인이면 캐시) — 화면만 새것이고 app.js 는 옛 캐시로 섞이던 문제(2026-09) 때문.
 - **앱이 쓰는 파일**(index.html, app.js, style.css, manifest.json, icons/)을 바꾸면 **sw.js 의 `VERSION` 을 올린다.**
   예외: reference/, scripts/, .github/ 워크플로, data/, stable/ 은 버전 올릴 필요 없음.
@@ -31,6 +31,7 @@ icons/                아이콘 (svg, 192/512 png)
 scripts/collect.py    수집기 (Actions 에서 실행)
 scripts/commit_data.sh  data/ 변경 커밋·푸시 (워크플로에서 단계마다 호출)
 scripts/company_report.py  우리 업체 역검증 보고서(로컬 전용, private/ 읽고 씀)
+scripts/paper.py      모의 투찰: 강원 공사 공고마다 마감 전 앱과 같은 추천 투찰가 기록 → 개찰 뒤 채점 → data/paper.json (앱 분석 탭 '🧪 모의 투찰'). 2026-09-26 67건 앱 quickPredict 와 원 단위 일치 확인
 scripts/collect_d2b.py  국방전자조달(방위사업청) 입찰결과 수집기 — 워크플로 d2b 잡(나라장터 수집과 동시에, 40분)
 scripts/model.py      전국 추천 모델·역검증 → data/model.json (수집 단계마다 실행, numpy)
 scripts/korea.py      시도·시군구 파싱, 면허 23개 + 옛 명칭 별칭표
@@ -209,6 +210,8 @@ scsbid 와 같은 형식(`ThngStore`) + `cm` 계약방법(예: 수의계약·제
 - **우리 업체**(설정, `Company` → `localStorage bp.company` {sido, sgg, lics[], biz}): `eligibility(b)` = 참가가능지역(rgn, 비면 제한 없음; "강원특별자치도"는 시·도 전체, "… 춘천시"는 그 시·군만) + 면허(겹치면 가능, 공고 면허 정보 없으면 '확인 필요'). 입찰공고 두 모드에 "참가 가능한 공고만"(`bElig`/`lElig`), 카드 태그 `eligTag`.
   참여가능금액(`caps` {면허: {j3, j5, g, k}} = 지자체 3년·5년, 조달청·그 외, 한수원): `capCheck` 가 공고 추정가격(없으면 기초금액)을 발주기관 종류(`orgKind`: 지자체 j / 한수원 k / 그 외 g)의 한도와 비교 → 초과면 참가 불가 '실적 한도 초과', 지자체 3년 초과·5년 이내면 '실적 확인'. 회사 수치는 기기에만(저장소에 넣지 않음).
 - **개찰 결과 실시간 조회**(관심공고): 개찰 시각이 지난 공고는 `fetchOpeningResult` 로 낙찰정보서비스 `getOpengResultListInfoOpengCompt`(순위) + `…CnstwkPreparPcDetail`(예정가격)을 브라우저에서 직접 조회(한 번에 5건, 결과 없으면 1시간 뒤). 사업자번호가 맞는 행 = 우리 순위·투찰금액(myBid 자동). 결과는 WatchStore 항목 `res` {n, plan, base, win, mine, top(10), xs(전체 금액)}.
+- **🏁 개찰 결과**(`renderResults`, 더비스식 카드): 앱 기록(관심·투찰·개찰 상세 자동 찾기) + 가져온 엑셀 이력을 한 목록으로(같은 공고명·개찰일은 앱 쪽만), 업무(전체/공사/용역/물품 `bp.resKind`)·기간(`bp.resPeriod`, 기본 3개월)·🏆 1순위만, 요약(건수·1순위·평균 업체였다면·하한 미달·1위보다 높음), 카드 = 사정율·내 투찰률·기초대비 + 순위/참가·투찰금액·판정, 앱 기록은 '자세히 · 금액 고치기'. 예전 '＋ 저장' 버튼(자동 찾은 공고를 관심공고로)은 없앰 — 저장 없이도 보이므로.
+- **🧪 모의 투찰**(분석 탭 세 번째 `view-paper`, `renderPaper`): data/paper.json — 우리 시·군(없으면 춘천)/시·도 전체, 채점·추천값 낙찰·평균 사정율 방식·공정 기대 Σ1/(참가+1)·하한 미달.
 - **내 투찰 탭 3칸**(`watchMode` 'watch' 관심 | 'joined' 투찰 중 | 'result' 개찰 결과, 2026-09-26): 개찰 끝난 것(`isDone` = res 있음 또는 개찰 시각 지남)은 관심·투찰 중에서 빠지고 개찰 결과로. 개찰 결과 = 앱 기록 + 개찰 상세 자동 찾기 + **과거 투찰 이력**(`History`, 더비스 투찰 이력 엑셀(.xls = HTML 표)을 브라우저에서 읽어 `localStorage bp.history` {at, src, rows:[[개찰일시, 공고명, 지역, 면허, 발주처, 기초, 투찰금액, 사정율, 투찰 사정률, 순위(음수=하한 미달 중 순위), 참가수, 예가]]} — 이 기기에만, 저장소에 안 넣음). 조달청 API는 사업자번호로 공고를 못 찾아 과거 투찰 전체를 받아 올 수 없다.
 - 시작 탭: 앱을 열면 언제나 우리 공고(`#home`, 주소 해시 무시). 설정 '폰으로 보내기 (QR)' 링크 `#key=…&co=…` 는 서비스키 + 우리 업체 정보(상호 `name` 포함)를 함께 옮긴다.
 - **참여한 공고**(내 투찰 탭의 '투찰 중'·'개찰 결과'): 참여 = WatchStore 항목의 `joined`·`myBid`·`res.mine`. 사업자번호가 있으면 `findMyBidsInOpening` 이 수집된 개찰 상세(regions.json 지역)에서 우리 행을 찾아 자동 목록(저장 전 가상 항목, "＋ 저장"). `addJoinedByNo` = 공고번호로 추가 후 바로 개찰 결과 조회. 조달청 API에는 사업자번호로 공고를 찾는 기능이 없다.

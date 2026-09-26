@@ -56,6 +56,11 @@ jobs:
         continue-on-error: true
         run: python scripts/model.py
 
+      - name: 모의 투찰 기록·채점
+        if: always()
+        continue-on-error: true
+        run: python scripts/paper.py
+
       - name: 빠른 수집 커밋
         if: always()
         run: bash scripts/commit_data.sh "공고"
@@ -75,6 +80,11 @@ jobs:
         if: always()
         continue-on-error: true
         run: python scripts/model.py
+
+      - name: 모의 투찰 다시 채점 (개찰 상세 반영)
+        if: always()
+        continue-on-error: true
+        run: python scripts/paper.py
 
       - name: 전체 수집 커밋
         if: always()

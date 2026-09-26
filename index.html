@@ -132,6 +132,7 @@
   <section id="view-predict" hidden>
     <div class="seg mode-seg">
       <button data-goto="predict" type="button" class="on">💰 금액 분석</button>
+      <button data-goto="paper" type="button">🧪 모의 투찰</button>
       <button data-goto="stats" type="button">📈 통계</button>
     </div>
     <details class="card guide fold" id="pGuide">
@@ -275,10 +276,21 @@
     </div>
   </section>
 
+  <!-- ===================== 모의 투찰 (분석 탭 안) ===================== -->
+  <section id="view-paper" hidden>
+    <div class="seg mode-seg">
+      <button data-goto="predict" type="button">💰 금액 분석</button>
+      <button data-goto="paper" type="button" class="on">🧪 모의 투찰</button>
+      <button data-goto="stats" type="button">📈 통계</button>
+    </div>
+    <div id="paperBody"></div>
+  </section>
+
   <!-- ===================== 통계 ===================== -->
   <section id="view-stats" hidden>
     <div class="seg mode-seg">
       <button data-goto="predict" type="button">💰 금액 분석</button>
+      <button data-goto="paper" type="button">🧪 모의 투찰</button>
       <button data-goto="stats" type="button" class="on">📈 통계</button>
     </div>
     <div class="card">
