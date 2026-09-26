@@ -971,7 +971,7 @@ function initLive(){
 }
 // ============================================================ 우리 업체 대시보드 (입찰공고 탭 첫 모드)
 // 설정의 업체 정보(소재지·면허·주력분야·참여가능금액)로 자동 수집된 진행중 공고 중 참가 가능한 것만 — 검색 없이 바로.
-const Mine = {day: null, chip: 'all', small: false, showHidden: false};
+const Mine = {day: null, chip: 'all', small: false, showHidden: false, area: LS.get('mineArea', 'all')};
 /** 대시보드에서 뺀 공고 (우리가 못 하는 종목 등) — 이 기기에만 */
 const Hidden = {
   ids(){ return new Set(LS.get('hiddenBids', [])); },
@@ -1008,7 +1008,15 @@ async function renderMine(){
 
   // 필터 버튼 (면허·주력분야 / 경쟁 적은 공고 / 뺀 공고)
   const hidden = Hidden.ids();
-  const visible = rows.filter(b => !hidden.has(b.id));
+  // 지역 버튼: 전체 / 우리 시·도 / 우리 시·군 (공사 현장 기준). 참가 제한이 없는 전국 공고는 다른 지역 현장도 나오므로
+  const areas = [['all', '전체 지역', () => true]];
+  if(c.sido) areas.push(['sido', c.sido, (b) => b.sido === c.sido]);
+  if(c.sido && c.sgg) areas.push(['sgg', `${c.sido} ${c.sgg}`, (b) => b.sido === c.sido && b.sgg === c.sgg]);
+  if(!areas.some(a => a[0] === Mine.area)) Mine.area = 'all';
+  const areaF = areas.find(a => a[0] === Mine.area)[2];
+  const inArea = rows.filter(b => !hidden.has(b.id));
+  $('mineArea').innerHTML = areas.length > 1 ? areas.map(([k, label, f]) => `<button type="button" class="chip ${Mine.area === k ? 'selected' : ''}" data-area="${k}">📍 ${esc(label)}<span class="cnt">${inArea.filter(f).length}</span></button>`).join('') : '';
+  const visible = inArea.filter(areaF);
   const defs = mineChipDefs(c);
   if(!defs.some(d => d.k === Mine.chip)) Mine.chip = 'all';
   const chipF = defs.find(d => d.k === Mine.chip).f;
@@ -1074,6 +1082,12 @@ function initMine(){
   LS.set('mineIntro', true);
   $('mineSort').value = LS.get('mineSort', 'close');
   $('mineSort').addEventListener('change', () => { LS.set('mineSort', $('mineSort').value); renderMine(); });
+  $('mineArea').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-area]');
+    if(!t) return;
+    Mine.area = t.dataset.area; LS.set('mineArea', Mine.area);
+    renderMine();
+  });
   $('mineChips').addEventListener('click', (e) => {
     const t = e.target.closest('button');
     if(!t) return;
