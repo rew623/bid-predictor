@@ -138,6 +138,17 @@ def main():
     m_real = sum(1 for t in xls if t["rank"] == 1)
     all_fair = sum(1 / (t["N"] + 1) for t in xls if t["N"])
 
+    # 지역 전용 추천(model.json local) 매일 판정
+    loc = json.load(open(DATA / "model.json", encoding="utf-8")).get("local", {})
+    local_html = ""
+    for key, L in loc.items():
+        trs = "".join(f"<tr><td>{'참가 50곳 미만' if seg == 'small' else '50곳 이상'}</td><td class=n>{int(v['val']['n'])}</td><td class=n>{int(v['val']['national'])}</td>"
+                      f"<td class=n>{int(v['val']['sido'])}</td><td class=n>{int(v['val']['sgg'])}</td><td class=n>{v['val']['fair']:.1f}</td>"
+                      f"<td>{'<b>' + ('같은 도' if v['use'] == 'sido' else L['label']) + ' 전용 사용</b>' if v['use'] else '전국 모델 유지'}</td></tr>"
+                      for seg, v in L["seg"].items())
+        local_html += (f"<h2>{html.escape(L['label'])} 전용 추천 판정 (최근 12개월 역검증, 매일 다시)</h2><table><tr><th>구간</th><th class=n>시험</th><th class=n>전국 모델</th>"
+                       f"<th class=n>같은 도·같은 규모</th><th class=n>{html.escape(L['label'])}·같은 규모</th><th class=n>공정 기대</th><th>판정</th></tr>{trs}</table>"
+                       "<p class=sub>전국 모델보다 낙찰이 10% 이상·2건 이상 많을 때만 전용 추천을 앱에 씁니다.</p>")
     now = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
     ratio = lambda w, f: f"×{w / f:.2f}" if f else "-"
     rows_html = "".join(f"<tr><td>{a}</td><td class=n>{b}</td><td class=n>{c}</td><td class=n>{d:.1f}</td><td class=n>{c / b * 100:.1f}%</td></tr>" for a, b, c, d in seg)
@@ -156,6 +167,7 @@ h1{{font-size:22px}}h2{{font-size:17px;margin-top:28px}}table{{border-collapse:c
 {f'<tr><td>더비스식 (회사 실제 투찰률 분포)</td><td class=n>{w_their:.1f}</td><td class=n>{w_their / max(len(res), 1) * 100:.2f}%</td><td class=n>{ratio(w_their, fair)}</td></tr>' if w_their is not None else ''}
 <tr><td>공정 기대 Σ1/(참가+1)</td><td class=n>{fair:.1f}</td><td></td><td></td></tr></table>
 <table><tr><th>참가 수</th><th class=n>공고</th><th class=n>우리 낙찰</th><th class=n>공정 기대</th><th class=n>우리 적중률</th></tr>{rows_html}</table>
+{local_html}
 <h2>2. 회사 실제 투찰 이력 ({html.escape(xls_name or '파일 없음')})</h2>
 <p>전체 {len(xls):,}건 (공사 {len(gong)}, 물품 {len(xls) - len(gong)}) · 실제 1순위 <b>{m_real}</b>건 · 공정 기대 {all_fair:.2f}건</p>
 <p>공사 {len(gong)}건 중 수집 낙찰과 맞춘 {len(mine)}건: 우리 추천이었다면 <span class=big>{m_ours}건</span> 낙찰 (공정 기대 {m_fair:.2f}건)</p>

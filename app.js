@@ -436,14 +436,25 @@ function modelPredict(n, cnt){
   const list = Model.m.curves[rngKeyOf(rng)];
   if(ln == null || !list?.length) return null;
   const k = Math.round(ln * 5) * 2;
-  const e = list.reduce((b, x) => Math.abs(x.k - k) < Math.abs(b.k - k) ? x : b, list[0]);
-  return {e, rng, rngKnown, nExp: Math.max(1, Math.round(Math.exp(ln))), byInput: !!cnt, meanS: Model.m.meanS[rngKeyOf(rng)]};
+  let e = list.reduce((b, x) => Math.abs(x.k - k) < Math.abs(b.k - k) ? x : b, list[0]);
+  // 지역 전용 추천(model.json local, 예: 춘천): 매일 역검증에서 전국 모델보다 확실히 더 이긴 구간만 채택(use)
+  let area = null;
+  const L = Model.m.local?.[`${n.sido || ''}|${n.sgg || ''}`];
+  if(L){
+    const seg = Math.exp(ln) < L.small ? 'small' : 'big', S = L.seg?.[seg];
+    const e2 = S?.use && L.curves?.[S.use]?.[seg]?.[rngKeyOf(rng)];
+    if(e2){ e = e2; area = {label: L.label, use: S.use, seg, val: S.val}; }
+  }
+  return {e, rng, rngKnown, nExp: Math.max(1, Math.round(Math.exp(ln))), byInput: !!cnt, meanS: Model.m.meanS[rngKeyOf(rng)], area};
 }
+/** 지역 전용 추천의 역검증 배수 (공정 기대 대비) */
+const areaLift = (a) => a?.val?.fair ? a.val[a.use] / a.val.fair : null;
+const areaText = (a) => a ? `🎯 ${a.label} 전용 추천 (${a.use === 'sgg' ? a.label : '같은 도'} ${a.seg === 'small' ? '소규모' : '대규모'} 공고 기준 · 역검증 ${fmtNum(a.val.n)}건 ${a.val[a.use]}건 낙찰, 전국 모델 ${a.val.national}건)` : '';
 /** 추천 결과를 한 모양으로: 전국 모델(mp) 또는 이 지역 곡선(wc) */
 function recFromModel(mp){
   const e = mp.e, g = Model.m.grid;
   const at = (x) => { const i = Math.round((x - g.x0) / g.step); return i >= 0 && i < e.c.length ? e.c[i] / g.scale : 0; };
-  return {src: 'model', x: e.x, p: e.p, sb: e.sb, lo: e.lo, hi: e.hi, peaks: e.pk.map(([x, p]) => ({x, p})), random: e.r, n: e.n, nExp: mp.nExp,
+  return {src: 'model', area: mp.area, x: e.x, p: e.p, sb: e.sb, lo: e.lo, hi: e.hi, peaks: e.pk.map(([x, p]) => ({x, p})), random: e.r, n: e.n, nExp: mp.nExp,
     view: e.v, at, meanS: mp.meanS, rng: mp.rng, rngKnown: mp.rngKnown, byInput: mp.byInput,
     pts: () => { const out = []; for(let x = e.v[0]; x <= e.v[1] + 1e-9; x += g.step) out.push({x: +x.toFixed(2), y: at(x)}); return out; },
     note: `전국 최근 24개월 · 예가범위 ${rngText(mp.rng)}${mp.rngKnown ? '' : '(모름 → ±3% 기준)'} · 예상 참가 ${fmtNum(Math.max(1, Math.round(mp.nExp / Model.m.band)))}~${fmtNum(Math.round(mp.nExp * Model.m.band))}곳 공고 ${fmtNum(e.n)}건`};
@@ -478,10 +489,11 @@ function quickPredict(notice){
   if(notice.kind && notice.kind !== '공사') return null;
   const mp = modelPredict(notice);
   if(!mp) return quickPredictLocal(notice);
-  const e = mp.e, amt = notice.base || notice.est, v = valWinP(e.r, mp.nExp);
+  const e = mp.e, amt = notice.base || notice.est;
+  const al = areaLift(mp.area), v = al ? {p: e.r * al, lift: al} : valWinP(e.r, mp.nExp);
   const winP = v ? v.p : e.p;
   return {sr: quickPredictLocal(notice)?.sr ?? mp.meanS, n: e.n, note: '', model: true, bestSr: e.x, winP,
-    lift: v ? v.lift : e.r ? e.p / e.r : null, cnt: mp.nExp, value: amt ? winP * amt : null, bid: bidAmount(notice.base, e.x, notice.a, notice.floor)};
+    lift: v ? v.lift : e.r ? e.p / e.r : null, cnt: mp.nExp, value: amt ? winP * amt : null, bid: bidAmount(notice.base, e.x, notice.a, notice.floor), area: mp.area};
 }
 const qpCache = new Map();
 function quickPredictLocal(notice){
@@ -808,7 +820,7 @@ function bidCard(b, today, opts = {}){
         <div class="pv"><span>추천 투찰가</span><b>${qp.bid ? won(qp.bid) : '기초금액 미공개'}</b></div>
         ${qp.cnt ? `<div class="pv"><span>예상 참가</span><b>~${fmtNum(qp.cnt)}개사</b></div>` : ''}
       </div>
-      <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.model ? ' · 추천값·낙찰확률은 전국의 경쟁 규모가 비슷한 공고 기준 · ×는 공정 기대(1÷(참가+1)) 대비' : qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}${qp.value ? ` · 기대 수주액 ${eok(qp.value)}` : ''}</div>`;
+      <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.area ? ` · <b>${esc(areaText(qp.area))}</b>` : ''}${qp.model ? (qp.area ? ' · ×는 공정 기대(1÷(참가+1)) 대비' : ' · 추천값·낙찰확률은 전국의 경쟁 규모가 비슷한 공고 기준 · ×는 공정 기대(1÷(참가+1)) 대비') : qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}${qp.value ? ` · 기대 수주액 ${eok(qp.value)}` : ''}</div>`;
   }else if(b.sido && !Data.hasScsbid(b.sido)){
     pred = '<div class="b-note">이 지역 낙찰 데이터 없음</div>';
   }
@@ -1718,7 +1730,8 @@ async function runPredict(){
   if(rec){ $('cRate').value = rec.x.toFixed(4); renderCalc(); }
   let hero, curveCard = '', tips = '';
   if(rec){
-    const vw = rec.src === 'model' ? valWinP(rec.random, rec.nExp) : null;   // 역검증 기준 (없으면 과거 곡선값)
+    const al = areaLift(rec.area);
+    const vw = rec.src === 'model' ? (al ? {p: rec.random * al, lift: al} : valWinP(rec.random, rec.nExp)) : null;   // 역검증 기준 (없으면 과거 곡선값)
     const lift = vw ? vw.lift : rec.random ? rec.p / rec.random : null;
     const meanX = rec.meanS ?? pred.mean;
     const V = Model.m?.validation, T = V?.total, seg = rec.nExp ? valSegment(rec.nExp) : null;
@@ -1736,7 +1749,7 @@ async function runPredict(){
       `<li class="ok"><b>기록</b>: ☆ 관심공고에 저장 → 넣은 금액을 적어 두면 개찰 뒤 판정과 다음 보정값</li>`,
     ].filter(Boolean).join('');
     hero = `<div class="card hero">
-      <div class="hero-top"><span class="hero-tag">🎯 추천 투찰</span>${valBadge()}</div>
+      <div class="hero-top"><span class="hero-tag">🎯 추천 투찰</span>${rec.area ? `<span class="badge ok">${esc(areaText(rec.area))}</span>` : valBadge()}</div>
       <div class="hero-main">
         <div>
           <div class="hero-label">추천 투찰금액</div>

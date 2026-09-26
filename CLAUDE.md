@@ -32,6 +32,7 @@ scripts/company_report.py  우리 업체 역검증 보고서(로컬 전용, priv
 scripts/model.py      전국 추천 모델·역검증 → data/model.json (수집 단계마다 실행, numpy)
 scripts/korea.py      시도·시군구 파싱, 면허 23개 + 옛 명칭 별칭표
 scripts/regions.json  개찰 상세(전체 순위·복수예가)를 수집할 시·도 목록. 예: ["강원"]
+scripts/local_models.json  지역 전용 추천 설정 {areas:[{sido, sgg, label}], small}
 scripts/detail_priority.json  개찰 상세 수집 우선순위 {sgg:[시·군], lic:[면허], max_cnt:참가 수} — 관심 시·군 → 관심 면허 → 참가 적은 공고, 같은 등급은 최신부터
 .github/workflows/collect.yml  02:00·14:00 KST 전체 + 09·13·17시 공고만 + 수동 실행(start_date, reset_backfill, quick_only)
 reference/prototype.html       초기 프로토타입 (디자인 참고용, 가상 데이터 코드는 쓰지 않음)
@@ -122,6 +123,7 @@ data/                 수집 결과 (아래)
 - **기준은 공정 기대 Σ1/(N+1)** (2026-09-26부터 `validation.rand`·곡선 `r`): 우리가 들어가면 참가자가 하나 는다. 1/N 기준은 참가 적은 공고에서 7~10% 박하게 나와 '20곳 미만은 못 이김'이라는 착시를 만들었다(사후 최적 고정 위치도 1/N 대비 ×0.93).
 - 재검토(2026-09-26, 11개월 60,483건 표본외): 현재 모델 적중 3.15%, 공정 기대 대비 ×1.17 — 평균 사정율 ×1.03, 예전 지역 곡선 ×1.05, 고정 99.5/100.0 ×1.06/1.07. 구간별 ×1.11(<20)~×1.32(150+). 강원 개찰 상세 695건으로 정확 판정 = 근사(S ≤ x < W) 판정 100% 일치.
   안 된 것: 참가수 폭 0.25/0.6/0.8/1.0(기간 따라 ±2% 엇갈림), 곡선 폭 ±0.1/0.15/0.3, 최소 표본 150~1200, 최근 가중, 시도별·금액대별 곡선(과적합으로 악화) — 모두 잡음 범위 또는 악화. 사정율 S 는 발주기관·수요기관·시도·금액대·하한율로 예측 안 됨(오차 감소 ≤0) → 기관별 예가 패턴은 쓸모없음.
+- **지역 전용 추천**(`local_models` → model.json `local` {"시도|시군": {label, small, seg:{small|big:{use:'sido'|'sgg'|null, val:{n,fair,national,sido,sgg}}}, curves:{sido|sgg:{small|big:{예가범위: 곡선}}}}}, 설정 `scripts/local_models.json`): 그 지역 공고를 같은 규모(예상 참가 small=50 미만/이상)끼리 시·도·시·군 곡선으로. 매일 최근 12개월 표본외로 전국 모델과 비교해 낙찰 +10%↑·+2건↑일 때만 `use`. 앱 `modelPredict`가 그 공고(sido|sgg)·구간이 use면 그 곡선으로 바꾸고 카드·예측 화면에 `areaText` 표시, 확률은 `areaLift`. 2026-09-26 첫 판정: 춘천 small 151건 전국 7/도 7/시 7, big 260건 4/5/2 → 둘 다 전국 유지. (시험 스크립트로 2025-07부터 보면 강원 같은 규모 20 vs 전국 17 — 기간 따라 흔들리는 수준.)
 - 앱 확률 표시(`valWinP`): 곡선 최대값 e.p 는 과거에 맞춘 값이라 부풀려짐 → 예상 낙찰확률 = e.r(비슷한 공고 1/참가수 평균) × 역검증 구간 배수(near/rand). 목록 정렬·기대 수주액도 이 값.
 
 ### data/lic_map.json — 공고별 면허제한·참가가능지역 (수집기 `write_lic_map`, 최근 60일 공사)

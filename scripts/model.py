@@ -306,6 +306,82 @@ def validate(rows):
             "rule": f"예상 참가수 ×{math.exp(-LN_BW):.2f}~×{math.exp(LN_BW):.2f} 비슷한 공고, 곡선 ±{SMOOTH_K * GS:g}%p, 학습 = 시험 달 이전 {TRAIN_MONTHS}개월"}
 
 
+# ---------------------------------------------------------------- 지역 전용 추천 (scripts/local_models.json)
+# 지역(예: 강원 춘천시) 공고에는 전국 곡선 대신 그 지역 공고로 만든 곡선이 더 맞을 수 있다(늘 오는 지역 업체들이 몰리는 자리).
+# 후보: 시·도(sido)·시·군(sgg) 공고를 같은 규모(예상 참가 small 미만/이상)끼리. 매일 표본외로 전국 모델과 비교해
+# 확실히 더 이긴 후보만 쓴다(낙찰 +10%↑ 그리고 +2건↑). 자료가 쌓이면 판정이 저절로 바뀐다.
+LOCAL_CONF = ROOT / "scripts" / "local_models.json"
+LOCAL_MIN = 30          # 곡선 하나에 필요한 최소 공고 수
+LOCAL_LEVELS = ("sido", "sgg")
+
+
+def _local_pool(rows, area, level, rk, seg, small):
+    return [r for r in rows if r["rng"] == rk and r["sido"] == area["sido"] and (level == "sido" or r["sgg"] == area["sgg"])
+            and ("small" if math.exp(r["lp"]) < small else "big") == seg]
+
+
+def _local_x(pool):
+    if len(pool) < LOCAL_MIN:
+        return None
+    return G0 + int(np.argmax(curve(np.array([r["S"] for r in pool]), np.array([r["W"] for r in pool])))) * GS
+
+
+def local_models(rows, recent, npred):
+    try:
+        conf = json.loads(LOCAL_CONF.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    small = conf.get("small", 50)
+    months = sorted({r["date"][:7] for r in rows})
+    tests = [m for m in months[1:]][-VALID_MONTHS:]
+    out = {}
+    for area in conf.get("areas", []):
+        tal = {seg: {k: 0.0 for k in ("n", "fair", "national", *LOCAL_LEVELS)} for seg in ("small", "big")}
+        for m in tests:
+            start = dt.date.fromisoformat(m + "-01")
+            tstart = (start - dt.timedelta(days=int(30.44 * TRAIN_MONTHS))).isoformat()
+            test = [r for r in rows if r["date"][:7] == m and r["rng"] in RNGS and r["sido"] == area["sido"] and r["sgg"] == area["sgg"]]
+            if not test:
+                continue
+            train = [r for r in rows if tstart <= r["date"] < m + "-01"]
+            if len(train) < 300:
+                continue
+            npm = fit_npred(train)
+            pools = Pools(with_lp(train, npm))
+            cache = {}
+            for r in test:
+                lp = predict_ln(npm, r)
+                seg = "small" if math.exp(lp) < small else "big"
+                got = pools.get(r["rng"], snap_key(lp))
+                if got is None:
+                    continue
+                t = tal[seg]
+                t["n"] += 1
+                t["fair"] += 1 / (r["N"] + 1)
+                xn = G0 + int(np.argmax(got[0])) * GS
+                t["national"] += r["S"] <= xn < r["W"]
+                for lv in LOCAL_LEVELS:
+                    key = (lv, r["rng"], seg)
+                    if key not in cache:
+                        cache[key] = _local_x(_local_pool(train, area, lv, r["rng"], seg, small))
+                    x = cache[key] if cache[key] is not None else xn
+                    t[lv] += r["S"] <= x < r["W"]
+        segs, curves = {}, {lv: {} for lv in LOCAL_LEVELS}
+        for seg, t in tal.items():
+            best = max(LOCAL_LEVELS, key=lambda lv: t[lv])
+            use = best if t["n"] >= 50 and t[best] >= t["national"] + 2 and t[best] >= t["national"] * 1.1 else None
+            segs[seg] = {"use": use, "val": {k: round(v, 2) for k, v in t.items()}}
+            for lv in LOCAL_LEVELS:
+                for rk in RNGS:
+                    pool = _local_pool(recent, area, lv, rk, seg, small)
+                    if len(pool) >= LOCAL_MIN:
+                        sm = curve(np.array([r["S"] for r in pool]), np.array([r["W"] for r in pool]))
+                        curves[lv].setdefault(seg, {})[rk] = summarize(sm, np.array([r["S"] for r in pool]), np.array([r["N"] for r in pool], float))
+        out[f'{area["sido"]}|{area["sgg"]}'] = {"label": area.get("label") or area["sgg"], "small": small, "seg": segs, "curves": curves}
+        print(f"local {area['sgg']}: " + " | ".join(f"{seg} 시험 {int(t['n'])} 전국 {int(t['national'])} 시도 {int(t['sido'])} 시군 {int(t['sgg'])} → {segs[seg]['use']}" for seg, t in tal.items()))
+    return out
+
+
 def main():
     rows = load_rows()
     if len(rows) < 300:
@@ -334,6 +410,7 @@ def main():
         "npred": npred,
         "curves": curves,
         "validation": validate(rows),
+        "local": local_models(rows, recent, npred),
     }
     text = json.dumps(model, ensure_ascii=False, separators=(",", ":"))
     path = DATA / "model.json"
