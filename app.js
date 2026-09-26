@@ -24,7 +24,7 @@ const DEFAULT_FLOOR = 87.745;
 const MIN_SAMPLE = 30;
 const PAGE_SIZE = 50;
 // 탭(하단 5개): 우리 공고(첫 화면) / 공고 검색 / 내 투찰 / 분석(금액 분석·통계) / 설정
-const TAB_TITLES = {home:'우리 공고', bids:'공고 검색', watch:'내 투찰', predict:'분석', paper:'분석', stats:'분석', settings:'설정'};
+const TAB_TITLES = {home:'우리 공고', bids:'공고 검색', watch:'내 투찰', predict:'분석', paper:'분석', stats:'분석', corp:'업체 검색', settings:'설정'};
 
 // ============================================================ 유틸
 const $ = (id) => document.getElementById(id);
@@ -784,7 +784,7 @@ function switchTab(tab, push=true){
   $('pageTitle').textContent = TAB_TITLES[tab];
   if(push && location.hash !== '#' + tab) history.pushState(null, '', '#' + tab);
   window.scrollTo(0, 0);
-  ({home: renderMine, bids: renderBidsTab, predict: renderPredictTab, watch: renderWatch, paper: renderPaper, stats: renderStats, settings: renderSettings})[tab]();
+  ({home: renderMine, bids: renderBidsTab, predict: renderPredictTab, watch: renderWatch, paper: renderPaper, corp: renderCorpSearch, stats: renderStats, settings: renderSettings})[tab]();
 }
 
 // ============================================================ 입찰공고
@@ -1281,12 +1281,10 @@ function initMine(){
 }
 
 function renderBidsTab(){
-  const mode = ['live', 'saved', 'corp'].includes(bidsMode) ? bidsMode : (apiKey() ? 'live' : 'saved');
+  const mode = ['live', 'saved'].includes(bidsMode) ? bidsMode : (apiKey() ? 'live' : 'saved');
   $('bMode').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
   $('bidsSaved').hidden = mode !== 'saved';
   $('bidsLive').hidden = mode !== 'live';
-  $('bidsCorp').hidden = mode !== 'corp';
-  if(mode === 'corp') return renderCorpSearch();
   if(mode === 'saved') return renderBids();
   $('liveKeyHint').hidden = !!apiKey();
   if(apiKey() && !Live.params) liveSearch();
@@ -2303,9 +2301,8 @@ async function loadCorps(){
 }
 const bizFmt = (b) => b && b.length === 10 ? `${b.slice(0, 3)}-${b.slice(3, 5)}-${b.slice(5)}` : b || '';
 function openCorp(biz){
-  bidsMode = 'corp'; LS.set('bidsMode', 'corp');
   Corp.sel = biz;
-  if(currentTab !== 'bids') switchTab('bids'); else renderBidsTab();
+  if(currentTab !== 'corp') switchTab('corp'); else renderCorpSearch();
 }
 async function renderCorpSearch(){
   const out = $('corpOut'), info = $('cInfo'), inp = $('cQuery');

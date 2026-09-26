@@ -28,6 +28,7 @@
   <button class="nav-item" data-tab="bids" type="button"><span class="ico">🔎</span><span>공고 검색</span><span class="nav-badge" id="newBadge" hidden></span></button>
   <button class="nav-item" data-tab="watch" type="button"><span class="ico">⭐</span><span>내 투찰</span></button>
   <button class="nav-item" data-tab="predict" type="button"><span class="ico">📊</span><span>분석</span></button>
+  <button class="nav-item" data-tab="corp" type="button"><span class="ico">👥</span><span>업체</span></button>
   <button class="nav-item" data-tab="settings" type="button"><span class="ico">⚙️</span><span>설정</span></button>
 </nav>
 
@@ -63,8 +64,7 @@
   <section id="view-bids" hidden>
     <div class="seg mode-seg" id="bMode">
       <button data-v="live" type="button">🔎 실시간 검색 (나라장터)</button>
-      <button data-v="saved" type="button">📋 진행중 공고</button>
-      <button data-v="corp" type="button">🏢 업체 검색</button>
+      <button data-v="saved" type="button">📋 진행중 공고 (자동 수집)</button>
     </div>
 
     <!-- 실시간 검색: 조달청 API 직접 조회 -->
@@ -128,17 +128,6 @@
     <div class="more"><button class="btn line sm" id="bidsMore" type="button" hidden>더 보기</button></div>
     </div>
 
-    <!-- 업체 검색: 수집된 낙찰·개찰 상세로 업체별 투찰 이력·습관 -->
-    <div id="bidsCorp" hidden>
-      <div class="card filter-card">
-        <div class="search-box">
-          <span class="search-ico" aria-hidden="true">🏢</span>
-          <input type="search" id="cQuery" placeholder="업체명 또는 사업자번호 (예: 금석건설, 221-81-12757)" aria-label="업체 검색" autocomplete="off">
-        </div>
-        <div class="meta-line" id="cInfo"></div>
-      </div>
-      <div id="corpOut"></div>
-    </div>
   </section>
 
   <!-- ===================== 예측분석 ===================== -->
@@ -286,6 +275,21 @@
       <h2>내 투찰</h2>
       <p class="sub"><b>⭐ 관심</b> = ☆로 저장한 공고 · <b>📝 투찰 중</b> = 넣고 개찰을 기다리는 공고 · <b>🏁 개찰 결과</b> = 개찰이 끝난 공고의 순위·1위·예정가격과 과거 투찰 이력.</p>
       <div id="watchList"></div>
+    </div>
+  </section>
+
+  <!-- ===================== 업체 검색 ===================== -->
+  <section id="view-corp" hidden>
+    <!-- 업체 검색: 수집된 낙찰·개찰 상세로 업체별 투찰 이력·습관 -->
+    <div id="bidsCorp">
+      <div class="card filter-card">
+        <div class="search-box">
+          <span class="search-ico" aria-hidden="true">🏢</span>
+          <input type="search" id="cQuery" placeholder="업체명 또는 사업자번호 (예: 금석건설, 221-81-12757)" aria-label="업체 검색" autocomplete="off">
+        </div>
+        <div class="meta-line" id="cInfo"></div>
+      </div>
+      <div id="corpOut"></div>
     </div>
   </section>
 
