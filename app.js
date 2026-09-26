@@ -1027,6 +1027,8 @@ function bidCard(b, today, opts = {}){
     pred = '<div class="b-note">이 지역 낙찰 데이터 없음</div>';
   }
   const res = b.sido ? Data.scsbid[b.sido]?.byId.get(b.id) : null;
+  const ifRec = qp?.bid ? recIfBid(b, qp.bid, res) : '';
+  if(ifRec) pred += ifRec;
   if(res?.amt) pred += `<div class="b-note result">개찰 결과 · ${res.sr != null ? `사정율 <b>${pct(res.sr, 3)}</b> · ` : ''}1위 ${esc(res.win || '-')} ${won(res.amt)}${res.rate ? ` (${pct(res.rate)})` : ''}${res.cnt ? ` · ${fmtNum(res.cnt)}개사 참가` : ''}</div>`;
   const open = b.open ? `개찰 ${b.open.slice(5, 16).replace('-', '/')}` : '';
   return `<article class="bcard ${dd.cls}">
@@ -1051,6 +1053,37 @@ function bidCard(b, today, opts = {}){
       <span class="b-meta">${esc([b.no ? `${b.no}-${b.ord}` : '', open].filter(Boolean).join(' · '))}</span>
     </div>
   </article>`;
+}
+
+/** 개찰이 끝난 공고: '추천 투찰가로 넣었다면' 몇 위였나. 결과 = 조달청에서 받은 개찰 결과(b.openRes, 전체 투찰금액) → 수집된 낙찰 기록 + 개찰 상세.
+ *  다른 업체 투찰은 그대로라고 가정. 추천값은 지금 모델로 계산 — 그 공고가 학습 기간에 들어 있을 수 있어 표본외 역검증과는 다르다 */
+function recIfBid(b, amt, r0){
+  if(!opened(b)) return '';
+  const res = b.openRes?.plan ? b.openRes : null;
+  const r = res ? {base: res.base || b.base, plan: res.plan, amt: res.win?.amt || r0?.amt, a: b.a ?? r0?.a, floor: b.floor || r0?.floor}
+    : r0?.plan ? {...r0, a: r0.a ?? b.a, floor: r0.floor || b.floor} : null;
+  if(!r?.base) return b.live && b.kind === '공사' && !b.resTried && apiKey() ? '<div class="b-note result">🏁 추천가였다면 — 개찰 결과 확인 중…</div>' : '';
+  const op = res ? {base: r.base, plan: r.plan, r: res.xs.map((x, i) => [i + 1, 0, x])} : Data.opening[b.sido]?.bids.get(r0.id) || null;
+  const j = judgeBid(amt, r, op);
+  if(!j) return '';
+  const n = op?.r?.length || res?.n || r0?.cnt || null;
+  const rank = j.cls === 'below' ? '' : j.rank ? `<b>${fmtNum(j.rank)}위</b>${n ? ` / ${fmtNum(n + 1)}곳` : ''}` : '';
+  const head = j.cls === 'win' ? `🏆 <b>1순위 (낙찰권)</b>` : j.cls === 'below' ? `❌ <b>하한 미달</b>` : rank ? `${rank}` : `<b>${esc(j.label)}</b>`;
+  return `<div class="b-note result if-rec ${j.cls}" title="추천 투찰가 ${won(amt)}로 넣었다면 (다른 업체 투찰은 그대로라고 가정, 추천값은 지금 모델 기준)">🎯 추천가(${won(amt)})였다면 ${head}${j.cls === 'win' && rank ? ` · ${rank}` : ''} · ${esc(j.gapText)}</div>`;
+}
+/** 목록의 개찰 끝난 실시간 공사 공고의 개찰 결과를 조달청에서 받는다(한 번에 5건, 공고당 한 번) */
+async function fetchLiveResults(rows){
+  if(!apiKey()) return false;
+  const todo = rows.filter(b => b.live && b.kind === '공사' && !b.resTried && opened(b) && !(b.sido && Data.scsbid[b.sido]?.byId.get(b.id)?.plan)).slice(0, 5);
+  if(!todo.length) return false;
+  await Promise.all(todo.map(async b => {
+    b.resTried = true;
+    try{
+      b.openRes = await fetchOpeningResult(b);
+      if(b.openRes?.base && !b.base) b.base = b.openRes.base;
+    }catch(e){ console.warn(e); }
+  }));
+  return true;
 }
 
 // ============================================================ 실시간 공고 검색 (조달청 API 를 브라우저에서 직접 호출, 서비스키는 이 기기에만 저장)
@@ -1491,7 +1524,8 @@ async function renderLive(){
   $('liveMore').hidden = liveDone();
   $('liveMore').textContent = '더 보기 (이어서 조회)';
   const token = Live.token;
-  if(await fetchLiveLimits(rows) && token === Live.token) renderLive();   // 요구 면허·지역을 받은 뒤 다시 거르고 그림
+  const more = await fetchLiveLimits(rows), gotRes = await fetchLiveResults(rows);   // 요구 면허·지역, 개찰 결과를 받은 뒤 다시 거르고 그림
+  if((more || gotRes) && token === Live.token) renderLive();
 }
 
 async function toggleWatch(id, btn){
