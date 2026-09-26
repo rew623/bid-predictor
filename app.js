@@ -1004,7 +1004,6 @@ const Hidden = {
   ids(){ return new Set(LS.get('hiddenBids', [])); },
   toggle(id, on){ const s = this.ids(); on ? s.add(id) : s.delete(id); LS.set('hiddenBids', [...s].slice(-2000)); },
 };
-const SMALL_N = 100;   // '경쟁 적은 공고' 기준: 예상 참가 100곳 미만 (참가가 적을수록 1건당 낙찰확률이 크다)
 /** 우리 업체 필터 버튼: 전체 / 보유 면허 / 보유 주력분야. 더비스처럼 누르면 그 종목 공고만 */
 function mineChipDefs(c){
   const defs = [{k: 'all', label: '전체', f: () => true}];
@@ -1034,7 +1033,7 @@ async function renderMine(){
   const noCap = ev.filter(([b, e]) => e.cap === 'no').length, noMf = ev.filter(([b, e]) => e.lic === 'mf').length;
   const closeDay = (b) => (b.close || '').slice(0, 10);
 
-  // 필터 버튼 (면허·주력분야 / 경쟁 적은 공고 / 뺀 공고)
+  // 필터 버튼 (면허·주력분야 / 뺀 공고) — 사용자는 참가 가능한 공고에 다 넣으므로 '경쟁 적은 공고' 거르기는 뺐다(2026-09-26)
   const hidden = Hidden.ids();
   // 지역 버튼: 전체 / 우리 시·도 / 우리 시·군 (공사 현장 기준). 참가 제한이 없는 전국 공고는 다른 지역 현장도 나오므로
   const areas = [['all', '전체 지역', () => true]];
@@ -1048,12 +1047,10 @@ async function renderMine(){
   const defs = mineChipDefs(c);
   if(!defs.some(d => d.k === Mine.chip)) Mine.chip = 'all';
   const chipF = defs.find(d => d.k === Mine.chip).f;
-  const isSmall = (b) => { const q = quickPredict(b); return q?.cnt != null && q.cnt < SMALL_N; };
   const nHidden = rows.filter(b => hidden.has(b.id)).length;
   $('mineChips').innerHTML = defs.map(d => `<button type="button" class="chip ${Mine.chip === d.k && !Mine.showHidden ? 'selected' : ''}" data-chip="${esc(d.k)}">${esc(d.label)}<span class="cnt">${visible.filter(d.f).length}</span></button>`).join('')
-    + `<button type="button" class="chip hot ${Mine.small ? 'selected' : ''}" data-small="1" title="예상 참가 ${SMALL_N}곳 미만 — 1건당 낙찰확률이 가장 큰 공고">🎯 경쟁 적은 공고<span class="cnt">${visible.filter(chipF).filter(isSmall).length}</span></button>`
     + (nHidden ? `<button type="button" class="chip ${Mine.showHidden ? 'selected' : ''}" data-showhidden="1">뺀 공고<span class="cnt">${nHidden}</span></button>` : '');
-  const shown = Mine.showHidden ? rows.filter(b => hidden.has(b.id)) : visible.filter(chipF).filter(b => !Mine.small || isSmall(b));
+  const shown = Mine.showHidden ? rows.filter(b => hidden.has(b.id)) : visible.filter(chipF);
 
   // 업체 요약
   const licTxt = c.lics.map(l => `<span class="hero-lic">${esc(LIC_SHORT[l] || l)}${c.mf?.[l]?.length ? ` <small>${esc(c.mf[l].map(m => m.split('·')[0]).join('·'))}</small>` : ''}</span>`).join('');
@@ -1116,7 +1113,6 @@ function initMine(){
     const t = e.target.closest('button');
     if(!t) return;
     if(t.dataset.chip){ Mine.chip = t.dataset.chip; Mine.showHidden = false; }
-    else if(t.dataset.small) Mine.small = !Mine.small;
     else if(t.dataset.showhidden) Mine.showHidden = !Mine.showHidden;
     renderMine();
   });
@@ -1805,7 +1801,6 @@ async function runPredict(){
       <ul class="tips">
         <li><b>금액</b>: 추천 금액을 <b>원 단위까지 그대로</b> 넣으세요. 만원·천원 단위로 반올림하면 투찰 사정률이 옮겨가 확률 구간을 벗어날 수 있습니다${base ? ` (이 공고에서 1만원 ≈ 사정률 ${(1e4 / (floor / 100) / base * 100).toFixed(4)}%p)` : ''}.</li>
         <li><b>범위</b>: 안전 범위 안이면 과거 확률이 비슷했습니다. 다른 사람과 같은 금액(동가)을 피하려면 범위 안에서 끝자리를 조금 바꿔도 됩니다.</li>
-        <li><b>공고 고르기</b>: 같은 노력이면 <b>예상 참가가 적은 공고</b>에 넣으세요. 역검증에서 예상 20곳 미만 공고의 낙찰률은 150곳 이상 공고의 10배 이상이었습니다. 입찰공고 탭 → "낙찰확률 높은 순".</li>
         <li><b>복수예가 번호(15개 중 2개)</b>: 수백 개사가 함께 고르기 때문에 내 선택 2개가 예정가격에 주는 영향은 거의 없습니다. 통계 탭의 번호 빈도가 무작위(26.7%)와 크게 다를 때만 참고하세요.</li>
         ${cal && cal.n ? `<li><b>내 투찰 기록 보정</b>: 개찰된 내 투찰 ${fmtNum(cal.n)}건 기준, 투찰 사정률을 <b>${cal.shift >= 0 ? '+' : ''}${cal.shift.toFixed(3)}%p</b> 옮겼다면 낙찰권이 ${cal.wins}건 → ${cal.best}건이었습니다${cal.n < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}.</li>` : '<li><b>내 기록</b>: 관심공고 탭에서 실제로 넣은 금액을 기록하면, 개찰 뒤 결과와 비교해 다음에 얼마나 올리거나 내릴지 알려드립니다.</li>'}
       </ul>
@@ -2146,7 +2141,7 @@ function renderHistory(){
       <div class="stat"><div class="t">하한 미달</div><div class="v" style="color:var(--target);">${fmtNum(below)}<small class="faint"> ${pctOf(below)}%</small></div></div>
       <div class="stat"><div class="t">1위보다 높음</div><div class="v">${fmtNum(high)}<small class="faint"> ${pctOf(high)}%</small></div></div>
     </div>
-    <div class="meta-line">참가 중앙값 ${fmtNum(med(valid.map(r => r.n)) || 0)}곳${g != null ? ` · 내 투찰 사정률은 실제 사정율보다 보통 <b>${g >= 0 ? '+' : ''}${g.toFixed(3)}%p</b>` : ''}. "평균 업체였다면" = 공고마다 1/참가수를 더한 값 — 1순위 수가 이와 비슷하면 금액보다 <b>참가 적은 공고 고르기</b>가 더 중요합니다.</div>
+    <div class="meta-line">참가 중앙값 ${fmtNum(med(valid.map(r => r.n)) || 0)}곳${g != null ? ` · 내 투찰 사정률은 실제 사정율보다 보통 <b>${g >= 0 ? '+' : ''}${g.toFixed(3)}%p</b>` : ''}. "평균 업체였다면" = 공고마다 1/참가수를 더한 값(아무 금액이나 넣은 업체의 기대 1순위 수).</div>
     <div class="hist-list">${list}</div>
     ${rows.length > histShown ? `<div class="more"><button class="btn sm line" id="histMore" type="button">더 보기 (${fmtNum(rows.length - histShown)}건 남음)</button></div>` : ''}
     <div class="meta-line" style="text-align:right;"><button class="btn sm ghost" id="histClear" type="button">가져온 이력 지우기</button></div>
