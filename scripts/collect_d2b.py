@@ -170,23 +170,25 @@ class Store:
     def year(self, y):
         if y not in self.years:
             d = load_json(OUT / f"{y}.json", None) or {"v": 1, "year": y, "corps": [], "items": []}
-            d["_ci"] = {tuple(c): i for i, c in enumerate(d["corps"])}
+            d["_ci"] = {(c[0], c[1]): i for i, c in enumerate(d["corps"])}
             d["_ids"] = {it["id"]: i for i, it in enumerate(d["items"])}
             self.years[y] = d
         return self.years[y]
 
-    def corp(self, d, name, biz):
+    def corp(self, d, name, biz, ceo=None):
         k = (name, biz)
         if k not in d["_ci"]:
             d["_ci"][k] = len(d["corps"])
-            d["corps"].append([name, biz])
+            d["corps"].append([name, biz] + ([ceo] if ceo else []))
+        elif ceo and len(d["corps"][d["_ci"][k]]) < 3:
+            d["corps"][d["_ci"][k]].append(ceo)
         return d["_ci"][k]
 
     def add(self, rec, bidders):
         d = self.year(rec["date"][:4])
         # 참가 업체가 공고당 평균 500곳(최대 1만)이라 전원을 저장하면 1년에 200MB를 넘는다 → 상위 TOP 곳만 행으로,
         # 전체는 기초금액 대비 투찰률 분포 h = [[round(금액/기초×1000), 곳수]] (0.1% 간격)로 남긴다
-        rows = [[rk, self.corp(d, nm, biz), amt] + ([note] if note else []) for rk, nm, biz, amt, rate, note in bidders[:TOP]]
+        rows = [[rk, self.corp(d, nm, biz, ceo), amt] + ([note] if note else []) for rk, nm, biz, amt, rate, note, ceo in bidders[:TOP]]
         rec["r"] = rows
         if rec.get("base"):
             h = {}
@@ -250,7 +252,8 @@ def fetch_one(api, kind, it):
         note = (x.get("bidxNote") or "").strip()
         if not amt:
             continue
-        bidders.append((rk, (x.get("mfkrName") or "").strip(), re.sub(r"\D", "", x.get("bznsRgnb") or ""), int(amt), round(rate, 4) if rate else None, note))
+        bidders.append((rk, (x.get("mfkrName") or "").strip(), re.sub(r"\D", "", x.get("bznsRgnb") or ""), int(amt), round(rate, 4) if rate else None, note,
+                        (x.get("rptrKore") or "").strip() or None))
     bidders.sort(key=lambda b: (b[0] == 0, b[0], b[3]))
     date = (it.get("opengDate") or d.get("opengDt", "")[:8])
     lo, hi = num(d.get("asessRtLwlt")), num(d.get("asessRtUplmt"))

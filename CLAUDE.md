@@ -32,7 +32,8 @@ scripts/collect.py    수집기 (Actions 에서 실행)
 scripts/commit_data.sh  data/ 변경 커밋·푸시 (워크플로에서 단계마다 호출)
 scripts/company_report.py  우리 업체 역검증 보고서(로컬 전용, private/ 읽고 씀)
 scripts/paper.py      모의 투찰: 강원 공사 공고마다 마감 전 앱과 같은 추천 투찰가 기록 → 개찰 뒤 채점 → data/paper.json (앱 분석 탭 '🧪 모의 투찰'). 2026-09-26 67건 앱 quickPredict 와 원 단위 일치 확인
-scripts/corp_index.py 업체 색인 → data/corps.json (전국 낙찰자·개찰 상세 투찰·국방 상위, 하루 한 번, 약 3MB) — 앱 하단 탭 '👥 업체'
+scripts/corp_index.py 업체 색인 → data/corps.json [biz, 이름, 낙찰 수(공사+물품+국방), 마지막 낙찰일, 낙찰 시도, 상세 투찰, 상세 1순위, 국방 투찰, 국방 1순위, 대표자, 주소, 전화] + data/corpw/{앞3자리}.json 최종 낙찰 이력(강원 관련 업체만, 최근 20건) — 하루 한 번. 앱 하단 탭 '👥 업체'
+  대표자·주소·전화 = data/corp_info.json {biz:[대표, 주소, 전화]} — 수집기 `CorpInfo` 가 낙찰 목록(bidwinnrCeoNm·Adrs·TelNo)에서 모음(낙찰한 업체만 있음). 단계 `업체정보`가 과거 36개월 낙찰 목록을 한 번에 6개월씩 다시 훑어 채움(meta.info_fill). 개찰 상세·국방 corps 에도 3번째 칸에 대표자(prcbdrCeoNm·rptrKore).
 scripts/collect_d2b.py  국방전자조달(방위사업청) 입찰결과 수집기 — 워크플로 d2b 잡(나라장터 수집과 동시에, 40분)
 scripts/model.py      전국 추천 모델·역검증 → data/model.json (수집 단계마다 실행, numpy)
 scripts/korea.py      시도·시군구 파싱, 면허 23개 + 옛 명칭 별칭표
@@ -219,6 +220,7 @@ scsbid 와 같은 형식(`ThngStore`) + `cm` 계약방법(예: 수의계약·제
   참여가능금액(`caps` {면허: {j3, j5, g, k}} = 지자체 3년·5년, 조달청·그 외, 한수원): `capCheck` 가 공고 추정가격(없으면 기초금액)을 발주기관 종류(`orgKind`: 지자체 j / 한수원 k / 그 외 g)의 한도와 비교 → 초과면 참가 불가 '실적 한도 초과', 지자체 3년 초과·5년 이내면 '실적 확인'. 회사 수치는 기기에만(저장소에 넣지 않음).
 - **개찰 결과 실시간 조회**(관심공고): 개찰 시각이 지난 공고는 `fetchOpeningResult` 로 낙찰정보서비스 `getOpengResultListInfoOpengCompt`(순위) + `…CnstwkPreparPcDetail`(예정가격)을 브라우저에서 직접 조회(한 번에 5건, 결과 없으면 1시간 뒤). 사업자번호가 맞는 행 = 우리 순위·투찰금액(myBid 자동). 결과는 WatchStore 항목 `res` {n, plan, base, win, mine, top(10), xs(전체 금액)}.
 - **🏁 개찰 결과**(`renderResults`, 더비스식 카드): 앱 기록(관심·투찰·개찰 상세 자동 찾기) + 가져온 엑셀 이력을 한 목록으로(같은 공고명·개찰일은 앱 쪽만), 업무(전체/공사/용역/물품 `bp.resKind`)·기간(`bp.resPeriod`, 기본 3개월)·🏆 1순위만, 요약(건수·1순위·평균 업체였다면·하한 미달·1위보다 높음), 카드 = 사정율·내 투찰률·기초대비 + 순위/참가·투찰금액·판정, 앱 기록은 '자세히 · 금액 고치기'. 예전 '＋ 저장' 버튼(자동 찾은 공고를 관심공고로)은 없앰 — 저장 없이도 보이므로.
+- 업체 보기: 대표자·주소·전화, 강원 1순위 / **강원 최종 낙찰**(낙찰 목록 낙찰자 = 1순위 포기·적격 탈락으로 올라온 경우 포함, 더비스 '최종낙찰'), 🏆 최종 낙찰 이력(corpw). 검색은 업체명·대표자·사업자번호. 우리 개찰 결과도 낙찰 목록 winBiz 가 우리면 '🏆 최종 낙찰'.
 - 업체 보기는 `#corp/사업자번호` 로 history 에 넣어 폰 뒤로 버튼 = 업체 목록(앱 안 꺼짐), 위쪽 '← 업체 목록으로'.
 - **👥 업체 검색**(하단 탭 `view-corp`, `renderCorpSearch`/`renderCorpProfile`/`openCorp`): corps.json 에서 이름·사업자번호 검색 → 업체 보기 = 전국 낙찰 수 + 개찰 상세 지역(강원) 투찰 이력·1순위·공정 기대·하한 미달·**투찰 습관**(투찰 사정률 − 실제 사정율 분포)·자주 넣는 발주처·면허. ⭐ 관심 업체(`bp.corpWatch`, 동기화). 개찰 결과 상위 순위 표의 업체명(`data-corp`)을 누르면 바로 업체 보기. 대표자·주소는 없음(조달청 사용자정보 API 는 별도 활용신청 필요).
 - **🧪 모의 투찰**(분석 탭 세 번째 `view-paper`, `renderPaper`): data/paper.json — 우리 시·군(없으면 춘천)/시·도 전체, 채점·추천값 낙찰·평균 사정율 방식·공정 기대 Σ1/(참가+1)·하한 미달.

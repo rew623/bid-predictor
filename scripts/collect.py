@@ -122,6 +122,43 @@ F_RATE = ["sucsfbidRate", "scsbdRate"]
 F_CNT = ["prtcptCnum", "prtcptCnt"]
 F_WIN = ["bidwinnrNm", "scsbdrNm"]
 F_WIN_BIZ = ["bidwinnrBizno", "scsbdrBizno"]
+F_WIN_CEO = ["bidwinnrCeoNm"]
+F_WIN_ADR = ["bidwinnrAdrs"]
+F_WIN_TEL = ["bidwinnrTelNo"]
+
+
+class CorpInfo:
+    """낙찰 업체 대표자·주소·전화 → data/corp_info.json {사업자번호: [대표자, 주소, 전화]} (업체 검색용, 낙찰 목록에만 있는 정보라 낙찰 기록마다 반복 저장하지 않고 여기 한 곳에)"""
+    path = DATA / "corp_info.json"
+
+    def __init__(self):
+        self.d = load_json(self.path, {})
+        self.dirty = False
+
+    def add(self, it):
+        biz = re.sub(r"\D", "", str(pick(it, F_WIN_BIZ) or ""))
+        if not biz:
+            return
+        v = [(pick(it, k) or "").strip() for k in (F_WIN_CEO, F_WIN_ADR, F_WIN_TEL)]
+        if any(v) and self.d.get(biz) != v:
+            self.d[biz] = v
+            self.dirty = True
+
+    def save(self):
+        if self.dirty:
+            write_if_changed(self.path, dumps(self.d))
+            self.dirty = False
+
+
+CORP_INFO = None
+
+
+def corp_info():
+    global CORP_INFO
+    if CORP_INFO is None:
+        CORP_INFO = CorpInfo()
+    return CORP_INFO
+F_CEO = ["prcbdrCeoNm"]
 F_PLAN = ["plnprc", "plnPrc"]
 F_RBID = ["rbidNo"]
 F_RANK = ["opengRank", "rank"]
@@ -724,6 +761,7 @@ class ScsbidStore:
         if not id_:
             return
         rbid = to_int(pick(it, F_RBID)) or 0
+        corp_info().add(it)
         r = self.recs.get(id_)
         if r and rbid < r.get("_rbid", 0):
             return
@@ -845,7 +883,7 @@ def enrich_thng_notice(store, it):
 class OpeningStore:
     """data/opening/{시도}/{연도}.json
 
-    파일 형식: {"sido","year","corps":[[업체명,사업자번호],...],
+    파일 형식: {"sido","year","corps":[[업체명,사업자번호,대표자?],...],
                "bids":{공고ID:{"date","plan","base","p":[[번호,가격,추첨(0/1),추첨횟수],...],
                               "r":[[순위,업체idx,투찰금액,투찰률,비고?],...]}}}
     index.json: {"done":{공고ID:연도}, "fail":{공고ID:시도횟수}}
@@ -882,11 +920,13 @@ class OpeningStore:
         return self.years[key]
 
     @staticmethod
-    def _corp(y, name, biz):
+    def _corp(y, name, biz, ceo=None):
         k = biz or name
         if k not in y["cidx"]:
             y["cidx"][k] = len(y["corps"])
-            y["corps"].append([name, biz])
+            y["corps"].append([name, biz] + ([ceo] if ceo else []))
+        elif ceo and len(y["corps"][y["cidx"][k]]) < 3:
+            y["corps"][y["cidx"][k]].append(ceo)
         return y["cidx"][k]
 
     def add(self, sido, rec, ranks, prices):
@@ -900,7 +940,7 @@ class OpeningStore:
             amt = to_int(pick(it, F_BID_AMT))
             if not (name or biz) or amt is None:
                 continue
-            row = [rank if rank is not None else 0, self._corp(y, name, biz), amt, to_rate(pick(it, F_BID_RATE), 4)]
+            row = [rank if rank is not None else 0, self._corp(y, name, biz, (pick(it, F_CEO) or "").strip() or None), amt, to_rate(pick(it, F_BID_RATE), 4)]
             note = (pick(it, F_NOTE) or "").strip()
             if note:
                 row.append(note[:30])
@@ -949,11 +989,11 @@ class OpeningStore:
                     b = dict(y["bids"][i])
                     rows = []
                     for row in b.get("r", []):
-                        name, biz = y["corps"][row[1]]
-                        k = biz or name
+                        c = y["corps"][row[1]]
+                        k = c[1] or c[0]
                         if k not in cidx:
                             cidx[k] = len(corps)
-                            corps.append([name, biz])
+                            corps.append(list(c[:3]))
                         rows.append([row[0], cidx[k]] + row[2:])
                     b["r"] = rows
                     bids[i] = b
@@ -1103,6 +1143,34 @@ def step_refill(api, meta, store, now, checkpoint):
         log(f"  낙찰 {cnt}건, 공고 보강 {nn}건")
         todo.pop(0)
         checkpoint()
+
+
+INFO_MONTHS = 36          # 업체정보(대표자·주소)를 채울 과거 기간
+INFO_PER_RUN = 6          # 한 번에 채울 달 수 (공사+물품 낙찰 목록, 한 달 약 10회 호출)
+
+
+def step_corp_info(api, meta, now, checkpoint):
+    """과거 낙찰 목록을 다시 훑어 낙찰 업체의 대표자·주소·전화만 corp_info.json 에 채운다(낙찰 기록은 그대로).
+    진행: meta.info_fill {cursor: YYYYMM, done}. 새 낙찰은 최근낙찰·물품최근이 자동으로 채운다."""
+    st = meta.setdefault("info_fill", {})
+    if st.get("done"):
+        return
+    cur = dt.datetime.strptime(st.get("cursor") or now.strftime("%Y%m"), "%Y%m").replace(tzinfo=KST)
+    stop = (now.replace(day=1) - dt.timedelta(days=31 * INFO_MONTHS)).strftime("%Y%m")
+    for _ in range(INFO_PER_RUN):
+        bgn = cur.replace(day=1)
+        end = (bgn + dt.timedelta(days=32)).replace(day=1) - dt.timedelta(minutes=1)
+        log(f"[업체정보] {bgn:%Y-%m}")
+        for op in ("scsbid_list", "thng_list"):
+            for it in api.fetch_range(op, bgn, min(end, now)):
+                corp_info().add(it)
+        cur = bgn - dt.timedelta(days=1)
+        st["cursor"] = cur.strftime("%Y%m")
+        if st["cursor"] < stop:
+            st["done"] = True
+            break
+        checkpoint()
+    log(f"  업체정보 {len(corp_info().d)}곳")
 
 
 def step_thng_recent(api, meta, tstore, now, cache=None):
@@ -1326,6 +1394,7 @@ def main():
 
     def save_all(final=False):
         cache.save()
+        corp_info().save()
         ostore.save()
         files_s, counts_s = store.save()
         files_t, counts_t = tstore.save()
@@ -1356,6 +1425,7 @@ def main():
         ("최근낙찰", lambda: step_recent_scsbid(api, meta, store, cache, now)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all, reserve=DETAIL_RESERVE)),
         ("빈달", lambda: step_refill(api, meta, store, now, save_all)),
+        ("업체정보", lambda: step_corp_info(api, meta, now, save_all)),
         ("물품최근", lambda: step_thng_recent(api, meta, tstore, now, cache)),
         ("물품과거", lambda: step_thng_backfill(api, meta, tstore, now, save_all)),
         ("지역보강", lambda: step_region_fill(api, meta, store, now, save_all)),

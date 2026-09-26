@@ -2378,7 +2378,7 @@ const Corp = {idx: null, q: '', sel: null};
 async function loadCorps(){
   if(!Corp.idx){
     const d = await Data.fetchJson('corps.json');
-    Corp.idx = {sidos: d.sidos, at: d.updated_at, items: d.items.map(x => ({biz: x[0], nm: x[1], wins: x[2], last: x[3], ws: x[4].map(i => d.sidos[i]), dn: x[5], d1: x[6], mn: x[7], m1: x[8]}))};
+    Corp.idx = {sidos: d.sidos, at: d.updated_at, items: d.items.map(x => ({biz: x[0], nm: x[1], wins: x[2], last: x[3], ws: x[4].map(i => d.sidos[i]), dn: x[5], d1: x[6], mn: x[7], m1: x[8], ceo: x[9] || '', adr: x[10] || '', tel: x[11] || ''}))};
   }
   return Corp.idx;
 }
@@ -2398,12 +2398,12 @@ async function renderCorpSearch(){
   if(!Corp.idx) out.innerHTML = loadingHtml('업체 목록 불러오는 중…');
   let idx;
   try{ idx = await loadCorps(); }catch(e){ out.innerHTML = '<div class="card empty">업체 목록이 아직 없습니다. 다음 자동 수집 뒤에 생깁니다.</div>'; return; }
-  info.innerHTML = `업체 ${fmtNum(idx.items.length)}곳 — 전국 낙찰자 + ${esc((Data.meta.detail?.regions || []).join('·'))} 개찰 상세(전체 투찰) + 국방 상위 투찰. 대표자·주소는 조달청 업체 정보에서 확인하세요.`;
+  info.innerHTML = `업체 ${fmtNum(idx.items.length)}곳 — 전국 낙찰자(공사·물품·국방) + 강원 개찰 상세(전체 투찰) + 국방 상위 투찰. 대표자로도 찾을 수 있습니다.`;
   if(Corp.sel) return renderCorpProfile(Corp.sel);
   const watch = LS.get('corpWatch', []);
   const q = Corp.q.replace(/[\s-]/g, '');
   const row = (c) => `<button type="button" class="corp-row" data-corp="${esc(c.biz)}">
-      <div><b>${esc(c.nm)}</b>${watch.includes(c.biz) ? ' ⭐' : ''}<small>${bizFmt(c.biz)}${c.ws.length ? ' · 낙찰 지역 ' + esc(c.ws.join('·')) : ''}</small></div>
+      <div><b>${esc(c.nm)}</b>${watch.includes(c.biz) ? ' ⭐' : ''}<small>${bizFmt(c.biz)}${c.ceo ? ' · 대표 ' + esc(c.ceo) : ''}${c.adr ? ' · ' + esc(c.adr.split(' ').slice(0, 2).join(' ')) : c.ws.length ? ' · 낙찰 지역 ' + esc(c.ws.join('·')) : ''}</small></div>
       <div class="corp-nums"><span>전국 낙찰 <b>${fmtNum(c.wins)}</b></span><span>강원 투찰 <b>${fmtNum(c.dn)}</b>${c.d1 ? ` · 1순위 ${fmtNum(c.d1)}` : ''}</span></div></button>`;
   if(!q){
     const me = String(Company.get().biz || '');
@@ -2414,7 +2414,7 @@ async function renderCorpSearch(){
       + `<h3 class="corp-h">강원에서 가장 많이 투찰한 업체</h3>${[...idx.items].sort((a, b) => b.dn - a.dn).slice(0, 15).map(row).join('')}`;
     return;
   }
-  const hits = /^\d{3,10}$/.test(q) ? idx.items.filter(c => c.biz.startsWith(q)) : idx.items.filter(c => c.nm.replace(/\s/g, '').includes(q));
+  const hits = /^\d{3,10}$/.test(q) ? idx.items.filter(c => c.biz.startsWith(q)) : idx.items.filter(c => c.nm.replace(/\s/g, '').includes(q) || c.ceo.replace(/\s/g, '') === q || (q.length >= 2 && c.ceo.includes(q)));
   out.innerHTML = hits.length ? `<div class="meta-line">${fmtNum(hits.length)}곳${hits.length > 50 ? ' (많이 투찰·낙찰한 순 50곳)' : ''}</div>${hits.slice(0, 50).map(row).join('')}` : '<div class="card empty">찾는 업체가 없습니다. 낙찰했거나 강원 공고에 투찰한 업체만 있습니다.</div>';
 }
 async function renderCorpProfile(biz){
@@ -2435,7 +2435,8 @@ async function renderCorpProfile(biz){
       const rec = sc?.byId.get(id) || {};
       const base = b.base || rec.base, plan = b.plan || rec.plan;
       const x = bidToSr(row[2], base, rec.a, rec.floor), S = base && plan ? plan / base * 100 : null;
-      rows.push({id, date: b.date, nm: rec.nm || id, org: recOrg(rec), lic: rec.lic || [], n: b.r.length, rank: row[0], amt: row[2], x, S, d: x != null && S ? x - S : null});
+      rows.push({id, date: b.date, nm: rec.nm || id, org: recOrg(rec), lic: rec.lic || [], n: b.r.length, rank: row[0], amt: row[2], x, S, d: x != null && S ? x - S : null,
+        fin: rec.winBiz === biz});   // 최종 낙찰 = 낙찰 목록의 낙찰자(1순위 포기·적격 탈락으로 2순위 이하가 된 경우 포함)
     }
   }
   rows.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -2447,28 +2448,36 @@ async function renderCorpProfile(biz){
   const cnt = (arr) => Object.entries(arr.reduce((m, k) => (k && (m[k] = (m[k] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const orgs = cnt(rows.map(r => r.org)), lics = cnt(rows.flatMap(r => r.lic.map(l => LIC_SHORT[l] || l)));
   const watch = LS.get('corpWatch', []), on = watch.includes(biz);
+  let wl = [];
+  try{ wl = (await Data.fetchJson(`corpw/${biz.slice(0, 3)}.json`))[biz] || []; }catch(e){}
+  const nFin = rows.filter(r => r.fin).length;
   out.innerHTML = `<button class="corp-back" id="corpBack" type="button">← 업체 목록으로</button><div class="card corp-prof">
-      <div class="corp-top"><div><h2 style="margin:0;">${esc(c.nm)}</h2><div class="meta-line" style="margin:2px 0 0;">${bizFmt(biz)}</div></div>
+      <div class="corp-top"><div><h2 style="margin:0;">${esc(c.nm)}</h2><div class="meta-line" style="margin:2px 0 0;">${bizFmt(biz)}${c.ceo ? ` · 대표 <b>${esc(c.ceo)}</b>` : ''}</div>
+        ${c.adr ? `<div class="meta-line" style="margin:2px 0 0;">📍 ${esc(c.adr)}</div>` : ''}${c.tel ? `<div class="meta-line" style="margin:2px 0 0;">☎ <a href="tel:${esc(c.tel)}">${esc(c.tel)}</a></div>` : ''}</div>
         <button class="btn sm ${on ? 'reg' : 'line'}" id="corpStar" type="button">${on ? '⭐ 관심 업체' : '☆ 관심 업체로'}</button></div>
       <div class="res-sum" style="margin-top:12px;">
         <div><span>전국 낙찰</span><b>${fmtNum(c.wins)}</b></div>
         <div><span>강원 투찰</span><b>${fmtNum(rows.length)}</b></div>
         <div class="${top1 ? 'win' : ''}"><span>강원 1순위</span><b>${fmtNum(top1)}</b></div>
+        <div class="${nFin ? 'win' : ''}"><span>강원 최종 낙찰</span><b>${fmtNum(nFin)}</b></div>
         <div><span>평균 업체라면</span><b>${fmtNum(fair, 1)}</b></div>
         <div><span>하한 미달</span><b class="below">${valid.length ? Math.round(below / valid.length * 100) : 0}%</b></div>
       </div>
-      <div class="meta-line">${c.last ? `마지막 낙찰 ${esc(c.last)} · ` : ''}${c.ws.length ? `주로 ${esc(c.ws.join('·'))} 낙찰 · ` : ''}${c.mn ? `국방 투찰 ${fmtNum(c.mn)}건(상위 30위 안) · ` : ''}대표자·주소는 <a href="https://www.g2b.go.kr" target="_blank" rel="noopener">나라장터</a> 업체 조회</div>
+      <div class="meta-line">${c.last ? `마지막 낙찰 ${esc(c.last)} · ` : ''}${c.ws.length ? `주로 ${esc(c.ws.join('·'))} 낙찰 · ` : ''}${c.mn ? `국방 투찰 ${fmtNum(c.mn)}건(상위 30위 안) · ` : ''}${c.adr ? '' : '대표자·주소는 낙찰한 적이 있어야 조달청 데이터에 나옵니다'}</div>
       ${valid.length >= 5 ? `<h3>투찰 습관 — 실제 사정율보다 얼마나 높게/낮게 쓰나 (강원 ${fmtNum(valid.length)}건)</h3>
         ${histogram(valid.map(r => Math.max(-2.5, Math.min(2.5, r.d))), {min: -2.5, max: 2.5, step: 0.1, lines: [{x: 0, color: 'var(--target)', label: '실제 사정율'}]})}
         <div class="meta-line">가운데(절반) <b>${q(ds, .25) >= 0 ? '+' : ''}${q(ds, .25).toFixed(2)} ~ ${q(ds, .75) >= 0 ? '+' : ''}${q(ds, .75).toFixed(2)}%p</b> · 투찰 사정률 자체는 보통 <b>${q(xs, .25).toFixed(2)} ~ ${q(xs, .75).toFixed(2)}%</b>. 0보다 왼쪽(−)은 하한 미달, 오른쪽이 멀수록 1위보다 높게 쓴 것.</div>` : '<div class="meta-line">투찰 습관을 볼 만큼 강원 투찰 기록이 많지 않습니다(5건 미만).</div>'}
       ${orgs.length ? `<div class="corp-tags"><b>자주 넣는 발주처</b> ${orgs.map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join('')}</div>` : ''}
       ${lics.length ? `<div class="corp-tags"><b>공고 면허</b> ${lics.map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join('')}</div>` : ''}
     </div>
+    ${wl.length ? `<h3 class="corp-h">🏆 최종 낙찰 이력 (최근 ${fmtNum(wl.length)}건 · 공사·물품·국방)</h3><div class="rc-list">${wl.map(w => `<div class="rc win">
+        <div class="rc-nm"><span class="fin-badge">최종낙찰</span> ${esc(w[1])}</div><div class="rc-sub">${esc(w[0])} · ${esc(w[3])}${w[6] ? ' · ' + esc(w[6]) : ''}</div>
+        <div class="rc-foot"><span class="rc-rank win">${esc(w[4])}${w[5] ? ` · ${fmtNum(w[5])}곳 참가` : ''}</span><span class="rc-amt">${w[2] ? won(w[2]) : '-'}</span></div></div>`).join('')}</div>` : ''}
     ${rows.length ? `<h3 class="corp-h">강원 투찰 이력 (최근 ${fmtNum(Math.min(rows.length, 60))}건)</h3><div class="rc-list">${rows.slice(0, 60).map(r => {
-      const cls = r.rank === 1 ? 'win' : r.d != null && r.d < 0 ? 'below' : 'high';
+      const cls = r.rank === 1 || r.fin ? 'win' : r.d != null && r.d < 0 ? 'below' : 'high';
       return `<div class="rc ${cls}"><div class="rc-nm">${esc(r.nm)}</div><div class="rc-sub">${esc(r.date || '')} · ${esc(r.org)}</div>
         <div class="rc-grid"><div><span>사정율</span><b>${r.S ? r.S.toFixed(3) : '-'}</b></div><div><span>투찰률</span><b>${r.x != null ? r.x.toFixed(3) : '-'}</b></div><div><span>차이</span><b>${r.d != null ? (r.d >= 0 ? '+' : '') + r.d.toFixed(3) : '-'}</b></div></div>
-        <div class="rc-foot"><span class="rc-rank ${cls}"><b>${r.rank ? fmtNum(r.rank) : '-'}</b> / ${fmtNum(r.n)}</span><span class="rc-amt">${won(r.amt)}</span><span class="rc-v ${cls}">${r.rank === 1 ? '🏆 1순위' : r.d != null && r.d < 0 ? '하한 미달' : ''}</span></div></div>`;
+        <div class="rc-foot"><span class="rc-rank ${cls}"><b>${r.rank ? fmtNum(r.rank) : '-'}</b> / ${fmtNum(r.n)}</span><span class="rc-amt">${won(r.amt)}</span><span class="rc-v ${cls}">${r.fin ? '🏆 최종 낙찰' : r.rank === 1 ? '1순위(낙찰 안 됨)' : r.d != null && r.d < 0 ? '하한 미달' : ''}</span></div></div>`;
     }).join('')}</div>` : ''}`;
   $('corpBack').onclick = () => { if(location.hash.startsWith('#corp/')) history.back(); else { Corp.sel = null; renderCorpSearch(); } };
   $('corpStar').onclick = () => { const w = LS.get('corpWatch', []); LS.set('corpWatch', on ? w.filter(b => b !== biz) : [biz, ...w]); renderCorpProfile(biz); };
@@ -2550,11 +2559,12 @@ async function renderResults(el, appItems, pseudo, head){
     const mine = r && r.base && r.plan ? judgeBid(w.myBid, r, op) : null;
     if(mine) judged.push(mine);
     const rank = w.res?.mine?.rank || mine?.rank || null;
+    const fin = !!(r0?.winBiz && r0.winBiz === String(Company.get().biz || ''));   // 최종 낙찰(1순위 포기로 올라온 경우 포함)
     const date = (w.open || r0?.date || w.close || '').slice(0, 16);
     return {src: 'app', w, r, id: w.id, nm: w.nm, org: w.org || w.dmd, rgn: [w.sido, w.sgg].filter(Boolean).join(' '), lic: (w.lic || []).map(l => LIC_SHORT[l] || l).join('·'),
       date, base: r?.base || w.base, amt: w.myBid, S: r?.base && r?.plan ? r.plan / r.base * 100 : null, x: mine?.x ?? null,
       rank: mine?.cls === 'below' ? -1 : rank, n: r?.cnt || w.res?.n || null, kind: '공사', winner: r?.win, winAmt: r?.amt,
-      cls: rank === 1 ? 'win' : mine?.cls || '', label: rank === 1 ? '🏆 1순위' : mine?.label?.replace(' (1순위)', '') || (r ? '금액 기록 없음' : '결과 대기')};
+      cls: fin || rank === 1 ? 'win' : mine?.cls || '', label: fin ? '🏆 최종 낙찰' : rank === 1 ? '🏆 1순위' : mine?.label?.replace(' (1순위)', '') || (r ? '금액 기록 없음' : '결과 대기'), fin};
   });
   LS.set('myCal', calibrate(judged));
   // 가져온 엑셀 이력 (앱 기록과 같은 공고(이름·개찰일)는 앱 쪽만)
@@ -2571,11 +2581,11 @@ async function renderResults(el, appItems, pseudo, head){
   const kinds = [['all', '전체'], ['공사', '공사'], ['용역', '용역'], ['물품', '물품']];
   const byKind = (k) => k === 'all' ? inPeriod : inPeriod.filter(x => x.kind === k);
   let list = byKind(Res.kind);
-  if(Res.top) list = list.filter(x => x.rank === 1);
+  if(Res.top) list = list.filter(x => x.rank === 1 || x.fin);
   list.sort((a, b) => b.date.localeCompare(a.date));
   // 요약
   const valid = list.filter(x => x.S && x.n);
-  const nWin = list.filter(x => x.rank === 1).length, fair = valid.reduce((t, x) => t + 1 / x.n, 0);
+  const nWin = list.filter(x => x.rank === 1 || x.fin).length, fair = valid.reduce((t, x) => t + 1 / x.n, 0);
   const below = valid.filter(x => x.cls === 'below').length, high = valid.filter(x => x.cls === 'high').length;
   const pctOf = (k) => valid.length ? Math.round(k / valid.length * 100) : 0;
   const ctrl = `<div class="res-ctrl">
@@ -2587,7 +2597,7 @@ async function renderResults(el, appItems, pseudo, head){
     </div>
     <div class="res-sum">
       <div><span>건수</span><b>${fmtNum(list.length)}</b></div>
-      <div class="${nWin ? 'win' : ''}"><span>🏆 1순위</span><b>${fmtNum(nWin)}</b></div>
+      <div class="${nWin ? 'win' : ''}"><span>🏆 1순위·최종 낙찰</span><b>${fmtNum(nWin)}</b></div>
       <div><span>평균 업체였다면</span><b>${fmtNum(fair, 1)}</b></div>
       <div><span>하한 미달</span><b class="below">${pctOf(below)}%</b></div>
       <div><span>1위보다 높음</span><b>${pctOf(high)}%</b></div>
