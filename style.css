@@ -518,3 +518,13 @@ button.hk:hover{background:rgba(255,255,255,.24);}
 
 .cloud-on{display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center;}
 .cloud-on .btn{margin-left:auto;}
+
+/* ---------- 투찰 등록 버튼 · 후보 선택 ---------- */
+.btn.reg{background:var(--ok); color:#fff;}
+.btn.reg:hover{background:#0E9F5B;}
+.pick-box{margin-top:10px; padding:10px 12px; border-radius:10px; background:var(--ok-soft); font-size:13px;}
+tr.pick-row td{background:var(--ok-soft);}
+td.nowrap{white-space:nowrap;}
+.bid.flash{border-color:var(--ok); box-shadow:0 0 0 3px var(--ok-soft);}
+.alert.ok-alert{background:var(--ok-soft); color:var(--ok); font-weight:600; margin:0 0 12px;}
+@media (max-width:620px){ .hide-m{display:none;} td.nowrap{white-space:normal;} td.nowrap .btn{margin:2px 0;} }

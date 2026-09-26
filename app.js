@@ -994,6 +994,7 @@ function bidCard(b, today, opts = {}){
     <details class="b-more"><summary>자세히</summary><div class="b-tags">${moreTags}</div>${more}</details>
     <div class="b-actions">
       <button class="btn sm" data-predict="${esc(b.id)}" type="button">💰 투찰금액 분석</button>
+      ${qp?.bid ? `<button class="btn sm reg" data-quickbid="${esc(b.id)}" type="button" title="추천 투찰가 ${won(qp.bid)}을 내 투찰에 기록">📝 추천가로 투찰 등록</button>` : ''}
       ${b.url ? `<a class="btn line sm" href="${esc(b.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}
       ${opts.hide ? `<button class="btn line sm" data-hide="${esc(b.id)}" type="button" title="우리가 못 하는 공고면 빼 두세요. 이 기기에만 저장">목록에서 빼기</button>` : ''}
       ${opts.unhide ? `<button class="btn line sm" data-unhide="${esc(b.id)}" type="button">되돌리기</button>` : ''}
@@ -1434,6 +1435,21 @@ async function toggleWatch(id, btn){
     btn.classList.add('on'); btn.textContent = '★';
   }
 }
+/** '📝 이 금액으로 투찰 등록': 관심공고에 넣고(참여 표시) 내 투찰 금액을 채운 뒤 내 투찰 → 투찰 중 으로 이동 */
+let flashId = null;
+async function registerBid(b, amt, sr, by){
+  if(!b || !amt) return;
+  amt = Math.ceil(amt);
+  const old = (await WatchStore.list()).find(w => w.id === b.id);
+  if(old?.myBid && old.myBid !== amt && !confirm(`이미 기록된 투찰금액 ${won(old.myBid)}을(를) ${won(amt)}으로 바꿀까요?`)) return;
+  await WatchStore.save({...pickNotice(b), savedAt: old?.savedAt || new Date().toISOString(), joined: true, myBid: amt,
+    pred: {sr: sr ?? null, bid: amt, n: P.last?.pred?.n || old?.pred?.n || 0, by}});
+  watchIds.add(b.id);
+  flashId = b.id;
+  watchMode = 'joined'; LS.set('watchMode', watchMode);
+  switchTab('watch');
+}
+const regBtn = (id, label = '📝 이 금액으로 투찰 등록') => `<button class="btn sm reg" data-quickbid="${esc(id)}" type="button">${label}</button>`;
 const pickNotice = (b) => ({id:b.id, no:b.no, ord:b.ord, nm:b.nm, org:b.org, dmd:b.dmd, sido:b.sido, sgg:b.sgg,
   lic:licOf(b).length ? licOf(b) : b.lic, rgn:b.rgn, base:b.base, est:b.est, a:b.a, floor:b.floor, net:b.net, rng:b.rng, close:b.close, open:b.open, url:b.url});
 
@@ -1873,7 +1889,7 @@ async function runPredict(){
   const rec = mp ? recFromModel(mp) : wc ? recFromLocal(wc, ec) : null;
   P.last.rec = rec;
   if(rec){ $('cRate').value = rec.x.toFixed(4); renderCalc(); }
-  let hero, curveCard = '', tips = '';
+  let hero, curveCard = '', tips = '', drawCurve = null, pickInfo = null;
   if(rec){
     const al = areaLift(rec.area);
     const vw = rec.src === 'model' ? (al ? {p: rec.random * al, lift: al} : valWinP(rec.random, rec.nExp)) : null;   // 역검증 기준 (없으면 과거 곡선값)
@@ -1911,24 +1927,33 @@ async function runPredict(){
       <h3>✅ 추천 체크</h3>
       <ul class="checklist">${check}</ul>
       <div class="meta-line">${esc(rec.note)} · 참고용이며 낙찰을 보장하지 않습니다.</div>
-      <div class="btn-row" style="margin-top:10px;"><button class="btn sm" data-use-sr="${rec.x}" type="button">계산기에 적용</button></div>
+      <div class="btn-row" style="margin-top:10px;">${P.notice && recAmt ? `<button class="btn sm reg" data-reg-amt="${recAmt}" data-reg-sr="${rec.x}" type="button">📝 추천가로 투찰 등록</button>` : ''}<button class="btn sm line" data-use-sr="${rec.x}" type="button">계산기에 적용</button></div>
+      ${P.notice ? '' : '<div class="meta-line">공고 목록에서 "💰 투찰금액 분석"으로 들어오면 여기서 바로 내 투찰에 등록할 수 있습니다.</div>'}
     </div>`;
 
     // ---- 2) 곡선 + 후보
     const [vMin, vMax] = rec.view;
     const sBins = binPts(rows.map(r => [r.sr, 1]), vMin, vMax, (vMax - vMin) > 3 ? 0.05 : 0.02);
+    drawCurve = (sel) => plot([{pts: sBins, color: 'var(--text-sub)', label: '실제 사정율 분포', bars: true},
+              {pts: rec.pts(), color: 'var(--primary)', label: '과거 낙찰확률', fill: true}],
+        {min: vMin, max: vMax, marks: [{x: rec.x, color: 'var(--target)', label: `추천 ${rec.x.toFixed(3)}`}, {x: meanX, color: 'var(--text-faint)', label: `평균 ${meanX.toFixed(2)}`},
+          ...(sel != null && Math.abs(sel - rec.x) > 1e-9 ? [{x: sel, color: 'var(--ok)', label: `선택 ${sel.toFixed(3)}`}] : [])]});
+    pickInfo = (x) => {
+      const amt = base ? amtAt(x) : null;
+      return `<b>선택 ${pct(x, 3)}</b> · 과거 낙찰확률 ${(rec.at(x) * 100).toFixed(2)}%${rec.random ? ` (공정 기대 ×${(rec.at(x) / rec.random).toFixed(2)})` : ''}${amt ? ` · 투찰금액 <b>${won(amt)}</b>` : ''}
+        <div class="btn-row" style="margin-top:8px;">${P.notice && amt ? `<button class="btn sm reg" data-reg-amt="${amt}" data-reg-sr="${x}" type="button">📝 이 금액으로 투찰 등록</button>` : ''}<button class="btn sm line" data-use-sr="${x}" type="button">계산기로</button></div>`;
+    };
     curveCard = `<div class="card">
       <h2>투찰 사정률별 과거 낙찰확률</h2>
       <p class="sub">선 = 그 값으로 넣었을 때 과거 낙찰확률, 옅은 막대 = 이 지역 실제 사정율 분포. 사정율이 자주 떨어지면서 경쟁사가 덜 몰린 곳이 높게 나옵니다.</p>
-      ${plot([{pts: sBins, color: 'var(--text-sub)', label: '실제 사정율 분포', bars: true},
-              {pts: rec.pts(), color: 'var(--primary)', label: '과거 낙찰확률', fill: true}],
-        {min: vMin, max: vMax, marks: [{x: rec.x, color: 'var(--target)', label: `추천 ${rec.x.toFixed(3)}`}, {x: meanX, color: 'var(--text-faint)', label: `평균 ${meanX.toFixed(2)}`}]})}
+      <div id="curvePlot">${drawCurve(null)}</div>
       <div class="table-wrap" style="margin-top:10px; max-height:none;"><table>
-        <thead><tr><th>후보</th><th class="num">투찰 사정률</th><th class="num">과거 낙찰확률</th><th class="num">공정 기대 대비</th><th class="num">투찰금액</th><th></th></tr></thead>
+        <thead><tr><th>후보</th><th class="num">투찰 사정률</th><th class="num">과거 낙찰확률</th><th class="num hide-m">공정 기대 대비</th><th class="num">투찰금액</th><th></th></tr></thead>
         <tbody>${rec.peaks.map((c, i) => `<tr${i ? '' : ' class="hl-row"'}><td>${i + 1}${i ? '' : ' ★'}</td><td class="num">${pct(c.x, 3)}</td><td class="num">${(c.p * 100).toFixed(2)}%</td>
-          <td class="num">${rec.random ? '×' + (c.p / rec.random).toFixed(2) : '-'}</td><td class="num">${base ? won(amtAt(c.x)) : '-'}</td>
-          <td><button class="btn sm line" data-use-sr="${c.x}" type="button">적용</button></td></tr>`).join('')}</tbody>
+          <td class="num hide-m">${rec.random ? '×' + (c.p / rec.random).toFixed(2) : '-'}</td><td class="num">${base ? won(amtAt(c.x)) : '-'}</td>
+          <td class="nowrap"><button class="btn sm line" data-pick-sr="${c.x}" type="button">적용</button> <button class="btn sm ghost" data-use-sr="${c.x}" type="button">계산기로</button></td></tr>`).join('')}</tbody>
       </table></div>
+      <div class="pick-box" id="pickBox">${pickInfo(rec.x)}</div>
       <div class="meta-line">곡선 표본: ${esc(rec.note)} · 곡선 폭 ±${rec.src === 'model' && Model.m?.smooth ? Model.m.smooth : curveSmooth()}%p · 과거 낙찰확률은 과거에 맞춘 값이라 새 공고에선 더 낮음(위 예상 낙찰확률은 역검증 기준) · 공정 기대 = 1 ÷ (참가업체 수 + 1), 우리가 들어가면 한 곳 늘어나므로</div>
     </div>`;
 
@@ -1996,11 +2021,23 @@ async function runPredict(){
       </table></div>
       ${rows.length > 1000 ? `<div class="meta-line">화면에는 최근 1,000건만 표시합니다. 전체는 CSV로 받으세요.</div>` : ''}
     </details>`;
-  out.querySelectorAll('[data-use-sr]').forEach(btn => btn.addEventListener('click', () => {
-    $('cRate').value = (+btn.dataset.useSr).toFixed(4);
-    renderCalc();
-    $('calcResult').scrollIntoView({behavior:'smooth', block:'center'});
-  }));
+  // 버튼은 위임(후보 '적용'으로 새로 그린 버튼도 동작): 계산기로 / 그래프에 표시 / 투찰 등록
+  out.onclick = (e) => {
+    const u = e.target.closest('[data-use-sr]'), pk = e.target.closest('[data-pick-sr]'), rg = e.target.closest('[data-reg-amt]');
+    if(u){
+      $('cRate').value = (+u.dataset.useSr).toFixed(4);
+      renderCalc();
+      $('calcResult').scrollIntoView({behavior:'smooth', block:'center'});
+    }else if(pk && drawCurve){
+      const x = +pk.dataset.pickSr;
+      $('curvePlot').innerHTML = drawCurve(x);
+      $('pickBox').innerHTML = pickInfo(x);
+      out.querySelectorAll('[data-pick-sr]').forEach(b => b.closest('tr').classList.toggle('pick-row', b === pk));
+      $('curvePlot').scrollIntoView({behavior:'smooth', block:'center'});
+    }else if(rg){
+      registerBid(P.notice, +rg.dataset.regAmt, +rg.dataset.regSr, '추천');
+    }
+  };
   $('csvBtn').onclick = () => downloadCSV('예측근거_과거공고.csv',
     ['공고번호','공고명','발주기관','수요기관','시도','시군','면허','기초금액','예정가격','낙찰금액','낙찰율','사정율','참가업체수','낙찰하한율','A값','개찰일'],
     rows.map(r => [r.no, r.nm, r.org, r.dmd, r.sido, r.sgg, (r.lic||[]).join(' '), r.base, r.plan, r.amt, r.rate, r.sr, r.cnt, r.floor, r.a, r.date]));
@@ -2041,7 +2078,9 @@ function renderCalc(){
     </div>
     ${warns.map(w => `<div class="alert danger">⚠️ ${esc(w)}</div>`).join('')}
     ${info.map(w => `<div class="alert info">${w}</div>`).join('')}
-    <div class="meta-line">낙찰하한율 ${c.floor}% · A값 ${won(c.a)} · 참고용이며 낙찰을 보장하지 않습니다.</div>`;
+    <div class="meta-line">낙찰하한율 ${c.floor}% · A값 ${won(c.a)} · 참고용이며 낙찰을 보장하지 않습니다.</div>
+    ${P.notice ? `<div class="btn-row" style="margin-top:10px;"><button class="btn reg" id="calcReg" type="button">📝 ${won(c.final)}으로 투찰 등록</button></div>` : ''}`;
+  $('calcReg')?.addEventListener('click', () => registerBid(P.notice, c.final, c.sr, c.manual ? '직접' : '계산기'));
 }
 
 // ---------- 발주기관 예가 구간확률
@@ -2449,7 +2488,7 @@ async function renderWatch(){
     const star = w.auto
       ? `<button class="btn sm ghost" data-join-save="${esc(w.id)}" type="button">＋ 저장</button>`
       : `<button class="star on" data-unwatch="${esc(w.id)}" title="관심 해제" type="button">★</button>`;
-    return `<div class="bid">
+    return `<div class="bid${w.id === flashId ? ' flash' : ''}">
       <div class="bid-top"><div>
         <div class="bid-title">${isJoined(w) ? '<span class="badge blue" style="margin-right:4px;">참여</span>' : ''}${esc(w.nm)}</div>
         <div class="bid-sub">${esc(w.org || '')}${w.sido ? ' · ' + esc([w.sido, w.sgg].filter(Boolean).join(' ')) : ''} · ${esc(w.no ? `${w.no}-${w.ord}` : '')}${w.close ? ` · <span class="dday ${dd.urgent ? 'urgent' : ''}">${esc(dd.text)}</span>` : ''}</div>
@@ -2487,8 +2526,10 @@ async function renderWatch(){
       </div>
       <div class="meta-line">내 투찰 사정률을 ${cal.shift >= 0 ? '+' : ''}${cal.shift.toFixed(3)}%p 옮겼다면 낙찰권이 ${cal.wins}건 → ${cal.best}건이었습니다. ${cnt('high') > cnt('below') ? '대체로 1위보다 높게 쓰는 편입니다.' : cnt('below') > cnt('high') ? '대체로 하한 미달이 많은 편입니다.' : ''} 표본이 적을수록 우연일 수 있습니다.</div>
     </div>` : '';
-  el.innerHTML = modeSeg + joinForm + head + summary + `<div class="bid-list" style="margin-top:0;">${cards.join('')}</div>` + (resultMode ? renderHistory() : '');
+  el.innerHTML = (flashId ? '<div class="alert ok-alert">📝 내 투찰에 등록했습니다. 나라장터에 실제로 넣은 금액이 다르면 아래 칸을 고쳐 "기록"을 누르세요.</div>' : '')
+    + modeSeg + joinForm + head + summary + `<div class="bid-list" style="margin-top:0;">${cards.join('')}</div>` + (resultMode ? renderHistory() : '');
   bindWatch(el, pseudo);
+  if(flashId){ el.querySelector('.bid.flash')?.scrollIntoView({behavior: 'smooth', block: 'center'}); flashId = null; }
 }
 
 function bindWatch(el, pseudo){
@@ -2998,6 +3039,8 @@ async function init(){
     if(u){ WatchStore.remove(u.dataset.unwatch).then(renderWatch); return; }
     const p = e.target.closest('[data-predict]');
     if(p){ predictWithNotice(p.dataset.predict); return; }
+    const qb = e.target.closest('[data-quickbid]');
+    if(qb){ const b = findNotice(qb.dataset.quickbid), q = b && quickPredict(b); if(q?.bid) registerBid(b, q.bid, q.bestSr, '추천'); return; }
     const h = e.target.closest('[data-hide]'), uh = e.target.closest('[data-unhide]');
     if(h || uh){ Hidden.toggle((h || uh).dataset[h ? 'hide' : 'unhide'], !!h); renderMine(); return; }
     const g = e.target.closest('[data-goto]');
