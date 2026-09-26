@@ -113,7 +113,8 @@ F_A_PARTS = [  # A값 = 국민연금 + 건강보험 + 노인장기요양 + 퇴�
 ]
 F_NET = ["pureCnstrctCst", "pureCnstrtnCst", "netCnstrctCst", "cnstrtnAbsltPrc", "pureCnstcst"]
 F_LIC = ["lcnsLmtNm", "indstrytyNm", "permsnIndstrytyList"]
-F_MFRC = ["indstrytyMfrcFldList"]   # 면허제한의 주력분야 (예: 금속구조물ㆍ창호ㆍ온실공사) — 대업종 안에서 더 좁힌 제한
+F_MFRC = ["indstrytyMfrcFldList"]
+F_LMT_GRP = ["lmtGrpNo"]            # 면허제한 그룹 번호   # 면허제한의 주력분야 (예: 금속구조물ㆍ창호ㆍ온실공사) — 대업종 안에서 더 좁힌 제한
 F_RGN = ["prtcptPsblRgnNm", "rgnNm"]
 F_AMT = ["sucsfbidAmt", "scsbdAmt"]
 F_RATE = ["sucsfbidRate", "scsbdRate"]
@@ -576,6 +577,11 @@ class NoticeCache:
             lst = e.setdefault("mf_list", [])
             if mf not in lst:
                 lst.append(mf)
+        if raw:   # 면허제한 한 줄: [그룹번호, 면허 원문, 주력분야 원문] — 같은 그룹은 모두 필요, 그룹끼리는 택일
+            row = [int(num(pick(it, F_LMT_GRP)) or 1), raw, mf]
+            lst = e.setdefault("lim", [])
+            if row not in lst:
+                lst.append(row)
 
     def add_region(self, it):
         id_, _, _ = notice_id(it)
@@ -629,11 +635,13 @@ def other_quals(e):
 
 def write_lic_map(cache):
     """앱 실시간 검색용: 최근 60일 공사 공고별 면허제한·참가가능지역 → data/lic_map.json
-    {"v":1, "lic":[면허명…], "items":{공고ID:[면허 번호…]}, "rg":[지역 원문…], "rgn":{공고ID:[지역 번호…]}, "mfn":[주력분야 원문…], "mf":{공고ID:[번호…]}}
+    {"v":1, "lic":[면허명…], "items":{공고ID:[면허 번호…]}, "rg":[지역 원문…], "rgn":{공고ID:[지역 번호…]}, "mfn":[주력분야 원문…], "mf":{공고ID:[번호…]},
+     "grp":{공고ID:[[그룹번호, lic 번호, mfn 번호 또는 -1]…]}}
     (조달청 검색조건의 업종 필터가 0건을 돌려주는 문제 대신 + 실시간 공고엔 면허제한·참가가능지역이 없어 '참가 가능' 판정에 씀)"""
     names, index, items = [], {}, {}
     rnames, rindex, rgns = [], {}, {}
     mnames, mindex, mfs = [], {}, {}
+    grps = {}
 
     def ids(values, nm, ix):
         out = []
@@ -654,8 +662,14 @@ def write_lic_map(cache):
             rgns[id_] = ids(e["rgn"], rnames, rindex)
         if e.get("mf_list"):
             mfs[id_] = ids(e["mf_list"], mnames, mindex)
+        if e.get("lim"):
+            rows = []
+            for g, raw, mf in e["lim"]:
+                lic = (normalize_licenses(raw) or other_quals({"lic_raw": raw}) or [raw])[0]
+                rows.append([g, ids([lic], names, index)[0], ids([mf], mnames, mindex)[0] if mf else -1])
+            grps[id_] = rows
     return write_if_changed(DATA / "lic_map.json", dumps({"v": SCHEMA_VERSION, "lic": names, "items": items, "rg": rnames, "rgn": rgns,
-                                                          "mfn": mnames, "mf": mfs}))
+                                                          "mfn": mnames, "mf": mfs, "grp": grps}))
 
 
 def finish_notice(e):
@@ -976,7 +990,7 @@ class OpeningStore:
 def step_notices(api, meta, cache, now):
     last = parse_dt((meta.get("notice_last") or "")[:16].replace("T", " "))
     days = 30 if not cache.items or not last else min(30, max(2, (now - last).days + 2))
-    lic_days = days if meta.get("mf_scan") else 30   # 주력분야(mf_list)를 처음 받을 때 한 번은 30일치 면허제한을 다시
+    lic_days = days if meta.get("lim_scan") else 30   # 그룹·주력분야(lim)를 처음 받을 때 한 번은 30일치 면허제한을 다시
     bgn = now - dt.timedelta(days=days)
     seen = now.isoformat(timespec="minutes")
     log(f"[공고] 최근 {days}일")
@@ -986,7 +1000,7 @@ def step_notices(api, meta, cache, now):
         cache.add_bsis(it)
     for it in api.fetch_range("notice_license", now - dt.timedelta(days=lic_days), now):
         cache.add_license(it)
-    meta["mf_scan"] = True
+    meta["lim_scan"] = True
     for it in api.fetch_range("notice_region", bgn, now):
         cache.add_region(it)
     cache.finalize(now)

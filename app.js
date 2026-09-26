@@ -166,7 +166,8 @@ const Data = {
         this.licMap = new Map(Object.entries(j.items || {}).map(([id, idx]) => [id, idx.map(i => j.lic[i])]));
         this.rgnMap = new Map(Object.entries(j.rgn || {}).map(([id, idx]) => [id, idx.map(i => j.rg[i])]));
         this.mfMap = new Map(Object.entries(j.mf || {}).map(([id, idx]) => [id, idx.map(i => j.mfn[i])]));
-      }catch(e){ this.licMap = new Map(); this.rgnMap = new Map(); this.mfMap = new Map(); }
+        this.grpMap = new Map(Object.entries(j.grp || {}).map(([id, rows]) => [id, rows.map(([g, l, m]) => [g, j.lic[l], m >= 0 ? j.mfn[m] : ''])]));
+      }catch(e){ this.licMap = new Map(); this.rgnMap = new Map(); this.mfMap = new Map(); this.grpMap = new Map(); }
       return this.licMap;
     });
   },
@@ -966,11 +967,92 @@ function initLive(){
     bidsMode = v; LS.set('bidsMode', v); renderBidsTab();
   });
 }
+// ============================================================ 우리 업체 대시보드 (입찰공고 탭 첫 모드)
+// 설정의 업체 정보(소재지·면허·주력분야·참여가능금액)로 자동 수집된 진행중 공고 중 참가 가능한 것만 — 검색 없이 바로.
+const Mine = {day: null};
+const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+const dayLabel = (d) => `${d.slice(5).replace('-', '.')} (${WEEK[new Date(Date.parse(d + 'T12:00:00Z')).getUTCDay()]})`;
+async function renderMine(){
+  const c = Company.get();
+  $('mineHint').hidden = Company.isSet();
+  if(!Company.isSet()){ ['mineHead', 'mineKpis', 'mineCal', 'mineList', 'mineInfo'].forEach(id => $(id).innerHTML = ''); return; }
+  if(!Data.bids){ $('mineList').innerHTML = loadingHtml(); await Data.loadBids(); }
+  await Data.loadLicMap();
+  const now = new Date(), today = kstDay(now);
+  const open = Data.bids.filter(b => !b.close || parseKst(b.close) >= now);
+  const ev = open.map(b => [b, eligibility(b)]);
+  const rows = ev.filter(([b, e]) => e.ok && e.lic !== 'unknown').map(([b]) => b);
+  const unknown = ev.filter(([b, e]) => e.ok && e.lic === 'unknown').length;
+  const noCap = ev.filter(([b, e]) => e.cap === 'no').length, noMf = ev.filter(([b, e]) => e.lic === 'mf').length;
+  const closeDay = (b) => (b.close || '').slice(0, 10);
+
+  // 업체 요약
+  const mfTxt = Object.entries(c.mf || {}).map(([l, v]) => `${l}(${v.join('·')})`);
+  $('mineHead').innerHTML = `<b>🏢 ${esc([c.sido, c.sgg].filter(Boolean).join(' ') || '소재지 미설정')}</b>
+    <span>면허: ${esc((mfTxt.length ? c.lics.map(l => mfTxt.find(t => t.startsWith(l)) || l) : c.lics).join(', ') || '미설정')}</span>
+    <span class="faint">${Object.keys(c.caps || {}).length ? '참여가능금액 적용' : '참여가능금액 미설정'}</span>
+    <button class="btn sm line" data-goto="settings" type="button">업체 정보 수정</button>`;
+
+  // 요약 숫자
+  const watch = await WatchStore.list();
+  const pendingMine = watch.filter(w => (w.myBid || w.joined) && !w.res && (!w.open || w.open.slice(0, 10) >= today)).length;
+  const in7 = kstDay(new Date(now.getTime() + 6 * 86400000));
+  const kpi = [['참가 가능 공고', rows.length, ''], ['오늘 마감', rows.filter(b => closeDay(b) === today).length, 'red'],
+    ['7일 안 마감', rows.filter(b => closeDay(b) && closeDay(b) <= in7).length, ''], ['기초금액 공개', rows.filter(b => b.base).length, ''],
+    ['내 투찰 개찰 대기', pendingMine, '']];
+  $('mineKpis').innerHTML = kpi.map(([t, v, cls]) => `<div class="kpi ${cls && v ? cls : ''}"><span class="t">${t}</span><span class="v">${fmtNum(v)}</span></div>`).join('');
+
+  // 2주 달력 (투찰 마감 · 개찰)
+  const days = Array.from({length: 14}, (_, i) => kstDay(new Date(now.getTime() + i * 86400000)));
+  $('mineCal').innerHTML = days.map(d => {
+    const n = rows.filter(b => closeDay(b) === d).length, o = rows.filter(b => (b.open || '').slice(0, 10) === d).length;
+    const w = new Date(Date.parse(d + 'T12:00:00Z')).getUTCDay();
+    return `<button type="button" data-day="${d}" class="${w === 0 ? 'sun' : w === 6 ? 'sat' : ''} ${d === today ? 'today' : ''} ${Mine.day === d ? 'on' : ''}">
+      <span class="d">${+d.slice(8)}일 ${WEEK[w]}</span><span class="n ${n ? '' : 'zero'}">${n}</span><span class="o">${o ? `개찰 ${o}` : '&nbsp;'}</span></button>`;
+  }).join('');
+
+  // 목록: 마감일별로 묶기
+  let list = Mine.day ? rows.filter(b => closeDay(b) === Mine.day) : rows;
+  const sort = $('mineSort').value;
+  const qp = new Map(list.map(b => [b, quickPredict(b)]));
+  list = [...list].sort(sort === 'win' ? (a, b) => (qp.get(b)?.winP ?? -1) - (qp.get(a)?.winP ?? -1)
+    : sort === 'value' ? (a, b) => (qp.get(b)?.value ?? -1) - (qp.get(a)?.value ?? -1)
+    : (a, b) => (a.close || '9').localeCompare(b.close || '9'));
+  watchIds = new Set(watch.map(w => w.id));
+  let html = '', last = null;
+  for(const b of list){
+    if(sort === 'close' && closeDay(b) !== last){ last = closeDay(b); html += `<div class="day-sep">${last ? dayLabel(last) : '마감 미정'} 마감 · ${list.filter(x => closeDay(x) === last).length}건</div>`; }
+    html += bidCard(b, today);
+  }
+  $('mineList').innerHTML = html || `<div class="empty card">${Mine.day ? '이날 마감인 참가 가능 공고가 없습니다.' : '지금 참가 가능한 진행중 공고가 없습니다.'}</div>`;
+  $('mineInfo').innerHTML = [`참가 가능 ${fmtNum(rows.length)}건${Mine.day ? ` 중 ${dayLabel(Mine.day)} 마감 ${fmtNum(list.length)}건` : ''} (자동 수집 공사 공고, 마감 전)`,
+    noMf ? `주력분야 불일치 ${fmtNum(noMf)}건 제외` : '', noCap ? `실적 한도 초과 ${fmtNum(noCap)}건 제외` : '',
+    unknown ? `면허 정보 없는 ${fmtNum(unknown)}건 제외(실시간 검색에서 확인)` : '',
+    Data.meta?.updated_at ? `데이터 ${esc(Data.meta.updated_at.slice(5, 16).replace('T', ' '))}` : ''].filter(Boolean).join(' · ');
+  // 면허제한 그룹 정보가 없는 공고는 조달청에서 받아 다시 거른다(서비스키가 있을 때)
+  if(await fetchLiveLimits(open.filter(b => !b.limTried && !Data.grpMap?.get(b.id)?.length).filter(b => { const e = eligibility(b); return e.ok; }))) renderMine();
+}
+function initMine(){
+  // 대시보드가 생긴 뒤 처음 열 때는 업체 정보가 있으면 이 화면부터
+  if(Company.isSet() && !LS.get('mineIntro', false)){ bidsMode = 'mine'; LS.set('bidsMode', 'mine'); }
+  LS.set('mineIntro', true);
+  $('mineSort').value = LS.get('mineSort', 'close');
+  $('mineSort').addEventListener('change', () => { LS.set('mineSort', $('mineSort').value); renderMine(); });
+  $('mineCal').addEventListener('click', (e) => {
+    const d = e.target.closest('[data-day]')?.dataset.day;
+    if(!d) return;
+    Mine.day = Mine.day === d ? null : d;
+    renderMine();
+  });
+}
+
 function renderBidsTab(){
-  const mode = bidsMode || (apiKey() ? 'live' : 'saved');
+  const mode = bidsMode || (Company.isSet() ? 'mine' : apiKey() ? 'live' : 'saved');
   $('bMode').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
   $('bidsSaved').hidden = mode !== 'saved';
   $('bidsLive').hidden = mode !== 'live';
+  $('bidsMine').hidden = mode !== 'mine';
+  if(mode === 'mine') return renderMine();
   if(mode === 'saved') return renderBids();
   $('liveKeyHint').hidden = !!apiKey();
   if(apiKey() && !Live.params) liveSearch();
@@ -1167,6 +1249,22 @@ function mfPass(b, l, c){
   const need = group.map(mfKey).filter(k => raw.some(r => r.includes(k)));
   return !need.length || need.some(k => mine.includes(k));
 }
+/** 면허제한 한 줄(면허 l, 주력분야 원문 raw)을 우리 주력분야로 통과하나. 한 줄에 여러 주력분야가 적혀 있으면 그중 하나면 된다 */
+function mfRowPass(l, raw, c){
+  const group = MFRC[l], mine = (c.mf?.[l] || []).map(mfKey);
+  if(!group || !mine.length || !raw) return true;
+  const rk = mfKey(raw);
+  const need = group.map(mfKey).filter(k => rk.includes(k));
+  return !need.length || need.some(k => mine.includes(k));
+}
+/** 면허제한 그룹: Map(그룹번호 → [[그룹, 면허, 주력분야 원문]…]). 같은 그룹은 모두 필요, 그룹끼리는 택일. 정보 없으면 null */
+function limGroups(b){
+  const rows = Data.grpMap?.get(b.id) || b.reqLim;
+  if(!rows?.length) return null;
+  const m = new Map();
+  rows.forEach(r => { if(!m.has(r[0])) m.set(r[0], []); m.get(r[0]).push(r); });
+  return m;
+}
 /** 공고의 면허제한: 수집된 면허제한(lic_map) 우선. 실시간 공고의 b.lic 는 주공종·부대공종이라 제한 면허가 아니다 */
 function licOf(b){
   const m = Data.licMap?.get(b.id);
@@ -1182,14 +1280,16 @@ async function fetchLiveLimits(rows){
     const c = Data.bids?.find(x => x.id === b.id);
     if(c?.base) ['base', 'a', 'net', 'rng', 'floor'].forEach(k => { if(c[k] != null && b[k] == null) b[k] = c[k]; });
   });
-  const need = rows.filter(b => b.live && b.kind === '공사' && !b.limTried && !Data.licMap?.get(b.id)?.length).slice(0, 10);
+  // 면허제한 그룹(lmtGrpNo)이 없으면 조회 — 수집된 lic_map 에 그룹이 채워지기 전에도 '동시 요구' 공고를 거르도록
+  const need = rows.filter(b => (b.live ? b.kind === '공사' : true) && !b.limTried && !Data.grpMap?.get(b.id)?.length).slice(0, 10);
   const todo = bsis.filter(b => !b.base);
   if(!need.length && !todo.length) return bsis.length > 0;
   await Promise.all([...todo.map(b => enrichLive(b)), ...need.map(async b => {
     b.limTried = true;
-    const setLim = (lics, rgns, mfs = []) => {
+    const setLim = (lics, rgns, mfs = [], grp = []) => {
       b.reqLic = [...new Set(lics.flatMap(normLic))];
       b.reqMf = [...new Set(mfs)];
+      b.reqLim = grp.map(([g, raw, mf]) => [g, normLic(raw)[0], mf || '']);
       b.rgn = [...new Set(rgns)];   // [] = 지역 제한 없음
       b.limOk = true;
     };
@@ -1198,7 +1298,7 @@ async function fetchLiveLimits(rows){
     if(day){
       try{
         const d = await limitsForDay(day);
-        if(d.lic.has(b.id)){ setLim(d.lic.get(b.id), d.rgn.get(b.id) || [], d.mf.get(b.id) || []); return; }   // 없으면 제한 없음인지 누락인지 몰라 공고번호로 다시
+        if(d.lic.has(b.id)){ setLim(d.lic.get(b.id), d.rgn.get(b.id) || [], d.mf.get(b.id) || [], d.grp.get(b.id) || []); return; }   // 없으면 제한 없음인지 누락인지 몰라 공고번호로 다시
       }
       catch(e){ console.warn('면허제한 하루 조회', day, e); }
     }
@@ -1208,7 +1308,8 @@ async function fetchLiveLimits(rows){
       const [l, r] = await Promise.all([liveCall('getBidPblancListInfoLicenseLimit', q), liveCall('getBidPblancListInfoPrtcptPsblRgn', q)]);
       const mine = (it) => String(it.bidNtceOrd ?? b.ord) === b.ord;
       setLim(l.items.filter(mine).map(it => pickF(it, 'lcnsLmtNm')).filter(Boolean), r.items.filter(mine).map(it => pickF(it, 'prtcptPsblRgnNm')).filter(Boolean),
-        l.items.filter(mine).map(it => pickF(it, 'indstrytyMfrcFldList')).filter(Boolean));
+        l.items.filter(mine).map(it => pickF(it, 'indstrytyMfrcFldList')).filter(Boolean),
+        l.items.filter(mine).filter(it => pickF(it, 'lcnsLmtNm')).map(it => [+(pickF(it, 'lmtGrpNo') || 1), pickF(it, 'lcnsLmtNm'), pickF(it, 'indstrytyMfrcFldList') || '']));
     }catch(e){ console.warn('면허제한 조회', b.no, e); }
   })]);
   return true;
@@ -1219,7 +1320,7 @@ function limitsForDay(day){
   if(!limDays.has(day)){
     const p = (async () => {
       const d0 = day.replace(/-/g, ''), d1 = kstDay(new Date(Date.parse(day) + 86400000)).replace(/-/g, '');
-      const out = {lic: new Map(), rgn: new Map(), mf: new Map()};
+      const out = {lic: new Map(), rgn: new Map(), mf: new Map(), grp: new Map()};
       const add = (map, id, v) => { if(!map.has(id)) map.set(id, []); if(!map.get(id).includes(v)) map.get(id).push(v); };
       for(const [op, field, map] of [['getBidPblancListInfoLicenseLimit', 'lcnsLmtNm', out.lic], ['getBidPblancListInfoPrtcptPsblRgn', 'prtcptPsblRgnNm', out.rgn]]){
         for(let page = 1; page <= 15; page++){
@@ -1231,6 +1332,10 @@ function limitsForDay(day){
             add(map, id, v);
             const mf = map === out.lic && pickF(it, 'indstrytyMfrcFldList');
             if(mf) add(out.mf, id, String(mf).trim());
+            if(map === out.lic){
+              if(!out.grp.has(id)) out.grp.set(id, []);
+              out.grp.get(id).push([+(pickF(it, 'lmtGrpNo') || 1), v, mf ? String(mf).trim() : '']);
+            }
           }
           if(!items.length || page * 999 >= total) break;
         }
@@ -1271,7 +1376,14 @@ function eligibility(b){
   const c = Company.get();
   const out = {ok: true, lic: null, rgn: null, cap: null};
   const lics = licOf(b), rgn = rgnOf(b);
-  if(c.lics.length){
+  const groups = c.lics.length ? limGroups(b) : null;
+  if(groups){
+    // 그룹 하나라도 '모든 줄의 면허 보유 + 주력분야 통과'면 참가 가능
+    const gs = [...groups.values()];
+    if(gs.some(g => g.every(r => c.lics.includes(r[1]) && mfRowPass(r[1], r[2], c)))) out.lic = 'ok';
+    else if(gs.some(g => g.every(r => c.lics.includes(r[1])))){ out.lic = 'mf'; out.ok = false; }
+    else { out.lic = 'no'; out.ok = false; }
+  }else if(c.lics.length){
     const held = lics.filter(l => c.lics.includes(l));
     if(!lics.length) out.lic = b.limOk ? 'ok' : 'unknown';   // limOk: 조달청 조회 결과 면허 제한 없음
     else if(!held.length){ out.lic = 'no'; out.ok = false; }
@@ -2551,6 +2663,7 @@ async function init(){
 
   initBidsFilters();
   initLive();
+  initMine();
   initCompany();
   initPredict();
   initStats();
