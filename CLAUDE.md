@@ -28,6 +28,7 @@ icons/                아이콘 (svg, 192/512 png)
 .nojekyll             _sample_*.json 등 밑줄 파일도 Pages 에 게시되도록
 scripts/collect.py    수집기 (Actions 에서 실행)
 scripts/commit_data.sh  data/ 변경 커밋·푸시 (워크플로에서 단계마다 호출)
+scripts/company_report.py  우리 업체 역검증 보고서(로컬 전용, private/ 읽고 씀)
 scripts/model.py      전국 추천 모델·역검증 → data/model.json (수집 단계마다 실행, numpy)
 scripts/korea.py      시도·시군구 파싱, 면허 23개 + 옛 명칭 별칭표
 scripts/regions.json  개찰 상세(전체 순위·복수예가)를 수집할 시·도 목록. 예: ["강원"]
@@ -43,6 +44,8 @@ data/                 수집 결과 (아래)
 - 물품(2026-09 추가, 앱·모델은 데이터가 쌓인 뒤): `물품최근` = `getScsbidListSttusThng` 최근 40일 + `getBidPblancListInfoThngBsisAmount` 최근 60일로 기초금액·예가범위 보강, `물품과거` = 한 달씩 24개월까지(`meta.thng_backfill`) → `data/thng/{시도}.json`. 낙찰정보 `THNG_RESERVE`(250)·입찰공고 `THNG_BID_RESERVE`(400) 남김. 실제 순서: 공고 → 최근낙찰 → 상세 → 물품최근 → 물품과거 → 지역보강 → 과거낙찰(24개월) → 상세 → 과거낙찰(나머지).
 - `빈달`: 이미 지난 달 중 수집이 비었던 달을 다시 받는다(`meta.refill` [YYYYMM…], 기본 2026-03~06 — 이 달들만 낙찰 수가 평소의 1/10 이하였다). 한 달 = `backfill_month`(과거낙찰과 같은 처리).
 - `private/` (gitignore): 회사 투찰 이력(더비스 엑셀 등) 같은 개인 자료. 분석은 로컬에서만.
+  `scripts/company_report.py` → `private/report.html`: ① 우리 시·도 × 우리 면허 공사 전부를 월별 표본외 추천값으로(평균 사정율·회사 실제 투찰률 분포·공정 기대와 비교) ② 더비스 엑셀의 공사 투찰을 개찰일±1+기초금액으로 수집 낙찰과 맞춰 재채점. 설정 `private/company.json` {sido, sgg, lics}. 사용자 PC 작업 스케줄러 "bid-predictor 우리업체 역검증"이 매일 08:30(꺼져 있었으면 켜질 때) `private/run_report.cmd`(git pull → 보고서) 실행.
+  2026-09-26 결과: 강원 × 금속창호·지붕/도장·습식·방수·석공 541건 — 우리 27건(5.0%) / 평균 사정율 17 / 더비스식 17.2 / 공정 기대 19.2. 회사 1,034건 실제 1순위 2건 ≈ 공정 기대 2.44건.
 - `지역보강`: 과거 낙찰 레코드에 참가가능지역(`rgn`)을 채운다. 공고 게시일 7일 단위로 최신→가장 오래된 낙찰 달 앞까지 한 번(`meta.rgn_fill` {cursor: YYYYMMDD, done}), 입찰공고 호출 `REGION_RESERVE`(250)회는 남김. 최근낙찰은 notice_cache 의 rgn 으로 보강.
   참가가능지역·면허제한 API 는 공사·물품·용역 전부를 돌려줘 한 달치 호출이 많다 → 과거낙찰(달 단위, 중간 저장 없음)에 넣으면 한 달을 못 끝내 매일 같은 달만 반복한다(2026-09-25 실제로 겪음). 달 단위 단계에 무거운 조회를 더하지 말 것.
 - 환경변수 `STEPS` 로 단계를 골라 실행. 워크플로는 1차 `공고,최근낙찰`(MAX_MINUTES 40) → 커밋 → 2차 `빈달,물품최근,물품과거,지역보강,과거낙찰,상세` → 커밋 순서라 공고는 몇 분 안에 앱에 뜬다. 09·13·17시 예약 실행과 `quick_only` 수동 실행은 1차만.
