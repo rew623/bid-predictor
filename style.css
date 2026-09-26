@@ -452,7 +452,8 @@ details.ranks summary{cursor:pointer; color:var(--primary-dark);}
 .hero-lic{background:rgba(255,255,255,.16); border-radius:999px; padding:3px 10px; font-size:12.5px; font-weight:600;}
 .hero-lic small{font-weight:400; opacity:.85;}
 .hero-lic.dim{background:rgba(255,255,255,.08); font-weight:400; opacity:.85;}
-.hero-btn{grid-column:2; grid-row:1; background:rgba(255,255,255,.18); color:#fff; border:none; border-radius:8px; padding:6px 10px; font-size:12.5px; cursor:pointer; white-space:nowrap;}
+.hero-btns{grid-column:2; grid-row:1; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end;}
+.hero-btn{ background:rgba(255,255,255,.18); color:#fff; border:none; border-radius:8px; padding:6px 10px; font-size:12.5px; cursor:pointer; white-space:nowrap;}
 .hero-btn:hover{background:rgba(255,255,255,.28);}
 .hero-kpis{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:8px; margin-top:16px;}
 .hk{background:rgba(255,255,255,.14); border:none; border-radius:12px; padding:10px 12px; color:#fff; font:inherit; text-align:left; display:flex; flex-direction:column; gap:1px;}
@@ -514,3 +515,6 @@ button.hk:hover{background:rgba(255,255,255,.24);}
   .hr-rank b{font-size:13px;}
   .hist .stat-grid{grid-template-columns:repeat(2, minmax(0,1fr));}
 }
+
+.cloud-on{display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center;}
+.cloud-on .btn{margin-left:auto;}

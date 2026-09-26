@@ -83,7 +83,145 @@ function bidAmount(base, sr, a, floor){
 
 const LS = {
   get(k, d){ try{ const v = localStorage.getItem('bp.'+k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } },
-  set(k, v){ try{ localStorage.setItem('bp.'+k, JSON.stringify(v)); }catch(e){} },
+  set(k, v){ try{ localStorage.setItem('bp.'+k, JSON.stringify(v)); }catch(e){} if(Cloud.keys.includes(k)) Cloud.touch(k); },
+};
+
+// ============================================================ PC·폰 같이 쓰기 (구글 로그인 + Firestore)
+// 개인 데이터(관심공고·투찰 기록·우리 업체·뺀 공고·가져온 이력·서비스키·화면 설정)를 users/{uid}/kv/{키} 문서 하나씩에
+// {v: JSON 문자열, at: 바꾼 시각(ms), dev: 기기 id} 로 둔다. 같은 키는 나중에 바꾼 쪽이 이긴다.
+// 처음 로그인할 때만 관심공고·뺀 공고는 두 기기 것을 합친다. Firestore 는 배열 안 배열을 못 넣어 값은 문자열로.
+// 보안 규칙: users/{uid}/** 는 본인(request.auth.uid == uid)만 읽고 쓴다 — Firebase 콘솔에 설정.
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyD3jJD98w4FP8FDKFkvmA2K54ophlqyws0', authDomain: 'bidproject-452e5.firebaseapp.com', projectId: 'bidproject-452e5',
+  storageBucket: 'bidproject-452e5.firebasestorage.app', messagingSenderId: '220864509888', appId: '1:220864509888:web:420d8926f699090f9fba25',
+};   // 웹 앱 설정값은 공개돼도 되는 값(비밀 아님) — 데이터는 보안 규칙이 지킨다
+const FB_VER = '10.12.2';
+const Cloud = {
+  keys: ['company', 'watch', 'hiddenBids', 'history', 'apiKey', 'mineArea', 'mineSort', 'bidsFilter', 'bidsMode', 'watchMode', 'theme', 'myCal', 'curveSmooth', 'pSidos', 'pLics', 'statsFilter', 'guideClosed'],
+  user: null, db: null, loading: null, status: '', lastSync: null, unsub: null, timers: {},
+  dev: (() => { try{ let d = localStorage.getItem('bp._dev'); if(!d){ d = Math.random().toString(36).slice(2, 10); localStorage.setItem('bp._dev', d); } return d; }catch(e){ return 'x'; } })(),
+  ts(){ try{ return JSON.parse(localStorage.getItem('bp._ts') || '{}'); }catch(e){ return {}; } },
+  setTs(k, t){ const m = this.ts(); m[k] = t; try{ localStorage.setItem('bp._ts', JSON.stringify(m)); }catch(e){} },
+  raw(k){ try{ return localStorage.getItem('bp.' + k); }catch(e){ return null; } },
+  touch(k){
+    this.setTs(k, Date.now());
+    if(!this.user) return;
+    clearTimeout(this.timers[k]);
+    this.timers[k] = setTimeout(() => this.push(k), 800);
+  },
+  async push(k){
+    if(!this.user) return;
+    const v = this.raw(k);
+    if(v != null && v.length > 900000){ console.warn('동기화 생략(너무 큼)', k, v.length); return; }
+    try{
+      await this.col().doc(k).set({v: v == null ? null : v, at: this.ts()[k] || Date.now(), dev: this.dev});
+      this.lastSync = new Date(); this.paint();
+    }catch(e){ console.warn('동기화 쓰기 실패', k, e); this.status = '저장 실패: ' + (e.code || e.message); this.paint(); }
+  },
+  col(){ return this.db.collection('users').doc(this.user.uid).collection('kv'); },
+  loadScript(src){ return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Firebase 를 불러오지 못했습니다')); document.head.appendChild(s); }); },
+  /** SDK 를 불러오고 로그인 상태를 지켜본다 (한 번 로그인한 기기는 앱을 열 때 자동) */
+  init(){
+    if(this.loading) return this.loading;
+    this.loading = (async () => {
+      const u = `https://www.gstatic.com/firebasejs/${FB_VER}/`;
+      await this.loadScript(u + 'firebase-app-compat.js');
+      await Promise.all([this.loadScript(u + 'firebase-auth-compat.js'), this.loadScript(u + 'firebase-firestore-compat.js')]);
+      firebase.initializeApp(FIREBASE_CONFIG);
+      this.db = firebase.firestore();
+      firebase.auth().onAuthStateChanged(async (user) => {
+        this.user = user;
+        if(this.unsub){ this.unsub(); this.unsub = null; }
+        if(user){ this.status = ''; LS.set('cloud', true); await this.pull(true); this.listen(); }
+        this.paint();
+      });
+    })().catch(e => { this.loading = null; this.status = e.message; this.paint(); throw e; });
+    return this.loading;
+  },
+  async signIn(){
+    try{
+      // 팝업은 누른 순간에 열어야 막히지 않는다 → 설정 화면을 열 때 미리 불러 둔 SDK 를 바로 쓴다
+      if(!window.firebase?.apps?.length){ this.status = '준비 중… 잠시 뒤 다시 눌러 주세요'; this.paint(); await this.init(); }
+      const p = new firebase.auth.GoogleAuthProvider();
+      try{ await firebase.auth().signInWithPopup(p); }
+      catch(e){ if(/popup-blocked|operation-not-supported/.test(e.code || '')) await firebase.auth().signInWithRedirect(p); else throw e; }
+      this.status = '';
+    }catch(e){ this.status = '로그인 실패: ' + (e.code || e.message); }
+    this.paint();
+  },
+  async signOut(){ await this.init(); await firebase.auth().signOut(); LS.set('cloud', false); this.status = '로그아웃했습니다 (이 기기 데이터는 그대로)'; this.paint(); },
+  /** 서버 값과 이 기기 값을 맞춘다. first = 로그인 직후(관심공고·뺀 공고는 합침) */
+  async pull(first){
+    try{
+      const snap = await this.col().get();
+      const remote = {};
+      snap.forEach(d => { remote[d.id] = d.data(); });
+      const ts = this.ts();
+      let changed = false;
+      for(const k of this.keys){
+        const r = remote[k], lt = ts[k] || 0, lv = this.raw(k);
+        if(first && r?.v && lv && (k === 'watch' || k === 'hiddenBids')){
+          const a = JSON.parse(r.v), b = JSON.parse(lv);
+          let merged;
+          if(k === 'watch'){ const m = new Map(); [...a, ...b].forEach(w => { const o = m.get(w.id); m.set(w.id, !o || (w.savedAt || '') > (o.savedAt || '') ? {...o, ...w} : {...w, ...o}); }); merged = [...m.values()]; }
+          else merged = [...new Set([...a, ...b])];
+          const mv = JSON.stringify(merged);
+          if(mv !== lv){ localStorage.setItem('bp.' + k, mv); changed = true; }
+          if(mv !== r.v){ this.setTs(k, Date.now()); await this.push(k); }
+          continue;
+        }
+        if(r && (r.at || 0) > lt){
+          if(r.v == null) localStorage.removeItem('bp.' + k); else if(r.v !== lv){ localStorage.setItem('bp.' + k, r.v); changed = true; }
+          this.setTs(k, r.at);
+        }else if(lv != null && (!r || lt > (r.at || 0))){
+          if(!lt) this.setTs(k, Date.now());
+          await this.push(k);
+        }
+      }
+      this.lastSync = new Date();
+      if(changed) this.refresh();
+    }catch(e){ console.warn('동기화 읽기 실패', e); this.status = '불러오기 실패: ' + (e.code || e.message); }
+    this.paint();
+  },
+  /** 다른 기기에서 바꾸면 바로 반영 */
+  listen(){
+    this.unsub = this.col().onSnapshot(snap => {
+      let changed = false;
+      snap.docChanges().forEach(ch => {
+        const r = ch.doc.data(), k = ch.doc.id;
+        if(!this.keys.includes(k) || r.dev === this.dev || (r.at || 0) <= (this.ts()[k] || 0)) return;
+        if(r.v == null) localStorage.removeItem('bp.' + k); else localStorage.setItem('bp.' + k, r.v);
+        this.setTs(k, r.at);
+        changed = true;
+      });
+      if(changed){ this.lastSync = new Date(); this.refresh(); this.paint(); }
+    }, e => console.warn('동기화 구독 실패', e));
+  },
+  /** 받은 값으로 화면 다시 그리기 (입력 중인 설정 화면은 건드리지 않음) */
+  refresh(){
+    qpCache?.clear?.();
+    watchMode = LS.get('watchMode', watchMode);
+    Mine.area = LS.get('mineArea', Mine.area);
+    applyTheme();
+    if(currentTab && currentTab !== 'settings') switchTab(currentTab, false);
+  },
+  /** 설정 카드·첫 화면 표시 */
+  paint(){
+    const box = $('cloudBox');
+    if(box){
+      box.innerHTML = this.user
+        ? `<div class="cloud-on"><span class="badge ok">연결됨</span> <b>${esc(this.user.email || this.user.displayName || '')}</b>${this.lastSync ? ` <span class="faint">· 마지막 맞춤 ${this.lastSync.toLocaleTimeString('ko-KR', {hour: '2-digit', minute: '2-digit'})}</span>` : ''}
+           <button class="btn sm line" id="cloudOut" type="button">로그아웃</button></div>
+           <div class="meta-line">이 기기와 같은 구글 계정으로 로그인한 기기는 관심공고·투찰 기록·우리 업체·뺀 공고·가져온 이력·서비스키가 자동으로 같아집니다.</div>`
+        : `<button class="btn" id="cloudIn" type="button">G 구글 계정으로 로그인</button>
+           <div class="meta-line">PC와 폰에서 <b>같은 구글 계정</b>으로 한 번씩 로그인하면 끝입니다. 처음 로그인할 때 두 기기의 관심공고는 합쳐지고, 다른 설정은 나중에 바꾼 쪽이 남습니다.</div>`;
+      if(this.status) box.innerHTML += `<div class="meta-line">${esc(this.status)}</div>`;
+      $('cloudIn')?.addEventListener('click', () => this.signIn());
+      $('cloudOut')?.addEventListener('click', () => this.signOut());
+    }
+    const hb = $('heroCloud');
+    if(hb) hb.hidden = !!this.user;
+  },
 };
 
 function fillSelect(el, items, {all='전체', value=''}={}){
@@ -1056,7 +1194,7 @@ async function renderMine(){
   const licTxt = c.lics.map(l => `<span class="hero-lic">${esc(LIC_SHORT[l] || l)}${c.mf?.[l]?.length ? ` <small>${esc(c.mf[l].map(m => m.split('·')[0]).join('·'))}</small>` : ''}</span>`).join('');
   $('mineHead').innerHTML = `<div class="hero-name">${esc(c.name || '우리 업체')}<span>📍 ${esc([c.sido, c.sgg].filter(Boolean).join(' ') || '소재지 미설정')}</span></div>
     <div class="hero-lics">${licTxt || '<span class="hero-lic">면허 미설정</span>'}${Object.keys(c.caps || {}).length ? '' : '<span class="hero-lic dim">참여가능금액 미설정</span>'}</div>
-    <button class="hero-btn" data-goto="settings" type="button">업체 정보 ›</button>`;
+    <div class="hero-btns"><button class="hero-btn" id="heroCloud" data-goto="settings" type="button"${Cloud.user ? ' hidden' : ''}>☁️ PC·폰 같이 쓰기</button><button class="hero-btn" data-goto="settings" type="button">업체 정보 ›</button></div>`;
 
   // 요약 숫자
   const watch = await WatchStore.list();
@@ -2534,6 +2672,8 @@ async function renderStats(){
 
 // ============================================================ 설정
 async function renderSettings(){
+  Cloud.paint();
+  Cloud.init().catch(e => console.warn(e));   // 로그인 버튼을 누르기 전에 미리 불러 둠
   // 안정판(stable/): 새 버전에 문제가 있을 때 쓰는 예전 화면 (scripts/make_stable.py 로 만든다)
   fetch('stable/VERSION', {cache: 'no-store'}).then(r => r.ok ? r.text() : '').then(t => {
     const v = (t || '').trim().split(String.fromCharCode(10))[0].trim();
@@ -2874,6 +3014,7 @@ async function init(){
   // 앱을 열면 언제나 우리 공고부터 (주소에 #watch 등이 남아 있어도 — 홈 화면 바로가기·북마크가 마지막 탭 주소로 저장되는 일이 있음)
   history.replaceState(null, '', location.pathname + '#home');
   switchTab('home', false);
+  if(LS.get('cloud', false)) Cloud.init().catch(e => console.warn(e));
   Data.loadBids().then(() => { if(currentTab !== 'bids') updateNewBadge(); });
 }
 

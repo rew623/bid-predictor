@@ -2,7 +2,7 @@
 
 나라장터 공사 입찰의 과거 낙찰 데이터(사정율 분포)로 다음 입찰의 예상 사정율·투찰금액을 추정하는 정적 PWA.
 GitHub Pages(main 브랜치 루트)로 배포하고, 공공 데이터는 GitHub Actions 가 매일 `data/` JSON 으로 갱신한다.
-개인 데이터(관심공고)는 1단계에서 localStorage, 2단계에서 Firebase(Firestore)로 옮길 예정.
+개인 데이터는 localStorage + (구글 로그인하면) Firebase Firestore 동기화(`Cloud`, 프로젝트 bidproject-452e5, 2026-09-26).
 
 ## 작업 규칙
 - **요청한 부분만 수정**한다. 관련 없는 리팩터링·디자인 변경 금지.
@@ -15,7 +15,8 @@ GitHub Pages(main 브랜치 루트)로 배포하고, 공공 데이터는 GitHub 
 - **data JSON 형식을 바꾸면 app.js 와 scripts/collect.py 를 함께 수정**하고 아래 구조 설명도 고친다.
 - **비밀값(API 키 등)은 코드에 넣지 않는다.** GitHub 시크릿(`DATA_GO_KR_KEY`)만 사용.
 - 모든 확률·예측 옆에 표본 수 표시, 30건 미만이면 "참고 부족". 예측 화면에 "참고용이며 낙찰을 보장하지 않음" 문구 유지.
-- 관심공고 저장은 app.js 의 `WatchStore`(list/save/remove, 모두 async)만 통한다 — 2단계에서 이것만 Firestore 로 교체.
+- 관심공고 저장은 app.js 의 `WatchStore`(list/save/remove, 모두 async)만 통한다.
+- **PC·폰 동기화**(`Cloud`): `LS.set` 이 `Cloud.keys`(company·watch·hiddenBids·history·apiKey·화면 설정들)를 쓰면 바꾼 시각을 `bp._ts` 에 남기고 0.8초 뒤 Firestore `users/{uid}/kv/{키}` = {v: JSON 문자열, at, dev} 로 올린다. 나중에 바꾼 쪽이 이김, 첫 로그인 때만 watch·hiddenBids 합침, `onSnapshot` 으로 다른 기기 변경을 바로 반영(설정 화면은 다시 그리지 않음). 새 개인 설정 키를 만들면 `Cloud.keys` 에 넣을지 판단할 것. SDK(gstatic compat 10.12.2)는 한 번 로그인한 기기(`bp.cloud`)나 설정 화면을 열 때만 불러온다(팝업이 막히지 않게 미리). Firestore 보안 규칙: `match /users/{uid}/{document=**} { allow read, write: if request.auth != null && request.auth.uid == uid; }`.
 - **main 에 직접 푸시**한다 (PR 불필요).
 
 ## 파일 지도
