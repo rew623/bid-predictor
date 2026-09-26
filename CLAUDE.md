@@ -30,6 +30,7 @@ icons/                아이콘 (svg, 192/512 png)
 scripts/collect.py    수집기 (Actions 에서 실행)
 scripts/commit_data.sh  data/ 변경 커밋·푸시 (워크플로에서 단계마다 호출)
 scripts/company_report.py  우리 업체 역검증 보고서(로컬 전용, private/ 읽고 씀)
+scripts/collect_d2b.py  국방전자조달(방위사업청) 입찰결과 수집기 — 워크플로 d2b 잡(나라장터 수집과 동시에, 40분)
 scripts/model.py      전국 추천 모델·역검증 → data/model.json (수집 단계마다 실행, numpy)
 scripts/korea.py      시도·시군구 파싱, 면허 23개 + 옛 명칭 별칭표
 scripts/regions.json  개찰 상세(전체 순위·복수예가)를 수집할 시·도 목록. 예: ["강원"]
@@ -152,6 +153,13 @@ lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits`(renderLive 뒤 1
 | sr | 사정율(%) = 예정가격 ÷ 기초금액 × 100 |
 
 시도를 알 수 없는 레코드는 `scsbid/기타.json`.
+
+### data/d2b/ — 국방전자조달(D2B) 입찰결과 (scripts/collect_d2b.py)
+`openapi.d2b.go.kr/openapi/service/BidResultInfoService` 는 **서비스키 없이** 응답(User-Agent 필요, 2026-09-26 확인). 막히면 게이트웨이 `apis.data.go.kr/1690000/BidResultInfoService`(DATA_GO_KR_KEY, 개발계정 하루 100회 — 사용자가 활용신청함)로 자동 전환.
+오퍼레이션: 물품·용역 `getDmstcCmpetBidResult{List|Detail|MnufList(참가업체)|BsicList(복수예가)}`, 시설 `getFcltyCmpetBidResult…`(키: orntCode·cntrwkNo·ntatPlanDate). 목록 조건 opengDateBegin/End(YYYYMMDD). 공개수의(`…OthbcVltrnNtatResult…`)는 아직 안 받음. 스펙 원본은 data.go.kr/data/15158417 (옛 15002018 페이지는 없어짐).
+예정가격 = 추첨(choiYsno=Y) 복수예가 4개 평균 — 1순위 투찰률 역산과 0.001% 안에서 일치. 2026-09 국내 경쟁 391건·시설 353건/월, 참가 수십~수백 곳(나라장터 물품 수천 곳보다 적음).
+`{연도}.json` {"v":1, year, corps:[[업체명, 사업자번호]], items:[{id, kind(물품|용역|시설), nm, org, cm, dm, bm, date, base(기초예비가격), budget, rng:[하한%,상한%], floor, plan, sr, cnt, amt, rate, win, winBiz, p:[[번호, 예비가격, 추첨0/1]], r:상위 30곳 [[순위(0=없음), corps 인덱스, 금액, 비고?]], h:전원 분포 [[round(금액/기초×1000), 곳수]]}]}` — 참가가 평균 500곳(최대 1만)이라 전원 행은 1년 200MB↑ → 상위 30곳 + 분포(1건 약 1.7KB), `meta.json` {updated_at, files, counts, total, backfill:{cursor, oldest, done}}, `index.json`(수집기 전용 done/fail). 최근 30일 매번 + 한 달씩 과거로 24개월(`D2B_MONTHS`).
+다음: 물품 모델 역검증에 D2B 포함, 입찰공고(BidPblancInfoService)로 진행중 국방 공고를 우리 공고에.
 
 ### data/thng/{시도}.json — 물품 과거 낙찰
 scsbid 와 같은 형식(`ThngStore`) + `cm` 계약방법(예: 수의계약·제한경쟁). A값·면허·순공사원가·rgn 은 없다(투찰 사정률 = 금액 ÷ 하한율 ÷ 기초금액). 시도는 수요·공고기관 이름으로.
