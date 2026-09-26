@@ -21,7 +21,8 @@ GitHub Actions(.github/workflows/collect.yml)에서 매일 실행된다.
   7) 과거낙찰  나머지 과거(3년까지)
   물품최근   물품 최근 낙찰 + 물품 기초금액(최근 60일)   → data/thng/{시도}.json
   물품과거   물품 과거 낙찰을 한 달씩 과거로 24개월까지 (진행: meta.thng_backfill), 낙찰정보 THNG_RESERVE·입찰공고 REGION_RESERVE 회는 남김
-  실제 순서: 공고 → 최근낙찰 → 상세 → 물품최근 → 물품과거 → 지역보강 → 과거낙찰(24개월) → 상세 → 과거낙찰(나머지)
+  빈달       이미 지난 달 중 빈 달 다시 받기 (meta.refill, 기본 2026-03~06)
+  실제 순서: 공고 → 최근낙찰 → 상세 → 빈달 → 물품최근 → 물품과거 → 지역보강 → 과거낙찰(24개월) → 상세 → 과거낙찰(나머지)
 
 API 필드명이 확정되지 않았으므로 모든 필드 접근은 후보 이름 목록(F_*)을 거친다.
 첫 실행 때 각 API 원본 1건을 data/_sample_{op}.json 에 저장하니 그걸 보고 후보를 고친다.
@@ -59,7 +60,7 @@ DETAIL_MAX_TRIES = 3
 NET_FAIL_STOP = 3                           # 조달청 접속이 연속 이만큼 안 되면 그 실행은 멈춘다 (2026-09-26 새벽 5시간 헛돈 일)
 REGION_RESERVE = 250                        # 지역보강은 입찰공고 호출을 이만큼 남긴다 (뒤의 과거 수집 몫)
 THNG_RESERVE = 250                          # 물품과거는 낙찰정보 호출을 이만큼 남긴다 (뒤의 개찰 상세 몫)
-THNG_BID_RESERVE = 400                      # 물품과거는 입찰공고 호출을 이만큼 남긴다 (뒤의 지역보강·공사 과거 수집 몫)
+THNG_BID_RESERVE = 250                      # 물품과거는 입찰공고 호출을 이만큼 남긴다 (뒤의 지역보강·공사 과거 수집 몫)
 SCHEMA_VERSION = 1
 
 # ---------------------------------------------------------------- API 정의
@@ -1053,28 +1054,54 @@ def step_backfill(api, meta, store, now, checkpoint, horizon=None):
         end = cur.replace(hour=23, minute=59)
         bgn = max(cur.replace(day=1, hour=0, minute=0), target)
         log(f"[과거] {bgn:%Y-%m-%d} ~ {end:%Y-%m-%d}")
-        cnt = 0
-        for it in api.fetch_range("scsbid_list", bgn, end):
-            store.merge(it, None)
-            cnt += 1
-        # 같은 기간 공고로 기초금액·A값·면허·지역 보강 (과거로 가므로 개찰이 뒤인 건도 이미 저장돼 있음)
-        month = NoticeCache({})
-        for it in api.fetch_range("notice_list", bgn, end):
-            if notice_id(it)[1] in store.by_no:
-                month.add_notice(it, None)
-        for it in api.fetch_range("notice_bsis", bgn, end):
-            if notice_id(it)[0] in month.items:
-                month.add_bsis(it)
-        for it in api.fetch_range("notice_license", bgn, end):
-            if notice_id(it)[0] in month.items:
-                month.add_license(it)
-        for e in month.items.values():
-            finish_notice(e)
-            store.enrich_by_notice(e)
+        cnt, nn = backfill_month(api, store, bgn, end)
         cursor = bf["cursor"] = (bgn - dt.timedelta(days=1)).strftime("%Y%m%d")
         bf["months_done"] = bf.get("months_done", 0) + 1
         bf["oldest"] = bgn.strftime("%Y%m%d")
-        log(f"  낙찰 {cnt}건, 공고 보강 {len(month.items)}건")
+        log(f"  낙찰 {cnt}건, 공고 보강 {nn}건")
+        checkpoint()
+
+
+def backfill_month(api, store, bgn, end):
+    """한 기간의 공사 낙찰 목록 + 같은 기간 공고로 기초금액·A값·면허 보강. (낙찰 건수, 보강 공고 수)"""
+    cnt = 0
+    for it in api.fetch_range("scsbid_list", bgn, end):
+        store.merge(it, None)
+        cnt += 1
+    # 같은 기간 공고로 기초금액·A값·면허·지역 보강 (과거로 가므로 개찰이 뒤인 건도 이미 저장돼 있음)
+    month = NoticeCache({})
+    for it in api.fetch_range("notice_list", bgn, end):
+        if notice_id(it)[1] in store.by_no:
+            month.add_notice(it, None)
+    for it in api.fetch_range("notice_bsis", bgn, end):
+        if notice_id(it)[0] in month.items:
+            month.add_bsis(it)
+    for it in api.fetch_range("notice_license", bgn, end):
+        if notice_id(it)[0] in month.items:
+            month.add_license(it)
+    for e in month.items.values():
+        finish_notice(e)
+        store.enrich_by_notice(e)
+    return cnt, len(month.items)
+
+
+REFILL_DEFAULT = ["202606", "202605", "202604", "202603"]   # 2026-09 확인: 이 달들만 낙찰 수가 평소의 1/10 이하 (수집 중 오류로 빈 것)
+
+
+def step_refill(api, meta, store, now, checkpoint):
+    """이미 지나간 달 중 비어 있는 달을 다시 받는다. meta.refill = [YYYYMM…] (처리하면 목록에서 뺀다)"""
+    todo = meta.setdefault("refill", list(REFILL_DEFAULT))
+    while todo:
+        if api.remaining("scsbid") < 60 or api.remaining("bid") < REGION_RESERVE or api.time_left() < 20:
+            log(f"[빈달] 오늘 몫 끝, 남은 달 {todo}")
+            return
+        m = todo[0]
+        bgn = dt.datetime.strptime(m + "01", "%Y%m%d").replace(tzinfo=KST)
+        end = (bgn + dt.timedelta(days=32)).replace(day=1) - dt.timedelta(minutes=1)
+        log(f"[빈달] {bgn:%Y-%m}")
+        cnt, nn = backfill_month(api, store, bgn, end)
+        log(f"  낙찰 {cnt}건, 공고 보강 {nn}건")
+        todo.pop(0)
         checkpoint()
 
 
@@ -1275,6 +1302,7 @@ def main():
         ("공고", lambda: step_notices(api, meta, cache, now)),
         ("최근낙찰", lambda: step_recent_scsbid(api, meta, store, cache, now)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all, reserve=DETAIL_RESERVE)),
+        ("빈달", lambda: step_refill(api, meta, store, now, save_all)),
         ("물품최근", lambda: step_thng_recent(api, meta, tstore, now)),
         ("물품과거", lambda: step_thng_backfill(api, meta, tstore, now, save_all)),
         ("지역보강", lambda: step_region_fill(api, meta, store, now, save_all)),
