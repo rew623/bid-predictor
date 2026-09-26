@@ -1192,17 +1192,23 @@ async function enrichLive(b){
 }
 
 function initLive(){
-  fillSelect($('lRgn'), SIDOS, {all:'시·도 전체'});
-  const fillLSgg = () => { fillSelect($('lSgg'), sggsOf($('lRgn').value), {all:'시·군 전체'}); $('lSgg').disabled = !$('lRgn').value; };
-  fillLSgg();
-  Data.loadBids().then(fillLSgg);
+  // 기본 조건(2026-09-27 요청): 공사 · 공고일 3개월 · 우리 시·도·시·군 · 마감 전만 끔 · 참가 가능한 공고만 — 앱을 열면 이 조건으로 미리 조회해 둔다
+  const co = Company.get();
+  fillSelect($('lRgn'), SIDOS, {all:'시·도 전체', value: co.sido || ''});
+  const fillLSgg = (value) => { fillSelect($('lSgg'), sggsOf($('lRgn').value), {all:'시·군 전체', value: typeof value === 'string' ? value : ''}); $('lSgg').disabled = !$('lRgn').value; };
+  fillLSgg(co.sgg || '');
+  Data.loadBids().then(() => {
+    if(!Live.params) fillLSgg(co.sgg || '');
+    if(apiKey() && !Live.params) liveSearch();   // 미리 조회 — 공고 검색 탭을 열면 바로 보이게
+  });
   $('lRgn').addEventListener('change', fillLSgg);
   $('lLic').addEventListener('change', async () => { if(!Live.params || $('lLic').disabled) return; await Data.loadLicMap(); renderLive(); if(liveRows().length < 30 && !liveDone()) await liveSearch(true); });
   $('lSgg').addEventListener('change', async () => { if(!Live.params) return; renderLive(); if(liveRows().length < 30 && !liveDone()) await liveSearch(true); });
   fillSelect($('lLic'), LICENSES, {all:'업종 전체'});
   fillSelect($('lAmt'), AMT_RANGES, {all:'추정가격 전체'});
   const setPeriod = (days) => { const t = new Date(); $('lTo').value = kstDay(t); $('lFrom').value = kstDay(new Date(t - days * 86400000)); };
-  setPeriod(7);
+  setPeriod(90);
+  $('lPeriod').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.d === '90'));
   $('lPeriod').addEventListener('click', (e) => {
     const d = e.target.dataset?.d; if(!d) return;
     setPeriod(+d);
@@ -1214,7 +1220,8 @@ function initLive(){
   $('lSearch').addEventListener('click', () => liveSearch());
   ['lQuery', 'lOrg', 'lDmd'].forEach(id => $(id).addEventListener('keydown', (e) => { if(e.key === 'Enter') liveSearch(); }));
   $('liveMore').addEventListener('click', () => liveSearch(true));
-  $('lElig').checked = LS.get('bidsFilter', {}).elig ?? Company.isSet();
+  $('lElig').checked = Company.isSet();
+  $('lOpen').checked = false;
   $('lElig').addEventListener('change', async () => { if(!Live.params) return; await Data.loadLicMap(); renderLive(); if(liveRows().length < 30 && !liveDone()) await liveSearch(true); });
   $('bMode').addEventListener('click', (e) => {
     const v = e.target.dataset?.v; if(!v) return;
