@@ -775,7 +775,7 @@ function licTags(b){
     const mine = new Set(Company.isSet() ? Company.get().lics : []);
     const mf = mfOf(b);
     return [`<span class="tag">요구 면허</span>`, ...lics.map(l => `<span class="tag${!mine.size ? ' lic' : mine.has(l) ? ' lic mine' : ''}">${mine.has(l) ? '✓ ' : ''}${esc(l)}</span>`),
-      ...(mf.length ? [`<span class="tag" title="면허제한의 주력분야">주력: ${esc(mf.join(', '))}</span>`] : [])];
+      ...(mf.length ? [`<span class="tag" title="면허제한의 주력분야">주력: ${esc(mf.map(mfClean).join(', '))}</span>`] : [])];
   }
   if(!b.live) return [];
   if(b.limOk) return ['<span class="tag">면허 제한 없음</span>'];
@@ -981,8 +981,9 @@ async function renderMine(){
   const now = new Date(), today = kstDay(now);
   const open = Data.bids.filter(b => !b.close || parseKst(b.close) >= now);
   const ev = open.map(b => [b, eligibility(b)]);
-  const rows = ev.filter(([b, e]) => e.ok && e.lic !== 'unknown').map(([b]) => b);
+  const rows = ev.filter(([b, e]) => e.ok && e.lic !== 'unknown' && e.lic !== 'mf-check').map(([b]) => b);
   const unknown = ev.filter(([b, e]) => e.ok && e.lic === 'unknown').length;
+  const mfCheck = ev.filter(([b, e]) => e.ok && e.lic === 'mf-check').length;
   const noCap = ev.filter(([b, e]) => e.cap === 'no').length, noMf = ev.filter(([b, e]) => e.lic === 'mf').length;
   const closeDay = (b) => (b.close || '').slice(0, 10);
 
@@ -1027,10 +1028,12 @@ async function renderMine(){
   $('mineList').innerHTML = html || `<div class="empty card">${Mine.day ? '이날 마감인 참가 가능 공고가 없습니다.' : '지금 참가 가능한 진행중 공고가 없습니다.'}</div>`;
   $('mineInfo').innerHTML = [`참가 가능 ${fmtNum(rows.length)}건${Mine.day ? ` 중 ${dayLabel(Mine.day)} 마감 ${fmtNum(list.length)}건` : ''} (자동 수집 공사 공고, 마감 전)`,
     noMf ? `주력분야 불일치 ${fmtNum(noMf)}건 제외` : '', noCap ? `실적 한도 초과 ${fmtNum(noCap)}건 제외` : '',
+    mfCheck ? `면허 2개↑ 요구라 같이 필요한지 불확실한 ${fmtNum(mfCheck)}건 제외(실시간 검색에서 확인)` : '',
     unknown ? `면허 정보 없는 ${fmtNum(unknown)}건 제외(실시간 검색에서 확인)` : '',
     Data.meta?.updated_at ? `데이터 ${esc(Data.meta.updated_at.slice(5, 16).replace('T', ' '))}` : ''].filter(Boolean).join(' · ');
   // 면허제한 그룹 정보가 없는 공고는 조달청에서 받아 다시 거른다(서비스키가 있을 때)
-  if(await fetchLiveLimits(open.filter(b => !b.limTried && !Data.grpMap?.get(b.id)?.length).filter(b => { const e = eligibility(b); return e.ok; }))) renderMine();
+  // 그룹 정보가 없어 참가 가능(mf-check 포함, e.ok=true)으로 나온 공고는 실제 그룹 정보로 다시 확인
+  if(await fetchLiveLimits(open.filter(b => !b.limTried && !Data.grpMap?.get(b.id)?.length).filter(b => eligibility(b).ok))) renderMine();
 }
 function initMine(){
   // 대시보드가 생긴 뒤 처음 열 때는 업체 정보가 있으면 이 화면부터
@@ -1240,6 +1243,8 @@ const MFRC = {
 const mfKey = (s) => String(s).split('/')[0].replace(/[·ㆍ.,\s()\[\]]/g, '').replace(/(사업|업)$/, '');   // '석공사'에서 '공사'를 떼면 '석'이 되므로 뒤의 (사)업만 떼고 포함 여부로 비교
 /** 공고가 제한한 주력분야 원문 목록 */
 const mfOf = (b) => Data.mfMap?.get(b.id) || b.reqMf || [];
+/** 조달청 원문 "[1^금속구조물·창호·온실공사]" → "금속구조물·창호·온실공사" (표시용, 앞뒤 대괄호·번호 제거) */
+const mfClean = (s) => String(s).replace(/^\[\d+\^/, '').replace(/\]$/, '').replace(/\^/g, '·');
 /** 우리 면허 l 로 이 공고의 주력분야 제한을 통과하나 (우리 주력분야를 안 골랐거나 공고가 주력분야를 안 걸면 통과) */
 function mfPass(b, l, c){
   const group = MFRC[l];
@@ -1384,11 +1389,17 @@ function eligibility(b){
     else if(gs.some(g => g.every(r => c.lics.includes(r[1])))){ out.lic = 'mf'; out.ok = false; }
     else { out.lic = 'no'; out.ok = false; }
   }else if(c.lics.length){
+    // 그룹 정보(lim/grp)가 아직 없을 때: 면허가 2개 이상 걸린 공고는 "여러 업종을 같이 요구"(AND)일 수도,
+    // "이 중 하나면 됨"(OR)일 수도 있어 이 정보만으로는 못 가른다. 하나라도 맞으면 통과로 보던 예전 방식은
+    // ① 우리가 가진 면허 중 주력분야가 안 맞는 게 섞여 있거나 ② 공고가 요구하는 면허를 일부만 갖고 있을 때
+    // 실제로는 같이 요구하는 공고(참가 불가)를 참가 가능으로 잘못 보여줬다(2026-09-26, 자운교 공고 등).
     const held = lics.filter(l => c.lics.includes(l));
+    const passed = held.filter(l => mfPass(b, l, c));
     if(!lics.length) out.lic = b.limOk ? 'ok' : 'unknown';   // limOk: 조달청 조회 결과 면허 제한 없음
     else if(!held.length){ out.lic = 'no'; out.ok = false; }
-    else if(held.some(l => mfPass(b, l, c))) out.lic = 'ok';
-    else { out.lic = 'mf'; out.ok = false; }
+    else if(!passed.length){ out.lic = 'mf'; out.ok = false; }
+    else if(lics.length > held.length || passed.length < held.length) out.lic = 'mf-check';   // 못 가진 면허도 걸려 있거나 통과 못한 면허가 섞여 있음
+    else out.lic = 'ok';
   }
   if(c.sido && rgn?.length){
     const hit = rgn.some(t => {
@@ -1411,6 +1422,7 @@ function eligTag(b){
   if(!e.ok) return `<span class="tag bad">참가 불가 · ${e.rgn === 'no' ? '지역 제한' : e.cap === 'no' ? '실적 한도 초과' : e.lic === 'mf' ? '주력분야 불일치' : '면허 불일치'}</span>`;
   if(e.cap === 'check') return '<span class="tag warn" title="추정가격이 지자체 3년 실적 한도는 넘고 5년 한도 안 — 공고문의 실적 기간 확인">실적 확인 (지자체 5년 기준만 가능)</span>';
   if(e.lic === 'unknown') return '<span class="tag warn">면허 확인 필요</span>';
+  if(e.lic === 'mf-check') return '<span class="tag warn" title="2개 이상의 면허를 요구하는데 그중 일부만 우리 주력분야와 맞습니다. 같이 요구하는 공고면 참가 불가일 수 있어 공고문에서 확인하세요">면허 여러 개 — 확인 필요</span>';
   return '<span class="tag okc">참가 가능</span>';
 }
 
