@@ -1465,6 +1465,11 @@ async function liveFetchOne(){
   }
   Live.totals[Live.wi] = res.total;
   Live.page++;
+  liveIngest(res);
+  if(!res.items.length || Live.page * rows >= res.total){ Live.wi++; Live.page = 0; }
+}
+/** 받은 한 쪽을 Live.items 에 넣는다 (기본 목록 대체 조회면 앱에서 조건 거르기) */
+function liveIngest(res){
   Live.raw += res.items.length;
   const have = new Set(Live.items.map(b => b.id));
   const P2 = Live.params, low = (v) => String(v || '').toLowerCase();
@@ -1480,7 +1485,23 @@ async function liveFetchOne(){
     const n = liveNotice(it);
     if(n.no && !have.has(n.id) && keep(n)){ have.add(n.id); Live.items.push(n); }
   }
-  if(!res.items.length || Live.page * rows >= res.total){ Live.wi++; Live.page = 0; }
+}
+/** 첫 조회 때 모든 1개월 구간의 첫 쪽을 동시에 받는다(차례로 받으면 구간 수만큼 기다림).
+ *  한 쪽에 다 안 들어간 구간이 있으면 거기부터는 원래처럼 차례로. 오류가 나면 아무것도 바꾸지 않고 차례 조회에 맡긴다 */
+async function liveFetchParallel(){
+  const [srchOp, listOp] = LIVE_KINDS[Live.kind];
+  const rows = Live.rows || LIVE_ROWS;
+  const op = Live.fallback ? listOp : srchOp, base = Live.fallback ? {inqryDiv: Live.params.inqryDiv} : Live.params;
+  let got;
+  try{ got = await Promise.all(Live.wins.map(([bgn, end]) => liveCall(op, {...base, inqryBgnDt: bgn + '0000', inqryEndDt: end + '2359', numOfRows: rows, pageNo: 1}))); }
+  catch(e){ return; }
+  for(let i = 0; i < got.length; i++){
+    const res = got[i];
+    Live.totals[i] = res.total;
+    liveIngest(res);
+    if(res.items.length && rows < res.total){ Live.wi = i; Live.page = 1; return; }   // 이 구간은 다음 쪽부터 차례로
+  }
+  Live.wi = Live.wins.length; Live.page = 0;
 }
 async function liveSearch(more=false){
   const list = $('liveList');
@@ -1500,6 +1521,10 @@ async function liveSearch(more=false){
   // 한 번에: 앱에서 거르는 조건이 없으면 100건, 있으면 조건에 맞는 30건이 모일 때까지 (최대 12번 호출)
   const startRaw = Live.raw, startRows = liveRows().length;
   try{
+    if(!more && Live.wins.length > 1 && liveClientFilter()){
+      await liveFetchParallel();
+      if(token !== Live.token) return;
+    }
     for(let calls = 0; calls < 12 && !liveDone(); calls++){
       await liveFetchOne();
       if(token !== Live.token) return;
