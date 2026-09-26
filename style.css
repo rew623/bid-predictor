@@ -232,6 +232,9 @@ tr.click:hover td{background:var(--bg);}
 .cal button .o{font-size:11px; color:var(--text-faint);}
 .cal button.today{border-color:var(--primary);}
 .cal button.on{background:var(--primary-soft); border-color:var(--primary);}
+.mine-chips{margin:-4px 0 14px;}
+.chip .cnt{margin-left:4px; font-size:11.5px; opacity:.75; font-variant-numeric:tabular-nums;}
+.chip.hot{border-color:var(--ok);}
 .day-sep{display:flex; align-items:center; gap:10px; margin:14px 0 6px; color:var(--text-sub); font-size:13px; font-weight:600;}
 .day-sep::before, .day-sep::after{content:""; flex:1; height:1px; background:var(--border);}
 @media (max-width:620px){

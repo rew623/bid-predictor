@@ -781,7 +781,7 @@ function licTags(b){
   if(b.limOk) return ['<span class="tag">면허 제한 없음</span>'];
   return [b.limTried ? '<span class="tag">요구 면허 조회 실패</span>' : '<span class="tag">요구 면허 조회 중…</span>'];
 }
-function bidCard(b, today){
+function bidCard(b, today, opts = {}){
   const days = closeDays(b, today);
   const hh = b.close?.length > 10 ? b.close.slice(11, 16) : '';
   const dd = days == null ? {big:'-', small:'마감 미정', cls:''}
@@ -830,6 +830,8 @@ function bidCard(b, today){
     <div class="b-actions">
       <button class="btn sm" data-predict="${esc(b.id)}" type="button">이 공고로 예측</button>
       ${b.url ? `<a class="btn line sm" href="${esc(b.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}
+      ${opts.hide ? `<button class="btn line sm" data-hide="${esc(b.id)}" type="button" title="우리가 못 하는 공고면 빼 두세요. 이 기기에만 저장">목록에서 빼기</button>` : ''}
+      ${opts.unhide ? `<button class="btn line sm" data-unhide="${esc(b.id)}" type="button">되돌리기</button>` : ''}
       <span class="b-meta">${esc([b.no ? `${b.no}-${b.ord}` : '', open].filter(Boolean).join(' · '))}</span>
     </div>
   </article>`;
@@ -969,7 +971,24 @@ function initLive(){
 }
 // ============================================================ 우리 업체 대시보드 (입찰공고 탭 첫 모드)
 // 설정의 업체 정보(소재지·면허·주력분야·참여가능금액)로 자동 수집된 진행중 공고 중 참가 가능한 것만 — 검색 없이 바로.
-const Mine = {day: null};
+const Mine = {day: null, chip: 'all', small: false, showHidden: false};
+/** 대시보드에서 뺀 공고 (우리가 못 하는 종목 등) — 이 기기에만 */
+const Hidden = {
+  ids(){ return new Set(LS.get('hiddenBids', [])); },
+  toggle(id, on){ const s = this.ids(); on ? s.add(id) : s.delete(id); LS.set('hiddenBids', [...s].slice(-2000)); },
+};
+const SMALL_N = 100;   // '경쟁 적은 공고' 기준: 예상 참가 100곳 미만 (참가가 적을수록 1건당 낙찰확률이 크다)
+/** 우리 업체 필터 버튼: 전체 / 보유 면허 / 보유 주력분야. 더비스처럼 누르면 그 종목 공고만 */
+function mineChipDefs(c){
+  const defs = [{k: 'all', label: '전체', f: () => true}];
+  c.lics.forEach(l => defs.push({k: 'l:' + l, label: l, f: (b) => licOf(b).includes(l)}));
+  Object.entries(c.mf || {}).forEach(([l, ms]) => ms.forEach(m => defs.push({k: `m:${l}:${m}`, label: `주력 ${m}`, f: (b) => {
+    if(!licOf(b).includes(l)) return false;
+    const raw = mfOf(b).map(mfKey), keys = (MFRC[l] || []).map(mfKey), named = keys.filter(k => raw.some(r => r.includes(k)));
+    return !named.length || named.includes(mfKey(m));   // 주력분야를 안 걸었으면 그 대업종 공고 전체
+  }})));
+  return defs;
+}
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const dayLabel = (d) => `${d.slice(5).replace('-', '.')} (${WEEK[new Date(Date.parse(d + 'T12:00:00Z')).getUTCDay()]})`;
 async function renderMine(){
@@ -987,6 +1006,19 @@ async function renderMine(){
   const noCap = ev.filter(([b, e]) => e.cap === 'no').length, noMf = ev.filter(([b, e]) => e.lic === 'mf').length;
   const closeDay = (b) => (b.close || '').slice(0, 10);
 
+  // 필터 버튼 (면허·주력분야 / 경쟁 적은 공고 / 뺀 공고)
+  const hidden = Hidden.ids();
+  const visible = rows.filter(b => !hidden.has(b.id));
+  const defs = mineChipDefs(c);
+  if(!defs.some(d => d.k === Mine.chip)) Mine.chip = 'all';
+  const chipF = defs.find(d => d.k === Mine.chip).f;
+  const isSmall = (b) => { const q = quickPredict(b); return q?.cnt != null && q.cnt < SMALL_N; };
+  const nHidden = rows.filter(b => hidden.has(b.id)).length;
+  $('mineChips').innerHTML = defs.map(d => `<button type="button" class="chip ${Mine.chip === d.k && !Mine.showHidden ? 'selected' : ''}" data-chip="${esc(d.k)}">${esc(d.label)}<span class="cnt">${visible.filter(d.f).length}</span></button>`).join('')
+    + `<button type="button" class="chip hot ${Mine.small ? 'selected' : ''}" data-small="1" title="예상 참가 ${SMALL_N}곳 미만 — 1건당 낙찰확률이 가장 큰 공고">🎯 경쟁 적은 공고<span class="cnt">${visible.filter(chipF).filter(isSmall).length}</span></button>`
+    + (nHidden ? `<button type="button" class="chip ${Mine.showHidden ? 'selected' : ''}" data-showhidden="1">뺀 공고<span class="cnt">${nHidden}</span></button>` : '');
+  const shown = Mine.showHidden ? rows.filter(b => hidden.has(b.id)) : visible.filter(chipF).filter(b => !Mine.small || isSmall(b));
+
   // 업체 요약
   const mfTxt = Object.entries(c.mf || {}).map(([l, v]) => `${l}(${v.join('·')})`);
   $('mineHead').innerHTML = `<b>🏢 ${esc([c.sido, c.sgg].filter(Boolean).join(' ') || '소재지 미설정')}</b>
@@ -998,22 +1030,22 @@ async function renderMine(){
   const watch = await WatchStore.list();
   const pendingMine = watch.filter(w => (w.myBid || w.joined) && !w.res && (!w.open || w.open.slice(0, 10) >= today)).length;
   const in7 = kstDay(new Date(now.getTime() + 6 * 86400000));
-  const kpi = [['참가 가능 공고', rows.length, ''], ['오늘 마감', rows.filter(b => closeDay(b) === today).length, 'red'],
-    ['7일 안 마감', rows.filter(b => closeDay(b) && closeDay(b) <= in7).length, ''], ['기초금액 공개', rows.filter(b => b.base).length, ''],
+  const kpi = [['참가 가능 공고', shown.length, ''], ['오늘 마감', shown.filter(b => closeDay(b) === today).length, 'red'],
+    ['7일 안 마감', shown.filter(b => closeDay(b) && closeDay(b) <= in7).length, ''], ['기초금액 공개', shown.filter(b => b.base).length, ''],
     ['내 투찰 개찰 대기', pendingMine, '']];
   $('mineKpis').innerHTML = kpi.map(([t, v, cls]) => `<div class="kpi ${cls && v ? cls : ''}"><span class="t">${t}</span><span class="v">${fmtNum(v)}</span></div>`).join('');
 
   // 2주 달력 (투찰 마감 · 개찰)
   const days = Array.from({length: 14}, (_, i) => kstDay(new Date(now.getTime() + i * 86400000)));
   $('mineCal').innerHTML = days.map(d => {
-    const n = rows.filter(b => closeDay(b) === d).length, o = rows.filter(b => (b.open || '').slice(0, 10) === d).length;
+    const n = shown.filter(b => closeDay(b) === d).length, o = shown.filter(b => (b.open || '').slice(0, 10) === d).length;
     const w = new Date(Date.parse(d + 'T12:00:00Z')).getUTCDay();
     return `<button type="button" data-day="${d}" class="${w === 0 ? 'sun' : w === 6 ? 'sat' : ''} ${d === today ? 'today' : ''} ${Mine.day === d ? 'on' : ''}">
       <span class="d">${+d.slice(8)}일 ${WEEK[w]}</span><span class="n ${n ? '' : 'zero'}">${n}</span><span class="o">${o ? `개찰 ${o}` : '&nbsp;'}</span></button>`;
   }).join('');
 
   // 목록: 마감일별로 묶기
-  let list = Mine.day ? rows.filter(b => closeDay(b) === Mine.day) : rows;
+  let list = Mine.day ? shown.filter(b => closeDay(b) === Mine.day) : shown;
   const sort = $('mineSort').value;
   const qp = new Map(list.map(b => [b, quickPredict(b)]));
   list = [...list].sort(sort === 'win' ? (a, b) => (qp.get(b)?.winP ?? -1) - (qp.get(a)?.winP ?? -1)
@@ -1023,10 +1055,11 @@ async function renderMine(){
   let html = '', last = null;
   for(const b of list){
     if(sort === 'close' && closeDay(b) !== last){ last = closeDay(b); html += `<div class="day-sep">${last ? dayLabel(last) : '마감 미정'} 마감 · ${list.filter(x => closeDay(x) === last).length}건</div>`; }
-    html += bidCard(b, today);
+    html += bidCard(b, today, Mine.showHidden ? {unhide: true} : {hide: true});
   }
   $('mineList').innerHTML = html || `<div class="empty card">${Mine.day ? '이날 마감인 참가 가능 공고가 없습니다.' : '지금 참가 가능한 진행중 공고가 없습니다.'}</div>`;
-  $('mineInfo').innerHTML = [`참가 가능 ${fmtNum(rows.length)}건${Mine.day ? ` 중 ${dayLabel(Mine.day)} 마감 ${fmtNum(list.length)}건` : ''} (자동 수집 공사 공고, 마감 전)`,
+  $('mineInfo').innerHTML = [Mine.showHidden ? `뺀 공고 ${fmtNum(list.length)}건 — "되돌리기"로 다시 목록에` : `참가 가능 ${fmtNum(shown.length)}건${Mine.day ? ` 중 ${dayLabel(Mine.day)} 마감 ${fmtNum(list.length)}건` : ''} (자동 수집 공사 공고, 마감 전)`,
+    nHidden && !Mine.showHidden ? `직접 뺀 ${fmtNum(nHidden)}건 제외` : '',
     noMf ? `주력분야 불일치 ${fmtNum(noMf)}건 제외` : '', noCap ? `실적 한도 초과 ${fmtNum(noCap)}건 제외` : '',
     mfCheck ? `면허 2개↑ 요구라 같이 필요한지 불확실한 ${fmtNum(mfCheck)}건 제외(실시간 검색에서 확인)` : '',
     unknown ? `면허 정보 없는 ${fmtNum(unknown)}건 제외(실시간 검색에서 확인)` : '',
@@ -1041,6 +1074,14 @@ function initMine(){
   LS.set('mineIntro', true);
   $('mineSort').value = LS.get('mineSort', 'close');
   $('mineSort').addEventListener('change', () => { LS.set('mineSort', $('mineSort').value); renderMine(); });
+  $('mineChips').addEventListener('click', (e) => {
+    const t = e.target.closest('button');
+    if(!t) return;
+    if(t.dataset.chip){ Mine.chip = t.dataset.chip; Mine.showHidden = false; }
+    else if(t.dataset.small) Mine.small = !Mine.small;
+    else if(t.dataset.showhidden) Mine.showHidden = !Mine.showHidden;
+    renderMine();
+  });
   $('mineCal').addEventListener('click', (e) => {
     const d = e.target.closest('[data-day]')?.dataset.day;
     if(!d) return;
@@ -2669,6 +2710,8 @@ async function init(){
     if(u){ WatchStore.remove(u.dataset.unwatch).then(renderWatch); return; }
     const p = e.target.closest('[data-predict]');
     if(p){ predictWithNotice(p.dataset.predict); return; }
+    const h = e.target.closest('[data-hide]'), uh = e.target.closest('[data-unhide]');
+    if(h || uh){ Hidden.toggle((h || uh).dataset[h ? 'hide' : 'unhide'], !!h); renderMine(); return; }
     const g = e.target.closest('[data-goto]');
     if(g) switchTab(g.dataset.goto);
   });
