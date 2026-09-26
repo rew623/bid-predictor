@@ -97,7 +97,7 @@ const FIREBASE_CONFIG = {
 };   // 웹 앱 설정값은 공개돼도 되는 값(비밀 아님) — 데이터는 보안 규칙이 지킨다
 const FB_VER = '10.12.2';
 const Cloud = {
-  keys: ['company', 'watch', 'hiddenBids', 'history', 'corpWatch', 'mineKind', 'apiKey', 'mineArea', 'mineSort', 'bidsFilter', 'bidsMode', 'watchMode', 'theme', 'myCal', 'curveSmooth', 'pSidos', 'pLics', 'statsFilter', 'guideClosed'],
+  keys: ['admin', 'company', 'watch', 'hiddenBids', 'history', 'corpWatch', 'mineKind', 'apiKey', 'mineArea', 'mineSort', 'bidsFilter', 'bidsMode', 'watchMode', 'theme', 'myCal', 'curveSmooth', 'pSidos', 'pLics', 'statsFilter', 'guideClosed'],
   user: null, db: null, loading: null, status: '', lastSync: null, unsub: null, timers: {},
   dev: (() => { try{ let d = localStorage.getItem('bp._dev'); if(!d){ d = Math.random().toString(36).slice(2, 10); localStorage.setItem('bp._dev', d); } return d; }catch(e){ return 'x'; } })(),
   ts(){ try{ return JSON.parse(localStorage.getItem('bp._ts') || '{}'); }catch(e){ return {}; } },
@@ -792,8 +792,11 @@ const noDetailHtml = (sido) => `<div class="empty">이 지역(${esc(sido)})은 �
 let currentTab = null;
 let prevVisit = null;       // 이번 세션 시작 전 마지막 방문 시각 (NEW 판정 기준)
 
+/** 간단 모드(기본, 다른 사용자) / 운영자 모드(bp.admin, 동기화): 간단 모드는 설명 문구·참고 도구·검증·통계를 CSS 로 숨긴다(body.simple — style.css '간단 모드') */
+const applyMode = () => document.body.classList.toggle('simple', !LS.get('admin', false));
 function switchTab(tab, push=true){
   if(!TAB_TITLES[tab]) tab = 'home';
+  applyMode();
   if(tab === 'home' && currentTab !== 'home'){ Mine.kind = '공사'; Mine.area = 'sido'; Mine.shown = 60; }   // 우리 공고에 들어오면 늘 '공사 · 우리 시·도'부터 (2026-09-26 요청)
   currentTab = tab;
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'view-' + tab);
@@ -1556,7 +1559,7 @@ async function renderLive(){
   const today = kstDay(new Date());
   const known = Live.totals.reduce((a, b) => a + (b || 0), 0);
   const nW = Live.wins.length, doneW = Math.min(Live.wi, nW);
-  $('liveInfo').innerHTML = [`나라장터 실시간 ${esc(Live.kind)} ${fmtNum(Live.raw)}건 받음${liveDone() ? ` (전체 ${fmtNum(known)}건)` : ` · 전체 ${fmtNum(known)}건 이상`}${liveClientFilter() ? ` → 조건에 맞는 ${fmtNum(rows.length)}건` : ''}`,
+  $('liveInfo').innerHTML = document.body.classList.contains('simple') ? `${fmtNum(rows.length)}건${liveDone() ? '' : ' · 더 받는 중'}` : [`나라장터 실시간 ${esc(Live.kind)} ${fmtNum(Live.raw)}건 받음${liveDone() ? ` (전체 ${fmtNum(known)}건)` : ` · 전체 ${fmtNum(known)}건 이상`}${liveClientFilter() ? ` → 조건에 맞는 ${fmtNum(rows.length)}건` : ''}`,
     nW > 1 ? `기간을 1개월씩 ${nW}구간으로 나눠 최신부터 조회 (${doneW}/${nW}구간 완료)` : '',
     sgg ? `시·군(${esc(sgg)})은 공사 현장·참가가능지역 기준으로 앱에서 거름` : '',
     $('lLic').value ? `업종(${esc($('lLic').value)})은 주공종·부대공종·면허제한 기준으로 앱에서 거름` : '',
@@ -2128,7 +2131,7 @@ async function runPredict(){
       <ul class="checklist">${check}</ul>
       <div class="meta-line">${esc(rec.note)} · 참고용이며 낙찰을 보장하지 않습니다.</div>
       <div class="btn-row" style="margin-top:10px;">${P.notice && recAmt ? `<button class="btn sm reg" data-reg-amt="${recAmt}" data-reg-sr="${rec.x}" type="button">📝 추천가로 투찰 등록</button>` : ''}<button class="btn sm line" data-use-sr="${rec.x}" type="button">계산기에 적용</button></div>
-      ${P.notice ? '' : '<div class="meta-line">공고 목록에서 "💰 투찰금액 분석"으로 들어오면 여기서 바로 내 투찰에 등록할 수 있습니다.</div>'}
+      ${P.notice ? '' : '<div class="meta-line ops">공고 목록에서 "💰 투찰금액 분석"으로 들어오면 여기서 바로 내 투찰에 등록할 수 있습니다.</div>'}
     </div>`;
 
     // ---- 2) 곡선 + 후보
@@ -2154,7 +2157,7 @@ async function runPredict(){
           <div class="cand-btns"><button class="btn sm line" data-pick-sr="${c.x}" type="button">적용</button><button class="btn sm ghost" data-use-sr="${c.x}" type="button">계산기로</button></div>
         </div>`).join('')}</div>
       <div class="pick-box" id="pickBox">${pickInfo(rec.x)}</div>
-      <div class="meta-line">곡선 표본: ${esc(rec.note)} · 곡선 폭 ±${rec.src === 'model' && Model.m?.smooth ? Model.m.smooth : curveSmooth()}%p · 과거 낙찰확률은 과거에 맞춘 값이라 새 공고에선 더 낮음(위 예상 낙찰확률은 역검증 기준) · 공정 기대 = 1 ÷ (참가업체 수 + 1), 우리가 들어가면 한 곳 늘어나므로</div>
+      <div class="meta-line ops">곡선 표본: ${esc(rec.note)} · 곡선 폭 ±${rec.src === 'model' && Model.m?.smooth ? Model.m.smooth : curveSmooth()}%p · 과거 낙찰확률은 과거에 맞춘 값이라 새 공고에선 더 낮음(위 예상 낙찰확률은 역검증 기준) · 공정 기대 = 1 ÷ (참가업체 수 + 1), 우리가 들어가면 한 곳 늘어나므로</div>
     </div>`;
 
     // ---- 3) 금액·숫자 팁
@@ -2783,7 +2786,7 @@ function renderHistory(){
   if(all.length) return `<div class="card-inner hist"><div class="hist-head"><h3 style="margin:0;">더비스 투찰 이력 <small class="faint">${fmtNum(all.length)}건 · ${esc((meta.at || '').slice(0, 10))} 가져옴 · 위 목록에 합쳐 보임</small></h3>${imp}</div>
     <span class="meta-line" id="histMsg"></span><div class="meta-line"><button class="btn sm ghost" id="histClear" type="button">가져온 이력 지우기</button></div></div>`;
   return `<div class="card-inner hist"><h3 style="margin-top:0;">과거 투찰 이력</h3>
-    <p class="meta-line">조달청 API에는 "우리 업체가 넣은 공고 찾기"가 없어서, 예전 투찰 금액·순위를 조달청에서 한꺼번에 받아 올 수는 없습니다. 대신 <b>더비스에서 내려받은 투찰 이력 엑셀(.xls)</b>을 가져오면 금액·순위·사정율이 모두 들어 있어 바로 정리해 드립니다. 이 기기에만 저장되고 어디에도 올라가지 않습니다.</p>
+    <p class="meta-line ops">조달청 API에는 "우리 업체가 넣은 공고 찾기"가 없어서, 예전 투찰 금액·순위를 조달청에서 한꺼번에 받아 올 수는 없습니다. 대신 <b>더비스에서 내려받은 투찰 이력 엑셀(.xls)</b>을 가져오면 금액·순위·사정율이 모두 들어 있어 바로 정리해 드립니다. 이 기기에만 저장되고 어디에도 올라가지 않습니다.</p>
     ${imp} <span class="meta-line" id="histMsg"></span></div>`;
 }
 function bindHistory(el){
@@ -3319,6 +3322,8 @@ function initSettings(){
     const v = e.target.dataset?.v; if(!v) return;
     LS.set('theme', v); applyTheme(); renderSettings();
   });
+  $('adminMode').checked = !!LS.get('admin', false);
+  $('adminMode').addEventListener('change', () => { LS.set('admin', $('adminMode').checked); applyMode(); });
   $('clearCache').addEventListener('click', async () => {
     if('caches' in window) for(const k of await caches.keys()) if(k.startsWith('data')) await caches.delete(k);
     location.reload();
@@ -3471,6 +3476,8 @@ function initServiceWorker(){
 
 // ============================================================ 시작
 async function init(){
+  if(location.hash === '#admin') LS.set('admin', true);   // 운영자 모드 켜는 링크 (앱주소#admin)
+  applyMode();
   // QR/링크로 받은 서비스키 저장 (#key=…) 후 주소에서 바로 지운다
   const km = location.hash.match(/^#key=([^&]+)(?:&co=(.+))?$/);
   if(km){

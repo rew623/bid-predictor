@@ -11,6 +11,7 @@ GitHub Pages(main 브랜치 루트)로 배포하고, 공공 데이터는 GitHub 
 - **앱이 쓰는 파일**(index.html, app.js, style.css, manifest.json, icons/)을 바꾸면 **sw.js 의 `VERSION` 을 올린다.**
   예외: reference/, scripts/, .github/ 워크플로, data/, stable/ 은 버전 올릴 필요 없음.
 - **되돌리기**: 사용자가 'x.y.z 로 되돌려줘' 하면 그 버전 커밋의 앱 파일로 되돌리는 새 커밋(데이터는 그대로). 급할 땐 사용자가 설정의 '안정판으로 열기'로 직접 피할 수 있다(stable/, 현재 1.7.5).
+- **간단 모드 / 운영자 모드**(2026-09-27): 기본은 간단 모드(`body.simple`) — 다른 사용자용으로 설명 문구(`.sub`·`p.faint`·`.ops`)·사용법·참고 분포/예가 분석 도구(`details.fold`)·설정 고급(`details.adv`)·모의 투찰/통계 전환(`.mode-seg`)·카드 설명(`.bcard > .b-note`)·×배수(`.lift`)를 숨김. 운영자 모드 = `bp.admin`(Cloud 동기화), 설정 '앱' 카드 체크 또는 `앱주소#admin`. **새 설명·검증용 문구는 `.ops`(또는 `.sub`)로 달 것** — 추천 금액에 영향 없는 건 간단 모드에서 안 보이게. '참고용이며 낙찰을 보장하지 않음' 문구는 간단 모드에서도 유지.
 - **디자인 유지**: 흰 배경, 파랑 #2F6FED, 카드형, Noto Sans KR, 다크모드(`prefers-color-scheme` + `data-theme`).
 - **data JSON 형식을 바꾸면 app.js 와 scripts/collect.py 를 함께 수정**하고 아래 구조 설명도 고친다.
 - **비밀값(API 키 등)은 코드에 넣지 않는다.** GitHub 시크릿(`DATA_GO_KR_KEY`)만 사용.

@@ -611,3 +611,16 @@ td.nowrap{white-space:nowrap;}
 /* 글씨·숫자를 눌러도 선택·구글 '탭하여 검색' 창이 뜨지 않게 (입력칸은 그대로) */
 body{-webkit-user-select:none; user-select:none; -webkit-touch-callout:none;}
 input, textarea, select, [contenteditable]{-webkit-user-select:text; user-select:text; -webkit-touch-callout:default;}
+
+/* ===== 간단 모드 (운영자 모드가 아닐 때 기본) — 추천 금액에 영향 없는 설명·참고 도구·검증·통계 숨김 ===== */
+body.simple .ops,
+body.simple .sub,
+body.simple p.faint,
+body.simple summary .faint,
+body.simple .cal-title .faint,
+body.simple #pGuide,
+body.simple details.fold,
+body.simple details.adv,
+body.simple .mode-seg,
+body.simple .lift,
+body.simple .bcard > .b-note:not(.result){display:none !important;}
