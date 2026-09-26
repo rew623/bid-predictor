@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 37,
+   "bid": 950,
    "date": "20260926",
-   "scsbid": 11
+   "scsbid": 948
   }
  },
  "backfill": {
@@ -19,7 +19,7 @@
  "counts": {
   "bids": 1650,
   "opening": {
-   "강원": 817
+   "강원": 1267
   },
   "scsbid": {
    "강원": 9806,
@@ -65,18 +65,19 @@
   "thng_total": 8588
  },
  "detail": {
-  "eta_days": 22,
+  "eta_days": 19,
   "history": [
-   421
+   421,
+   450
   ],
-  "history_date": "20260925",
-  "per_day": 421,
+  "history_date": "20260926",
+  "per_day": 450,
   "regions": [
    "강원"
   ],
-  "remaining": 8989,
+  "remaining": 8539,
   "강원": {
-   "done": 817,
+   "done": 1267,
    "failed": 0,
    "total": 9806
   }
@@ -203,25 +204,27 @@
   }
  },
  "last_run": {
-  "at": "2026-09-26T07:13:36+09:00",
+  "at": "2026-09-26T09:20:26+09:00",
   "calls": {
-   "bid": 37,
+   "bid": 950,
    "date": "20260926",
-   "scsbid": 11
+   "scsbid": 948
   },
   "errors": [
-   "물품최근: 한도 소진 (time)"
+   "지역보강: 한도 소진 (bid)"
   ],
-  "minutes": 265.2
+  "minutes": 37.4
  },
  "mf_scan": true,
  "model": {
-  "rows": 76124,
-  "updated_at": "2026-09-26T02:48:09+09:00"
+  "rows": 76149,
+  "updated_at": "2026-09-26T09:20:30+09:00"
  },
- "notice_last": "2026-09-26T00:29+09:00",
- "rgn_fill": {},
+ "notice_last": "2026-09-26T08:41+09:00",
+ "rgn_fill": {
+  "cursor": "20250621"
+ },
  "thng_backfill": {},
- "updated_at": "2026-09-26T02:48:09+09:00",
+ "updated_at": "2026-09-26T09:20:30+09:00",
  "v": 1
 }
