@@ -332,7 +332,7 @@
     </div>
     <div class="card">
       <h2>🏢 우리 업체</h2>
-      <p class="sub">소재지와 보유 면허를 넣으면 입찰공고에서 <b>참가 자격이 되는 공고만</b> 골라 보여줍니다(공고의 참가가능지역·면허 제한 기준). 사업자번호를 넣으면 관심공고의 개찰 결과에서 <b>우리 순위와 투찰금액을 자동으로</b> 찾습니다. 이 기기에만 저장됩니다.</p>
+      <p class="sub">소재지와 보유 면허를 넣으면 입찰공고에서 <b>참가 자격이 되는 공고만</b> 골라 보여줍니다(공고의 참가가능지역·면허 제한 기준). 사업자번호를 넣으면 관심공고의 개찰 결과에서 <b>우리 순위와 투찰금액을 자동으로</b> 찾습니다. 이 기기에 저장되고, 위에서 구글 로그인하면 PC·폰에 같이 저장됩니다(본인만 볼 수 있음).</p>
       <div class="inline-inputs" style="margin-top:0;">
         <div><label for="coName">상호 (선택)</label><input type="text" id="coName" autocomplete="off" placeholder="예: ○○건설"></div>
         <div><label for="coSido">소재지 시·도</label><select id="coSido"></select></div>
@@ -347,6 +347,16 @@
       <h3>참여가능금액 (선택 · 면허별)</h3>
       <p class="sub">적격심사 실적으로 참여할 수 있는 한도(분석 서비스·협회의 '발주처별 참여가능금액'). 넣으면 공고 추정가격이 한도를 넘을 때 '실적 한도 초과'로 거릅니다. 1순위가 돼도 적격심사에서 떨어지는 공고입니다. 비우면 검사하지 않습니다.</p>
       <div id="coCaps"></div>
+      <h3>물품 입찰 자격</h3>
+      <p class="faint" style="margin:0 0 6px;">물품 공고는 면허 대신 이 자격들로 참가가 갈립니다. 물품 우리 공고·"참가 가능" 판정에 씁니다.</p>
+      <div class="chip-group" id="coGoods">
+        <label class="check"><input type="checkbox" data-g="small"> 소기업·소상공인 확인서</label>
+        <label class="check"><input type="checkbox" data-g="sme"> 중소기업 확인서</label>
+        <label class="check"><input type="checkbox" data-g="women"> 여성기업 확인서</label>
+        <label class="check"><input type="checkbox" data-g="direct"> 직접생산확인 (제조 공고 참가)</label>
+      </div>
+      <label for="coInds" style="margin-top:8px;">등록 업종 (쉼표로 구분, 예: 동물용 의료기기 판매업, 옥외광고업)</label>
+      <input type="text" id="coInds" autocomplete="off" placeholder="나라장터 경쟁입찰참가자격에 등록한 업종">
       <div class="btn-row" style="margin-top:14px;"><button class="btn sm" id="coSave" type="button">저장</button><span class="meta-line" id="coMsg" style="margin:0;"></span></div>
     </div>
     <div class="card">

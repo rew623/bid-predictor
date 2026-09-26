@@ -1472,7 +1472,7 @@ const pickNotice = (b) => ({id:b.id, no:b.no, ord:b.ord, nm:b.nm, org:b.org, dmd
 
 // ============================================================ 우리 업체 (소재지·보유 면허·사업자번호 — 이 기기에만 저장)
 const Company = {
-  get(){ return {sido: '', sgg: '', lics: [], biz: '', caps: {}, mf: {}, ...LS.get('company', {})}; },
+  get(){ return {sido: '', sgg: '', lics: [], biz: '', caps: {}, mf: {}, goods: {}, ...LS.get('company', {})}; },
   set(c){ LS.set('company', c); qpCache.clear(); },
   isSet(){ const c = this.get(); return !!(c.sido || c.lics.length); },
 };
@@ -1691,6 +1691,8 @@ function initCompany(){
   $('coSido').addEventListener('change', () => fillSgg(''));
   $('coBiz').value = c.biz || '';
   $('coName').value = c.name || '';
+  $('coGoods').querySelectorAll('[data-g]').forEach(el => el.checked = !!c.goods?.[el.dataset.g]);
+  $('coInds').value = (c.goods?.inds || []).join(', ');
   const lics = new Set(c.lics);
   const caps = {...c.caps};
   const readCaps = () => $('coCaps').querySelectorAll('input[data-cap]').forEach(el => {
@@ -1726,7 +1728,9 @@ function initCompany(){
     readCaps();
     const keep = Object.fromEntries(Object.entries(caps).filter(([l, v]) => lics.has(l) && Object.keys(v).length));
     const mf = Object.fromEntries(Object.entries(mfSel).filter(([l, v]) => lics.has(l) && v.size).map(([l, v]) => [l, [...v]]));
-    Company.set({name: $('coName').value.trim(), sido: $('coSido').value, sgg: $('coSgg').value, lics: [...lics], biz: $('coBiz').value.replace(/\D/g, ''), caps: keep, mf});
+    const goods = {inds: $('coInds').value.split(/[,，/]/).map(x => x.trim()).filter(Boolean)};
+    $('coGoods').querySelectorAll('[data-g]').forEach(el => { if(el.checked) goods[el.dataset.g] = true; });
+    Company.set({name: $('coName').value.trim(), goods, sido: $('coSido').value, sgg: $('coSgg').value, lics: [...lics], biz: $('coBiz').value.replace(/\D/g, ''), caps: keep, mf});
     $('coMsg').innerHTML = '<span class="badge ok">저장됨</span> 입찰공고에서 "참가 가능한 공고만"을 켜면 적용됩니다';
     LS.set('bidsFilter', {...LS.get('bidsFilter', {}), elig: true});
     $('bElig').checked = true; $('lElig').checked = true;
@@ -2303,6 +2307,7 @@ const bizFmt = (b) => b && b.length === 10 ? `${b.slice(0, 3)}-${b.slice(3, 5)}-
 function openCorp(biz){
   Corp.sel = biz;
   if(currentTab !== 'corp') switchTab('corp'); else renderCorpSearch();
+  history.pushState(null, '', '#corp/' + biz);   // 폰 뒤로 버튼 = 업체 목록으로 (앱이 꺼지지 않게)
 }
 async function renderCorpSearch(){
   const out = $('corpOut'), info = $('cInfo'), inp = $('cQuery');
@@ -2363,7 +2368,7 @@ async function renderCorpProfile(biz){
   const cnt = (arr) => Object.entries(arr.reduce((m, k) => (k && (m[k] = (m[k] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const orgs = cnt(rows.map(r => r.org)), lics = cnt(rows.flatMap(r => r.lic.map(l => LIC_SHORT[l] || l)));
   const watch = LS.get('corpWatch', []), on = watch.includes(biz);
-  out.innerHTML = `<div class="card corp-prof">
+  out.innerHTML = `<button class="corp-back" id="corpBack" type="button">← 업체 목록으로</button><div class="card corp-prof">
       <div class="corp-top"><div><h2 style="margin:0;">${esc(c.nm)}</h2><div class="meta-line" style="margin:2px 0 0;">${bizFmt(biz)}</div></div>
         <button class="btn sm ${on ? 'reg' : 'line'}" id="corpStar" type="button">${on ? '⭐ 관심 업체' : '☆ 관심 업체로'}</button></div>
       <div class="res-sum" style="margin-top:12px;">
@@ -2379,7 +2384,6 @@ async function renderCorpProfile(biz){
         <div class="meta-line">가운데(절반) <b>${q(ds, .25) >= 0 ? '+' : ''}${q(ds, .25).toFixed(2)} ~ ${q(ds, .75) >= 0 ? '+' : ''}${q(ds, .75).toFixed(2)}%p</b> · 투찰 사정률 자체는 보통 <b>${q(xs, .25).toFixed(2)} ~ ${q(xs, .75).toFixed(2)}%</b>. 0보다 왼쪽(−)은 하한 미달, 오른쪽이 멀수록 1위보다 높게 쓴 것.</div>` : '<div class="meta-line">투찰 습관을 볼 만큼 강원 투찰 기록이 많지 않습니다(5건 미만).</div>'}
       ${orgs.length ? `<div class="corp-tags"><b>자주 넣는 발주처</b> ${orgs.map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join('')}</div>` : ''}
       ${lics.length ? `<div class="corp-tags"><b>공고 면허</b> ${lics.map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join('')}</div>` : ''}
-      <div class="btn-row" style="margin-top:12px;"><button class="btn sm line" id="corpBack" type="button">← 업체 목록</button></div>
     </div>
     ${rows.length ? `<h3 class="corp-h">강원 투찰 이력 (최근 ${fmtNum(Math.min(rows.length, 60))}건)</h3><div class="rc-list">${rows.slice(0, 60).map(r => {
       const cls = r.rank === 1 ? 'win' : r.d != null && r.d < 0 ? 'below' : 'high';
@@ -2387,7 +2391,7 @@ async function renderCorpProfile(biz){
         <div class="rc-grid"><div><span>사정율</span><b>${r.S ? r.S.toFixed(3) : '-'}</b></div><div><span>투찰률</span><b>${r.x != null ? r.x.toFixed(3) : '-'}</b></div><div><span>차이</span><b>${r.d != null ? (r.d >= 0 ? '+' : '') + r.d.toFixed(3) : '-'}</b></div></div>
         <div class="rc-foot"><span class="rc-rank ${cls}"><b>${r.rank ? fmtNum(r.rank) : '-'}</b> / ${fmtNum(r.n)}</span><span class="rc-amt">${won(r.amt)}</span><span class="rc-v ${cls}">${r.rank === 1 ? '🏆 1순위' : r.d != null && r.d < 0 ? '하한 미달' : ''}</span></div></div>`;
     }).join('')}</div>` : ''}`;
-  $('corpBack').onclick = () => { Corp.sel = null; renderCorpSearch(); };
+  $('corpBack').onclick = () => { if(location.hash.startsWith('#corp/')) history.back(); else { Corp.sel = null; renderCorpSearch(); } };
   $('corpStar').onclick = () => { const w = LS.get('corpWatch', []); LS.set('corpWatch', on ? w.filter(b => b !== biz) : [biz, ...w]); renderCorpProfile(biz); };
   window.scrollTo(0, 0);
 }
@@ -3267,7 +3271,11 @@ async function init(){
   await Data.loadModel();
 
   document.querySelectorAll('.nav-item').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
-  window.addEventListener('popstate', () => switchTab(location.hash.slice(1), false));
+  window.addEventListener('popstate', () => {
+    const h = location.hash.slice(1);
+    if(h.startsWith('corp')){ Corp.sel = h.split('/')[1] || null; if(currentTab !== 'corp') switchTab('corp', false); else renderCorpSearch(); return; }   // 업체 보기 → 뒤로 = 업체 목록
+    switchTab(h, false);
+  });
   document.addEventListener('click', (e) => {
     const w = e.target.closest('[data-watch]');
     if(w){ toggleWatch(w.dataset.watch, w); return; }
