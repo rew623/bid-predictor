@@ -781,6 +781,20 @@ async function renderBids(){
   $('bidsMore').textContent = `더 보기 (${fmtNum(rows.length - bidsShown)}건 남음)`;
 }
 
+// 더비스식 짧은 면허 이름 (대업종은 '(대)') — 카드 첫 줄에 바로
+const LIC_SHORT = {'금속창호·지붕건축물조성': '금속지붕(대)', '도장·습식·방수·석공': '도장습식석공(대)', '지반조성·포장': '지반조성포장(대)',
+  '실내건축': '실내건축(대)', '철근·콘크리트': '철콘(대)', '구조물해체·비계': '비계구조(대)', '상하수도설비': '상하수도(대)', '철도·궤도': '철도궤도(대)',
+  '철강구조물': '철강구조(대)', '수중·준설': '수중준설(대)', '승강기·삭도': '승강삭도(대)', '조경식재·시설물': '식재시설물(대)', '기계설비': '기계설비(대)',
+  '가스시설시공': '가스(대)', '토목건축': '토건', '산업환경설비': '산업환경', '정보통신': '통신', '소방시설': '소방', '보링·그라우팅': '보링그라우팅'};
+/** 카드 첫 줄 면허: 요구 면허 짧은 이름(우리 면허는 ✓) + 요구 주력분야 */
+function licShortTags(b){
+  const lics = licOf(b);
+  if(!lics.length) return b.live && !b.limTried ? ['<span class="tag">면허 조회 중…</span>'] : [];
+  const mine = new Set(Company.isSet() ? Company.get().lics : []);
+  const mf = [...new Set(mfOf(b).flatMap(m => mfClean(m).split(/[·,]\s*|\],\s*\[/)).map(x => x.replace(/^\[?\d+\^?/, '').replace(/(석|토)공사$/, '$1공').replace(/공사$/, '').trim()).filter(Boolean))];   // '석공사'→'석공', '도장공사'→'도장'
+  return [...lics.map(l => `<span class="tag${mine.has(l) ? ' lic mine' : ''}" title="${esc(l)}">${mine.has(l) ? '✓ ' : ''}${esc(LIC_SHORT[l] || l)}</span>`),
+    ...(mf.length ? [`<span class="tag" title="요구 주력분야">주력 ${esc(mf.join('·'))}</span>`] : [])];
+}
 /** 카드의 면허 태그: 공고가 요구하는 면허(면허제한). 실시간 공고는 수집된 값 또는 조달청 직접 조회 값 */
 function licTags(b){
   const lics = licOf(b);
@@ -808,9 +822,10 @@ function bidCard(b, today, opts = {}){
     `<span class="tag loc">${esc([b.sido, b.sgg].filter(Boolean).join(' ') || '지역 미상')}</span>`,
     b.sui ? '<span class="tag warn" title="수의계약(견적) — 추천값은 경쟁입찰 과거 공고 기준">수의</span>' : '',
     b.corr ? '<span class="tag warn" title="정정공고 — 바뀐 내용을 원문에서 확인">정정</span>' : '',
+    ...licShortTags(b),
     eligTag(b),
   ].join('');
-  const moreTags = [...licTags(b), b.rng ? `<span class="tag">예가 ${esc(rngText(b.rng))}</span>` : '', b.floor ? `<span class="tag">하한 ${b.floor}%</span>` : ''].join('');
+  const moreTags = [b.rng ? `<span class="tag">예가 ${esc(rngText(b.rng))}</span>` : '', b.floor ? `<span class="tag">하한 ${b.floor}%</span>` : ''].join('');
   let pred = '', more = '';
   if(qp){
     pred = `<div class="b-pred">
@@ -840,7 +855,7 @@ function bidCard(b, today, opts = {}){
     ${pred}
     <details class="b-more"><summary>자세히</summary><div class="b-tags">${moreTags}</div>${more}</details>
     <div class="b-actions">
-      <button class="btn sm" data-predict="${esc(b.id)}" type="button">💰 금액 자세히</button>
+      <button class="btn sm" data-predict="${esc(b.id)}" type="button">💰 투찰금액 분석</button>
       ${b.url ? `<a class="btn line sm" href="${esc(b.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}
       ${opts.hide ? `<button class="btn line sm" data-hide="${esc(b.id)}" type="button" title="우리가 못 하는 공고면 빼 두세요. 이 기기에만 저장">목록에서 빼기</button>` : ''}
       ${opts.unhide ? `<button class="btn line sm" data-unhide="${esc(b.id)}" type="button">되돌리기</button>` : ''}
