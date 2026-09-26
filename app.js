@@ -334,6 +334,14 @@ const Data = {
     });
   },
   /** 진행중 물품 공고(data/goods.json, 수집기 물품최근 단계) — kind '물품' 을 붙여 공사 공고와 같은 카드로 */
+  /** 진행중 국방 공고(data/d2b/bids.json, collect_d2b.py) — 물품·공사(시설), 용역은 뺌 */
+  loadD2bBids(){
+    return this.once('d2bbids', async () => {
+      try{ this.d2bBids = ((await this.fetchJson('d2b/bids.json')).items || []).filter(b => b.kind !== '용역'); }
+      catch(e){ this.d2bBids = []; }
+      return this.d2bBids;
+    });
+  },
   loadGoods(){
     return this.once('goods', async () => {
       try{ this.goods = ((await this.fetchJson('goods.json')).items || []).map(g => ({...g, kind: '물품'})); }
@@ -650,7 +658,7 @@ function valWinP(random, nExp){
  *  낙찰확률 곡선: 같은 시도 최근 24개월 → 예가범위 같음(30건↑) (면허로는 쪼개지 않음). 조건별 결과는 재사용 */
 /** 공고 목록용 예측: 전국 모델이 있으면 그걸로(지역 파일 없이도 됨), 없으면 이 지역 곡선 */
 function quickPredict(notice){
-  if(notice.kind && notice.kind !== '공사') return null;
+  if((notice.kind && notice.kind !== '공사') || notice.src === '국방') return null;   // 국방은 규칙이 달라(사정률 ±2·복수예가) 국방 데이터로 따로 검증 뒤
   const mp = modelPredict(notice);
   if(!mp) return quickPredictLocal(notice);
   const e = mp.e, amt = notice.base || notice.est;
@@ -954,7 +962,15 @@ function goodsTags(b){
   return ['<span class="tag goods">📦 물품</span>', b.cm && b.cm !== '일반경쟁' ? `<span class="tag">${esc(b.cm)}</span>` : '',
     ...(b.inds || []).map(t => `<span class="tag" title="업종 제한">${esc(t)}</span>`), b.prd ? `<span class="tag" title="세부품명">${esc(b.prd)}</span>` : ''].filter(Boolean);
 }
+function d2bTags(b){
+  const soon = b.reg && Date.parse(b.reg.replace(' ', 'T') + ':00+09:00') - Date.now() < 2 * 86400000;
+  return ['<span class="tag d2b">🎖 국방</span>', b.kind === '물품' ? '<span class="tag goods">📦 물품</span>' : '<span class="tag">🏗 시설공사</span>',
+    b.reg ? `<span class="tag ${soon ? 'warn' : ''}" title="국방전자조달은 입찰서 제출 전에 입찰참가등록을 먼저 해야 합니다">참가등록 ${esc(b.reg.slice(5).replace('-', '/'))}까지</span>` : '',
+    b.cm && b.cm !== '일반경쟁' ? `<span class="tag">${esc(b.cm)}</span>` : '',
+    ...(b.inds || []).map(t => `<span class="tag" title="면허·업종 제한">${esc(LIC_SHORT[t.replace(/(공사)?업$/, '')] || t)}</span>`), b.prd ? `<span class="tag">${esc(b.prd)}</span>` : ''].filter(Boolean);
+}
 function licShortTags(b){
+  if(b.src === '국방') return d2bTags(b);
   if(b.kind === '물품') return goodsTags(b);
   const lics = licOf(b);
   if(!lics.length) return b.live && !b.limTried ? ['<span class="tag">면허 조회 중…</span>'] : [];
@@ -987,7 +1003,7 @@ function bidCard(b, today, opts = {}){
   const amt = b.base || b.est;
   // 한눈에: 지역·수의·정정·참가 가능 여부만. 면허·예가·하한·사정률 같은 세부는 '자세히'로
   const tags = [
-    `<span class="tag loc">${esc([b.sido, b.sgg].filter(Boolean).join(' ') || '지역 미상')}</span>`,
+    `<span class="tag loc">${esc([b.sido, b.sgg].filter(Boolean).join(' ') || (b.src === '국방' ? (b.rgn?.length ? b.rgn.join('·') + ' 제한' : '전국') : '지역 미상'))}</span>`,
     b.sui ? '<span class="tag warn" title="수의계약(견적) — 추천값은 경쟁입찰 과거 공고 기준">수의</span>' : '',
     b.corr ? '<span class="tag warn" title="정정공고 — 바뀐 내용을 원문에서 확인">정정</span>' : '',
     ...licShortTags(b),
@@ -1003,6 +1019,8 @@ function bidCard(b, today, opts = {}){
       </div>${qp.area ? `<div class="b-area">🎯 ${esc(qp.area.label)} 전용 추천</div>` : ''}`;
     more = `<div class="b-kv"><span>추천 투찰 사정률 <b>${qp.bestSr != null ? pct(qp.bestSr, 3) : '-'}</b></span><span>예상 사정율 <b>${pct(qp.sr, 3)}</b></span>${qp.value ? `<span>기대 수주액 <b>${eok(qp.value)}</b></span>` : ''}</div>
       <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.area ? ` · ${esc(areaText(qp.area))}` : ''}${qp.model ? (qp.area ? ' · ×는 공정 기대(1÷(참가+1)) 대비' : ' · 추천값·낙찰확률은 전국의 경쟁 규모가 비슷한 공고 기준 · ×는 공정 기대(1÷(참가+1)) 대비') : qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}</div>`;
+  }else if(b.src === '국방'){
+    pred = `<div class="b-note">국방 추천 투찰가는 국방 낙찰 데이터(복수예가·전체 순위)로 역검증을 통과하면 추가됩니다${b.rng ? ` · 사정률 ${esc(rngText(b.rng))}` : ''}${b.floor ? ` · 하한 ${b.floor}%` : ''}</div>`;
   }else if(b.kind === '물품'){
     pred = '<div class="b-note">물품 추천 투찰가는 물품 낙찰 데이터가 모여 역검증을 통과하면 추가됩니다</div>';
   }else if(b.sido && !Data.hasScsbid(b.sido)){
@@ -1025,7 +1043,7 @@ function bidCard(b, today, opts = {}){
     ${pred}
     <details class="b-more"><summary>자세히</summary><div class="b-tags">${moreTags}</div>${more}</details>
     <div class="b-actions">
-      ${b.kind === '물품' ? '' : `<button class="btn sm" data-predict="${esc(b.id)}" type="button">💰 투찰금액 분석</button>`}
+      ${b.kind === '물품' || b.src === '국방' ? '' : `<button class="btn sm" data-predict="${esc(b.id)}" type="button">💰 투찰금액 분석</button>`}
       ${qp?.bid ? `<button class="btn sm reg" data-quickbid="${esc(b.id)}" type="button" title="추천 투찰가 ${won(qp.bid)}을 내 투찰에 기록">📝 추천가로 투찰 등록</button>` : ''}
       ${b.url ? `<a class="btn line sm" href="${esc(b.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}
       ${opts.hide ? `<button class="btn line sm" data-hide="${esc(b.id)}" type="button" title="우리가 못 하는 공고면 빼 두세요. 이 기기에만 저장">목록에서 빼기</button>` : ''}
@@ -1052,7 +1070,7 @@ function apiKey(){
   const k = String(LS.get('apiKey', '') || '').trim();
   try{ return k.includes('%') ? decodeURIComponent(k) : k; }catch(e){ return k; }   // 인코딩 키를 넣어도 동작
 }
-const findNotice = (id) => Data.bids?.find(x => x.id === id) || Data.goods?.find(x => x.id === id) || Live.items.find(x => x.id === id);
+const findNotice = (id) => Data.bids?.find(x => x.id === id) || Data.goods?.find(x => x.id === id) || Data.d2bBids?.find(x => x.id === id) || Live.items.find(x => x.id === id);
 
 async function liveCall(op, params, base=LIVE_BASE){
   const q = new URLSearchParams({serviceKey: apiKey(), type: 'json', ...params});
@@ -1201,13 +1219,15 @@ async function renderMine(){
   const cRows = ev.filter(([b, e]) => e.ok && e.lic !== 'unknown' && e.lic !== 'mf-check').map(([b]) => b);
   // 물품(나라장터): 지역·직생·업종·소상공인/여성기업 제한으로 거름
   const goods = (await Data.loadGoods()).filter(g => !g.close || parseKst(g.close) >= now);
-  const gev = goods.map(g => [g, goodsEligibility(g)]);
-  const gRows = gev.filter(([g, e]) => e.ok).map(([g]) => g);
+  const d2b = (await Data.loadD2bBids()).filter(g => !g.close || parseKst(g.close) >= now);
+  const gev = [...goods, ...d2b].map(g => [g, goodsEligibility(g)]);
+  const okRows = gev.filter(([g, e]) => e.ok).map(([g]) => g);
+  const gRows = okRows.filter(g => g.kind === '물품'), dcRows = okRows.filter(g => g.kind === '공사');   // 국방 시설공사는 공사로
   const gNo = {}; gev.forEach(([g, e]) => { if(!e.ok) gNo[e.why] = (gNo[e.why] || 0) + 1; });
-  const kinds = [['all', '전체', cRows.length + gRows.length], ['공사', '🏗 공사', cRows.length], ['물품', '📦 물품', gRows.length]];
+  const kinds = [['all', '전체', cRows.length + dcRows.length + gRows.length], ['공사', '🏗 공사', cRows.length + dcRows.length], ['물품', '📦 물품', gRows.length], ['국방', '🎖 국방', okRows.length]];
   if(!kinds.some(k => k[0] === Mine.kind)) Mine.kind = 'all';
   $('mineKind').innerHTML = kinds.map(([k, t, n]) => `<button type="button" class="chip ${Mine.kind === k ? 'selected' : ''}" data-kind="${k}">${t}<span class="cnt">${fmtNum(n)}</span></button>`).join('');
-  const rows = Mine.kind === '공사' ? cRows : Mine.kind === '물품' ? gRows : [...cRows, ...gRows];
+  const rows = Mine.kind === '공사' ? [...cRows, ...dcRows] : Mine.kind === '물품' ? gRows : Mine.kind === '국방' ? okRows : [...cRows, ...dcRows, ...gRows];
   const unknown = ev.filter(([b, e]) => e.ok && e.lic === 'unknown').length;
   const mfCheck = ev.filter(([b, e]) => e.ok && e.lic === 'mf-check').length;
   const noCap = ev.filter(([b, e]) => e.cap === 'no').length, noMf = ev.filter(([b, e]) => e.lic === 'mf').length;
@@ -1227,9 +1247,9 @@ async function renderMine(){
   const defs = mineChipDefs(c);
   if(!defs.some(d => d.k === Mine.chip)) Mine.chip = 'all';
   const chipF0 = defs.find(d => d.k === Mine.chip).f;
-  const chipF = (b) => b.kind === '물품' ? Mine.chip === 'all' : chipF0(b);
+  const chipF = (b) => b.kind === '물품' || b.src === '국방' ? Mine.chip === 'all' : chipF0(b);
   const nHidden = rows.filter(b => hidden.has(b.id)).length;
-  $('mineChips').hidden = Mine.kind === '물품';
+  $('mineChips').hidden = Mine.kind === '물품' || Mine.kind === '국방';
   $('mineChips').innerHTML = defs.map(d => `<button type="button" class="chip ${Mine.chip === d.k && !Mine.showHidden ? 'selected' : ''}" data-chip="${esc(d.k)}">${esc(d.label)}<span class="cnt">${visible.filter(d.f).length}</span></button>`).join('')
     + (nHidden ? `<button type="button" class="chip ${Mine.showHidden ? 'selected' : ''}" data-showhidden="1">뺀 공고<span class="cnt">${nHidden}</span></button>` : '');
   const shown = Mine.showHidden ? rows.filter(b => hidden.has(b.id)) : visible.filter(chipF);
@@ -1275,7 +1295,7 @@ async function renderMine(){
   $('mineList').innerHTML = html || `<div class="empty card">${Mine.day ? '이날 마감인 참가 가능 공고가 없습니다.' : '지금 참가 가능한 진행중 공고가 없습니다.'}</div>`;
   const excl = [nHidden && !Mine.showHidden ? `직접 뺀 ${fmtNum(nHidden)}건` : '', noMf ? `주력분야 불일치 ${fmtNum(noMf)}건` : '',
     noCap ? `실적 한도 초과 ${fmtNum(noCap)}건` : '', mfCheck ? `면허 여러 개라 같이 필요한지 불확실 ${fmtNum(mfCheck)}건` : '',
-    unknown ? `면허 정보 없음 ${fmtNum(unknown)}건` : '', ...Object.entries(gNo).map(([k, n]) => `물품 ${k} ${fmtNum(n)}건`)].filter(Boolean);
+    unknown ? `면허 정보 없음 ${fmtNum(unknown)}건` : '', ...Object.entries(gNo).map(([k, n]) => `물품·국방 ${k} ${fmtNum(n)}건`)].filter(Boolean);
   const nEx = (nHidden && !Mine.showHidden ? nHidden : 0) + noMf + noCap + mfCheck + unknown + Object.values(gNo).reduce((a, b) => a + b, 0);
   $('mineInfo').innerHTML = [Mine.showHidden ? `뺀 공고 ${fmtNum(list.length)}건 — "되돌리기"로 다시 목록에` : `${Mine.day ? `${dayLabel(Mine.day)} 마감 ` : ''}${fmtNum(list.length)}건`,
     nEx ? `<details class="excl"><summary>제외 ${fmtNum(nEx)}건</summary> — ${excl.join(' · ')} (의심되면 공고 검색에서 확인)</details>` : '',
@@ -1703,6 +1723,7 @@ function goodsEligibility(g){
   const rgn = g.rgn || [];
   if(c.sido && rgn.length && !rgn.some(t => { if(/전국/.test(t)) return true; const r = parseRegion(t); return r.sido === c.sido && (!r.sgg || !c.sgg || r.sgg === c.sgg); })){ out.ok = false; out.why = '지역 제한'; return out; }
   if(g.mnf && !q.direct){ out.ok = false; out.why = '직접생산 필요'; return out; }
+  if(g.src === '국방' && g.reg && parseKst(g.reg) < new Date()){ out.ok = false; out.why = '참가등록 마감 지남'; return out; }   // 국방은 입찰서 전에 참가등록부터
   if(g.inds?.length){
     const mine = [...(q.inds || []), ...(c.lics || [])].map(normQ).filter(Boolean);
     const hit = g.inds.some(t => { const k = normQ(t); return mine.some(m => k.includes(m) || m.includes(k)); });
@@ -1715,7 +1736,7 @@ function goodsEligibility(g){
 }
 function eligTag(b){
   if(!Company.isSet()) return '';
-  if(b.kind === '물품'){
+  if(b.kind === '물품' || b.src === '국방'){
     const e = goodsEligibility(b);
     return e.ok ? '<span class="tag okc">참가 가능</span>' + e.warn.map(w => `<span class="tag warn" title="물품분류(세부품명) 제한 공고 — 나라장터 경쟁입찰참가자격에 이 품명이 등록돼 있어야 합니다(없으면 투찰 전 추가 등록)">${esc(w)}</span>`).join('')
       : `<span class="tag bad">참가 불가 · ${esc(e.why)}</span>`;

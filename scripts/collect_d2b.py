@@ -33,6 +33,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from korea import normalize_licenses  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(os.environ.get("D2B_OUT") or ROOT / "data" / "d2b")   # D2B_OUT 은 로컬 시험용
 KST = dt.timezone(dt.timedelta(hours=9))
@@ -42,8 +45,8 @@ RECENT_DAYS = 30
 TOP = 30             # 개찰 순위를 행으로 남길 상위 업체 수
 FAIL_STOP = 5          # 연속 실패가 이만큼이면 이번 실행은 멈춘다
 MAX_TRIES = 3          # 공고 하나를 이만큼 실패하면 건너뛴다
-BASES = ["http://openapi.d2b.go.kr/openapi/service/BidResultInfoService/",
-         "https://apis.data.go.kr/1690000/BidResultInfoService/"]
+BASES = ["http://openapi.d2b.go.kr/openapi/service/",
+         "https://apis.data.go.kr/1690000/"]   # 뒤에 서비스 이름(BidResultInfoService·BidPblancInfoService)/오퍼레이션
 KINDS = {
     "D": dict(list="getDmstcCmpetBidResultList", detail="getDmstcCmpetBidResultDetail",
               mnuf="getDmstcCmpetBidResultMnufList", bsic="getDmstcCmpetBidResultBsicList"),
@@ -104,14 +107,14 @@ class Api:
         self.fails = 0
         self.calls = 0
 
-    def call(self, op, **params):
+    def call(self, op, svc="BidResultInfoService", **params):
         """items 목록과 totalCount 를 돌려준다. 오류면 예외"""
         if time.time() > self.deadline:
             raise Stop("시간 끝")
         p = {k: v for k, v in params.items() if v not in (None, "")}
         if self.base == 1:
             p["serviceKey"] = self.key
-        url = BASES[self.base] + op + "?" + urllib.parse.urlencode(p)
+        url = BASES[self.base] + svc + "/" + op + "?" + urllib.parse.urlencode(p)
         last = None
         for attempt in range(3):
             try:
@@ -311,6 +314,93 @@ def save(store, index, meta):
         write_if_changed(OUT / "meta.json", dumps(m))
 
 
+# ---------------------------------------------------------------- 진행중 국방 공고 → data/d2b/bids.json
+# 물품·용역(국내 경쟁) + 시설(공사). 목록(개찰일 오늘~60일) + 공고마다 상세 1회(지역제한·면허제한·추정가격·사정률·낙찰하한율).
+# 항목: id, src='국방', kind(물품|용역|공사), nm, org, cm, dm, bm, reg(입찰참가등록 마감), close(입찰서 제출 마감), open,
+#       base(기초예비가격), est, budget, rng[하한%, 상한%], floor, rgn[지역 이름], inds[면허·업종 이름], url
+NOTICE_KINDS = {
+    "D": dict(list="getDmstcCmpetBidPblancList", detail="getDmstcCmpetBidPblancDetail"),
+    "F": dict(list="getFcltyCmpetBidPblancList", detail="getFcltyCmpetBidPblancDetail"),
+}
+D2B_URL = "https://www.d2b.go.kr/mainBidAnnounceList.do"
+
+
+def dt_fmt(v):
+    v = re.sub(r"\D", "", v or "")
+    return f"{v[:4]}-{v[4:6]}-{v[6:8]} {v[8:10]}:{v[10:12]}" if len(v) >= 12 else (f"{v[:4]}-{v[4:6]}-{v[6:8]}" if len(v) >= 8 else None)
+
+
+def lmt_names(v):
+    """'[12] 부산광역시' · '[4991] 금속창호…' 여러 개 → 이름 목록"""
+    return [m.strip(" ,/|") for m in re.findall(r"\]\s*([^\[\]]+)", v or "") if m.strip(" ,/|")]
+
+
+def notice_key(kind, it):
+    if kind == "D":
+        return "DB-" + "-".join((it.get(k) or "").strip() for k in ("demandYear", "orntCode", "dcsNo", "pblancNo"))
+    return "FB-" + "-".join((it.get(k) or "").strip() for k in ("orntCode", "cntrwkNo", "pblancNo"))
+
+
+def collect_notices(api, now):
+    old = {it["id"]: it for it in load_json(OUT / "bids.json", {}).get("items", [])}
+    out = {}
+    bgn, end = now.strftime("%Y%m%d"), (now + dt.timedelta(days=60)).strftime("%Y%m%d")
+    for kind, K in NOTICE_KINDS.items():
+        items, page = [], 1
+        while True:
+            got, total = api.call(K["list"], svc="BidPblancInfoService", numOfRows=100, pageNo=page, opengDateBegin=bgn, opengDateEnd=end)
+            items += got
+            if not got or len(items) >= total:
+                break
+            page += 1
+        latest = {}
+        for it in items:   # 같은 공고는 마지막 차수만
+            k = notice_key(kind, it)
+            if int(it.get("pblancOdr") or 0) >= int((latest.get(k) or {}).get("pblancOdr") or 0):
+                latest[k] = it
+        for k, it in latest.items():
+            if "취소" in (it.get("pblancSe") or ""):
+                continue
+            close = dt_fmt(it.get("biddocPresentnClosDt"))
+            if close and close < now.strftime("%Y-%m-%d %H:%M"):
+                continue
+            prev = old.get(k)
+            if prev and prev.get("odr") == it.get("pblancOdr") and prev.get("_d"):
+                out[k] = prev
+                continue
+            try:
+                if kind == "D":
+                    det, _ = api.call(K["detail"], svc="BidPblancInfoService", demandYear=it.get("demandYear"), orntCode=it.get("orntCode"),
+                                      dcsNo=it.get("dcsNo"), pblancNo=it.get("pblancNo"), pblancOdr=it.get("pblancOdr"))
+                else:
+                    det, _ = api.call(K["detail"], svc="BidPblancInfoService", pblancYear=it.get("pblancYear"), pblancSeCode=it.get("pblancSeCode"),
+                                      pblancNo=it.get("pblancNo"), pblancOdr=it.get("pblancOdr"), cntrwkNo=it.get("cntrwkNo"), orntCode=it.get("orntCode"))
+            except RuntimeError as e:
+                log("  국방 공고 상세 실패", k, e)
+                det = []
+            d = det[0] if det else {}
+            lo, hi = num(d.get("asessRtLwlt")), num(d.get("asessRtUplmt"))
+            base = num(it.get("bsicExpt") or it.get("baseAmnt"))
+            busi = (it.get("busiDivs") or "").strip()
+            rec = {
+                "id": k, "src": "국방", "odr": it.get("pblancOdr"), "kind": "공사" if kind == "F" and busi != "용역" else ("용역" if busi == "용역" else "물품"),
+                "nm": (it.get("bidNm") or it.get("cntrwkNm") or "").strip(), "org": (it.get("ornt") or "").strip(),
+                "cm": it.get("cntrctMth"), "dm": d.get("sucbidrDecsnMth"), "bm": d.get("bidMth"), "se": it.get("pblancSe"),
+                "reg": dt_fmt(it.get("bidPartcptRegistClosDt") or d.get("bidPartcptReqstClosDt")), "close": close, "open": dt_fmt(it.get("opengDt")),
+                "base": int(base) if base else None, "est": int(num(d.get("estmPrce"))) if num(d.get("estmPrce")) else None,
+                "budget": int(num(d.get("budgetAmount"))) if num(d.get("budgetAmount")) else None,
+                "rng": [lo, hi] if (lo or hi) else None, "floor": num(d.get("scsbidLwltRt")) or None,
+                "rgn": lmt_names(d.get("areaLmttList")),
+                # 시설공사 면허는 옛 이름(예: 금속창호ㆍ지붕건축물조립공사업)으로 와서 23개 정식 이름으로 — 물품·용역 업종은 원문 그대로(오매칭 방지)
+                "inds": [(normalize_licenses(t) or [t])[0] if kind == "F" else t for t in lmt_names(d.get("lcnsLmttList"))],
+                "prd": (d.get("prdlstNm") or "").strip() or None, "g2b": it.get("g2bPblancNo"), "url": D2B_URL, "_d": 1 if det else None,
+            }
+            out[k] = {kk: v for kk, v in rec.items() if v not in (None, "", [])}
+    items = sorted(out.values(), key=lambda x: (x.get("close") or "9999", x["id"]))
+    write_if_changed(OUT / "bids.json", dumps({"v": 1, "updated_at": now.isoformat(timespec="minutes"), "items": items}))
+    log(f"진행중 국방 공고 {len(items)}건 → d2b/bids.json")
+
+
 def main():
     t0 = time.time()
     api = Api(t0 + MAX_MINUTES * 60)
@@ -328,6 +418,11 @@ def main():
     bf = meta.get("backfill") or {}
     changed = 0
     try:
+        # ⓪ 진행중 공고 (우리 공고 탭용, 매번)
+        try:
+            collect_notices(api, now)
+        except RuntimeError as e:
+            log("국방 공고 수집 실패:", e)
         # ① 최근 30일 (매번)
         bgn, end = (now - dt.timedelta(days=RECENT_DAYS)).strftime("%Y%m%d"), now.strftime("%Y%m%d")
         for kind in KINDS:

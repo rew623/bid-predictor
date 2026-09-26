@@ -603,3 +603,4 @@ td.nowrap{white-space:nowrap;}
 @media (max-width:620px){ .mode-seg#bMode button{font-size:12px;} }
 .corp-back{display:flex; align-items:center; gap:6px; width:100%; margin:0 0 10px; padding:12px 14px; border:1px solid var(--primary); border-radius:12px; background:var(--primary-soft); color:var(--primary-dark); font:inherit; font-size:15px; font-weight:700; cursor:pointer; position:sticky; top:8px; z-index:5;}
 .tag.goods{background:#FFF4E5; color:#B54708; border-color:#FEDF89;}
+.tag.d2b{background:#EEF4E8; color:#3B6D11; border-color:#C7DDB0;}
