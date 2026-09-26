@@ -63,7 +63,8 @@
   <section id="view-bids" hidden>
     <div class="seg mode-seg" id="bMode">
       <button data-v="live" type="button">🔎 실시간 검색 (나라장터)</button>
-      <button data-v="saved" type="button">📋 진행중 공고 (자동 수집)</button>
+      <button data-v="saved" type="button">📋 진행중 공고</button>
+      <button data-v="corp" type="button">🏢 업체 검색</button>
     </div>
 
     <!-- 실시간 검색: 조달청 API 직접 조회 -->
@@ -125,6 +126,18 @@
     </div>
     <div class="bid-list" id="bidsList"></div>
     <div class="more"><button class="btn line sm" id="bidsMore" type="button" hidden>더 보기</button></div>
+    </div>
+
+    <!-- 업체 검색: 수집된 낙찰·개찰 상세로 업체별 투찰 이력·습관 -->
+    <div id="bidsCorp" hidden>
+      <div class="card filter-card">
+        <div class="search-box">
+          <span class="search-ico" aria-hidden="true">🏢</span>
+          <input type="search" id="cQuery" placeholder="업체명 또는 사업자번호 (예: 금석건설, 221-81-12757)" aria-label="업체 검색" autocomplete="off">
+        </div>
+        <div class="meta-line" id="cInfo"></div>
+      </div>
+      <div id="corpOut"></div>
     </div>
   </section>
 

@@ -97,7 +97,7 @@ const FIREBASE_CONFIG = {
 };   // 웹 앱 설정값은 공개돼도 되는 값(비밀 아님) — 데이터는 보안 규칙이 지킨다
 const FB_VER = '10.12.2';
 const Cloud = {
-  keys: ['company', 'watch', 'hiddenBids', 'history', 'apiKey', 'mineArea', 'mineSort', 'bidsFilter', 'bidsMode', 'watchMode', 'theme', 'myCal', 'curveSmooth', 'pSidos', 'pLics', 'statsFilter', 'guideClosed'],
+  keys: ['company', 'watch', 'hiddenBids', 'history', 'corpWatch', 'apiKey', 'mineArea', 'mineSort', 'bidsFilter', 'bidsMode', 'watchMode', 'theme', 'myCal', 'curveSmooth', 'pSidos', 'pLics', 'statsFilter', 'guideClosed'],
   user: null, db: null, loading: null, status: '', lastSync: null, unsub: null, timers: {},
   dev: (() => { try{ let d = localStorage.getItem('bp._dev'); if(!d){ d = Math.random().toString(36).slice(2, 10); localStorage.setItem('bp._dev', d); } return d; }catch(e){ return 'x'; } })(),
   ts(){ try{ return JSON.parse(localStorage.getItem('bp._ts') || '{}'); }catch(e){ return {}; } },
@@ -1281,10 +1281,12 @@ function initMine(){
 }
 
 function renderBidsTab(){
-  const mode = ['live', 'saved'].includes(bidsMode) ? bidsMode : (apiKey() ? 'live' : 'saved');
+  const mode = ['live', 'saved', 'corp'].includes(bidsMode) ? bidsMode : (apiKey() ? 'live' : 'saved');
   $('bMode').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
   $('bidsSaved').hidden = mode !== 'saved';
   $('bidsLive').hidden = mode !== 'live';
+  $('bidsCorp').hidden = mode !== 'corp';
+  if(mode === 'corp') return renderCorpSearch();
   if(mode === 'saved') return renderBids();
   $('liveKeyHint').hidden = !!apiKey();
   if(apiKey() && !Live.params) liveSearch();
@@ -2290,6 +2292,109 @@ const History = {
   clear(){ LS.set('history', null); },
 };
 
+// ---------- 🏢 업체 검색: data/corps.json(전국 낙찰·개찰 상세·국방 색인) + 개찰 상세로 업체별 투찰 이력·습관
+const Corp = {idx: null, q: '', sel: null};
+async function loadCorps(){
+  if(!Corp.idx){
+    const d = await Data.fetchJson('corps.json');
+    Corp.idx = {sidos: d.sidos, at: d.updated_at, items: d.items.map(x => ({biz: x[0], nm: x[1], wins: x[2], last: x[3], ws: x[4].map(i => d.sidos[i]), dn: x[5], d1: x[6], mn: x[7], m1: x[8]}))};
+  }
+  return Corp.idx;
+}
+const bizFmt = (b) => b && b.length === 10 ? `${b.slice(0, 3)}-${b.slice(3, 5)}-${b.slice(5)}` : b || '';
+function openCorp(biz){
+  bidsMode = 'corp'; LS.set('bidsMode', 'corp');
+  Corp.sel = biz;
+  if(currentTab !== 'bids') switchTab('bids'); else renderBidsTab();
+}
+async function renderCorpSearch(){
+  const out = $('corpOut'), info = $('cInfo'), inp = $('cQuery');
+  if(!inp.dataset.bound){
+    inp.dataset.bound = 1;
+    let t = null;
+    inp.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { Corp.q = inp.value.trim(); Corp.sel = null; renderCorpSearch(); }, 250); });
+  }
+  if(!Corp.idx) out.innerHTML = loadingHtml('업체 목록 불러오는 중…');
+  let idx;
+  try{ idx = await loadCorps(); }catch(e){ out.innerHTML = '<div class="card empty">업체 목록이 아직 없습니다. 다음 자동 수집 뒤에 생깁니다.</div>'; return; }
+  info.innerHTML = `업체 ${fmtNum(idx.items.length)}곳 — 전국 낙찰자 + ${esc((Data.meta.detail?.regions || []).join('·'))} 개찰 상세(전체 투찰) + 국방 상위 투찰. 대표자·주소는 조달청 업체 정보에서 확인하세요.`;
+  if(Corp.sel) return renderCorpProfile(Corp.sel);
+  const watch = LS.get('corpWatch', []);
+  const q = Corp.q.replace(/[\s-]/g, '');
+  const row = (c) => `<button type="button" class="corp-row" data-corp="${esc(c.biz)}">
+      <div><b>${esc(c.nm)}</b>${watch.includes(c.biz) ? ' ⭐' : ''}<small>${bizFmt(c.biz)}${c.ws.length ? ' · 낙찰 지역 ' + esc(c.ws.join('·')) : ''}</small></div>
+      <div class="corp-nums"><span>전국 낙찰 <b>${fmtNum(c.wins)}</b></span><span>강원 투찰 <b>${fmtNum(c.dn)}</b>${c.d1 ? ` · 1순위 ${fmtNum(c.d1)}` : ''}</span></div></button>`;
+  if(!q){
+    const me = String(Company.get().biz || '');
+    const mine = idx.items.find(c => c.biz === me);
+    const w = watch.map(b => idx.items.find(c => c.biz === b)).filter(Boolean);
+    out.innerHTML = (mine ? `<h3 class="corp-h">우리 업체</h3>${row(mine)}` : '')
+      + (w.length ? `<h3 class="corp-h">⭐ 관심 업체</h3>${w.map(row).join('')}` : '')
+      + `<h3 class="corp-h">강원에서 가장 많이 투찰한 업체</h3>${[...idx.items].sort((a, b) => b.dn - a.dn).slice(0, 15).map(row).join('')}`;
+    return;
+  }
+  const hits = /^\d{3,10}$/.test(q) ? idx.items.filter(c => c.biz.startsWith(q)) : idx.items.filter(c => c.nm.replace(/\s/g, '').includes(q));
+  out.innerHTML = hits.length ? `<div class="meta-line">${fmtNum(hits.length)}곳${hits.length > 50 ? ' (많이 투찰·낙찰한 순 50곳)' : ''}</div>${hits.slice(0, 50).map(row).join('')}` : '<div class="card empty">찾는 업체가 없습니다. 낙찰했거나 강원 공고에 투찰한 업체만 있습니다.</div>';
+}
+async function renderCorpProfile(biz){
+  const out = $('corpOut');
+  const c = Corp.idx.items.find(x => x.biz === biz) || {biz, nm: biz, wins: 0, ws: [], dn: 0, d1: 0, mn: 0, m1: 0};
+  out.innerHTML = loadingHtml('투찰 이력 계산 중…');
+  // 개찰 상세(전체 투찰)에서 이 업체 행 → 투찰 사정률 − 실제 사정율 (습관)
+  const rows = [];
+  for(const sido of (Data.meta.detail?.regions || []).filter(s => Data.hasDetail(s))){
+    let op, sc = null;
+    try{ op = await Data.loadOpening(sido); if(Data.hasScsbid(sido)) sc = await Data.loadScsbid(sido); }catch(e){ continue; }
+    for(const [id, b] of op.bids){
+      if(!b.r?.length) continue;
+      const ci = (b.corps || []).findIndex(x => x[1] === biz);
+      if(ci < 0) continue;
+      const row = b.r.find(x => x[1] === ci);
+      if(!row) continue;
+      const rec = sc?.byId.get(id) || {};
+      const base = b.base || rec.base, plan = b.plan || rec.plan;
+      const x = bidToSr(row[2], base, rec.a, rec.floor), S = base && plan ? plan / base * 100 : null;
+      rows.push({id, date: b.date, nm: rec.nm || id, org: recOrg(rec), lic: rec.lic || [], n: b.r.length, rank: row[0], amt: row[2], x, S, d: x != null && S ? x - S : null});
+    }
+  }
+  rows.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const valid = rows.filter(r => r.d != null);
+  const top1 = rows.filter(r => r.rank === 1).length, fair = rows.reduce((t, r) => t + 1 / r.n, 0);
+  const below = valid.filter(r => r.d < 0).length;
+  const ds = valid.map(r => r.d).sort((a, b) => a - b), xs = valid.map(r => r.x).sort((a, b) => a - b);
+  const q = (a, p) => a.length ? a[Math.min(a.length - 1, Math.floor(a.length * p))] : null;
+  const cnt = (arr) => Object.entries(arr.reduce((m, k) => (k && (m[k] = (m[k] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const orgs = cnt(rows.map(r => r.org)), lics = cnt(rows.flatMap(r => r.lic.map(l => LIC_SHORT[l] || l)));
+  const watch = LS.get('corpWatch', []), on = watch.includes(biz);
+  out.innerHTML = `<div class="card corp-prof">
+      <div class="corp-top"><div><h2 style="margin:0;">${esc(c.nm)}</h2><div class="meta-line" style="margin:2px 0 0;">${bizFmt(biz)}</div></div>
+        <button class="btn sm ${on ? 'reg' : 'line'}" id="corpStar" type="button">${on ? '⭐ 관심 업체' : '☆ 관심 업체로'}</button></div>
+      <div class="res-sum" style="margin-top:12px;">
+        <div><span>전국 낙찰</span><b>${fmtNum(c.wins)}</b></div>
+        <div><span>강원 투찰</span><b>${fmtNum(rows.length)}</b></div>
+        <div class="${top1 ? 'win' : ''}"><span>강원 1순위</span><b>${fmtNum(top1)}</b></div>
+        <div><span>평균 업체라면</span><b>${fmtNum(fair, 1)}</b></div>
+        <div><span>하한 미달</span><b class="below">${valid.length ? Math.round(below / valid.length * 100) : 0}%</b></div>
+      </div>
+      <div class="meta-line">${c.last ? `마지막 낙찰 ${esc(c.last)} · ` : ''}${c.ws.length ? `주로 ${esc(c.ws.join('·'))} 낙찰 · ` : ''}${c.mn ? `국방 투찰 ${fmtNum(c.mn)}건(상위 30위 안) · ` : ''}대표자·주소는 <a href="https://www.g2b.go.kr" target="_blank" rel="noopener">나라장터</a> 업체 조회</div>
+      ${valid.length >= 5 ? `<h3>투찰 습관 — 실제 사정율보다 얼마나 높게/낮게 쓰나 (강원 ${fmtNum(valid.length)}건)</h3>
+        ${histogram(valid.map(r => Math.max(-2.5, Math.min(2.5, r.d))), {min: -2.5, max: 2.5, step: 0.1, lines: [{x: 0, color: 'var(--target)', label: '실제 사정율'}]})}
+        <div class="meta-line">가운데(절반) <b>${q(ds, .25) >= 0 ? '+' : ''}${q(ds, .25).toFixed(2)} ~ ${q(ds, .75) >= 0 ? '+' : ''}${q(ds, .75).toFixed(2)}%p</b> · 투찰 사정률 자체는 보통 <b>${q(xs, .25).toFixed(2)} ~ ${q(xs, .75).toFixed(2)}%</b>. 0보다 왼쪽(−)은 하한 미달, 오른쪽이 멀수록 1위보다 높게 쓴 것.</div>` : '<div class="meta-line">투찰 습관을 볼 만큼 강원 투찰 기록이 많지 않습니다(5건 미만).</div>'}
+      ${orgs.length ? `<div class="corp-tags"><b>자주 넣는 발주처</b> ${orgs.map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join('')}</div>` : ''}
+      ${lics.length ? `<div class="corp-tags"><b>공고 면허</b> ${lics.map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join('')}</div>` : ''}
+      <div class="btn-row" style="margin-top:12px;"><button class="btn sm line" id="corpBack" type="button">← 업체 목록</button></div>
+    </div>
+    ${rows.length ? `<h3 class="corp-h">강원 투찰 이력 (최근 ${fmtNum(Math.min(rows.length, 60))}건)</h3><div class="rc-list">${rows.slice(0, 60).map(r => {
+      const cls = r.rank === 1 ? 'win' : r.d != null && r.d < 0 ? 'below' : 'high';
+      return `<div class="rc ${cls}"><div class="rc-nm">${esc(r.nm)}</div><div class="rc-sub">${esc(r.date || '')} · ${esc(r.org)}</div>
+        <div class="rc-grid"><div><span>사정율</span><b>${r.S ? r.S.toFixed(3) : '-'}</b></div><div><span>투찰률</span><b>${r.x != null ? r.x.toFixed(3) : '-'}</b></div><div><span>차이</span><b>${r.d != null ? (r.d >= 0 ? '+' : '') + r.d.toFixed(3) : '-'}</b></div></div>
+        <div class="rc-foot"><span class="rc-rank ${cls}"><b>${r.rank ? fmtNum(r.rank) : '-'}</b> / ${fmtNum(r.n)}</span><span class="rc-amt">${won(r.amt)}</span><span class="rc-v ${cls}">${r.rank === 1 ? '🏆 1순위' : r.d != null && r.d < 0 ? '하한 미달' : ''}</span></div></div>`;
+    }).join('')}</div>` : ''}`;
+  $('corpBack').onclick = () => { Corp.sel = null; renderCorpSearch(); };
+  $('corpStar').onclick = () => { const w = LS.get('corpWatch', []); LS.set('corpWatch', on ? w.filter(b => b !== biz) : [biz, ...w]); renderCorpProfile(biz); };
+  window.scrollTo(0, 0);
+}
+
 // ---------- 🧪 모의 투찰: 수집기(scripts/paper.py)가 강원 공사 공고마다 마감 전 추천 투찰가를 기록하고 개찰 뒤 채점한 data/paper.json
 const Paper = {area: LS.get('paperArea', 'sgg'), shown: 60};
 async function renderPaper(){
@@ -2417,7 +2522,7 @@ async function renderResults(el, appItems, pseudo, head){
     const more = x.src === 'app' ? `<details class="rc-more"><summary>자세히 · 금액 고치기</summary>
         <div class="b-kv"><span>1위 <b>${esc(x.winner || '-')}</b> ${x.winAmt ? won(x.winAmt) : ''}</span>${x.r?.plan ? `<span>예정가격 <b>${won(x.r.plan)}</b></span>` : ''}</div>
         ${x.w.res?.top?.length ? `<div class="table-wrap" style="max-height:none;margin-top:6px;"><table><thead><tr><th>순위</th><th>업체</th><th class="num">투찰금액</th></tr></thead>
-          <tbody>${x.w.res.top.map(t => `<tr${x.w.res.mine && t.biz === x.w.res.mine.biz ? ' class="hl-row"' : ''}><td>${t.rank || '-'}</td><td>${esc(t.name)}</td><td class="num">${won(t.amt)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+          <tbody>${x.w.res.top.map(t => `<tr${x.w.res.mine && t.biz === x.w.res.mine.biz ? ' class="hl-row"' : ''}><td>${t.rank || '-'}</td><td>${t.biz ? `<a href="#" class="corp-link" data-corp="${esc(t.biz)}">${esc(t.name)}</a>` : esc(t.name)}</td><td class="num">${won(t.amt)}</td></tr>`).join('')}</tbody></table></div>` : ''}
         <div class="mybid-row"><label>내가 넣은 투찰금액</label>
           <input type="text" class="money" inputmode="numeric" autocomplete="off" data-mybid-in="${esc(x.id)}" value="${moneyText(x.amt)}" placeholder="원 단위">
           <button class="btn sm ghost" data-mybid-save="${esc(x.id)}" type="button">기록</button>
@@ -3173,6 +3278,8 @@ async function init(){
     if(u){ WatchStore.remove(u.dataset.unwatch).then(renderWatch); return; }
     const p = e.target.closest('[data-predict]');
     if(p){ predictWithNotice(p.dataset.predict); return; }
+    const cp = e.target.closest('[data-corp]');
+    if(cp){ e.preventDefault(); openCorp(cp.dataset.corp); return; }
     const qb = e.target.closest('[data-quickbid]');
     if(qb){ const b = findNotice(qb.dataset.quickbid), q = b && quickPredict(b); if(q?.bid) registerBid(b, q.bid, q.bestSr, '추천'); return; }
     const h = e.target.closest('[data-hide]'), uh = e.target.closest('[data-unhide]');

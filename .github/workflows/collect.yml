@@ -86,6 +86,11 @@ jobs:
         continue-on-error: true
         run: python scripts/paper.py
 
+      - name: 업체 색인 (하루 한 번)
+        if: always()
+        continue-on-error: true
+        run: python scripts/corp_index.py
+
       - name: 전체 수집 커밋
         if: always()
         run: bash scripts/commit_data.sh "수집"
