@@ -35,6 +35,8 @@ jobs:
     timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main   # 대기열에서 기다린 실행도 최신 데이터에서 시작 (기본값은 예약 시점 커밋 → 옛 데이터로 덮어씀, 2026-09-26 국방 진행 기록이 지워진 일)
 
       - uses: actions/setup-python@v5
         with:
@@ -104,6 +106,8 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main   # 대기열에서 기다린 실행도 최신 데이터에서 시작 (기본값은 예약 시점 커밋 → 옛 데이터로 덮어씀, 2026-09-26 국방 진행 기록이 지워진 일)
 
       - uses: actions/setup-python@v5
         with:

@@ -116,7 +116,7 @@ class Api:
         for attempt in range(3):
             try:
                 req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (bid-predictor collector)"})
-                with urllib.request.urlopen(req, timeout=60) as r:
+                with urllib.request.urlopen(req, timeout=90) as r:
                     t = r.read().decode("utf-8", "replace")
                 self.calls += 1
                 code = re.search(r"<resultCode>([^<]*)", t)
@@ -131,7 +131,7 @@ class Api:
                 return items, int(tc.group(1)) if tc else len(items)
             except (urllib.error.URLError, TimeoutError, ConnectionError, RuntimeError) as e:
                 last = e
-                time.sleep(2 * (attempt + 1))
+                time.sleep(5 * (attempt + 1))
         self.fails += 1
         if self.fails >= FAIL_STOP:
             if self.base == 0 and self.key:
@@ -317,6 +317,13 @@ def main():
     store = Store()
     index = load_json(OUT / "index.json", {"done": {}, "fail": {}})
     meta = load_json(OUT / "meta.json", {})
+    if not index.get("done"):   # 진행 기록이 없거나 지워졌으면 저장된 결과에서 다시 만든다
+        for p in OUT.glob("[0-9][0-9][0-9][0-9].json"):
+            for it in load_json(p, {}).get("items", []):
+                index["done"][it["id"]] = 1
+        index.setdefault("fail", {})
+        if index["done"]:
+            log(f"진행 기록 복구: 저장된 결과 {len(index['done'])}건")
     now = now_kst()
     bf = meta.get("backfill") or {}
     changed = 0
@@ -338,9 +345,12 @@ def main():
             save(store, index, {"backfill": bf})
     except Stop as e:
         log("멈춤:", e)
+    except RuntimeError as e:
+        log("접속 실패로 멈춤:", e)
     finally:
-        save(store, index, {"backfill": bf, "updated_at": now.isoformat(timespec="seconds"), "calls": api.calls,
-                            "base": BASES[api.base].split("/")[2]})
+        if api.calls or store.dirty:   # 한 번도 못 받았으면 기록을 건드리지 않는다
+            save(store, index, {"backfill": bf, "updated_at": now.isoformat(timespec="seconds"), "calls": api.calls,
+                                "base": BASES[api.base].split("/")[2]})
         log(f"D2B 끝: 새 결과 {changed}건 · 호출 {api.calls}회 · {(time.time() - t0) / 60:.1f}분")
 
 
