@@ -1531,7 +1531,9 @@ async function renderLive(){
     $('lLic').value ? `업종(${esc($('lLic').value)})은 주공종·부대공종·면허제한 기준으로 앱에서 거름` : '',
     Live.kind !== '공사' ? '예측은 공사만 제공' : '',
     !sido && !Model.m ? '지역을 고르면 예상 사정율·낙찰확률도 표시됩니다' : ''].filter(Boolean).join(' · ');
-  list.innerHTML = rows.length ? rows.map(b => bidCard(b, today)).join('') : `<div class="empty card">${liveDone() ? '조건에 맞는 공고가 없습니다.' : '아직 조건에 맞는 공고를 못 찾았습니다. "더 보기"로 이전 기간을 이어서 조회하세요.'}</div>`;
+  const now = new Date(), isClosed = (b) => !!(b.close && parseKst(b.close) < now);
+  const shownRows = [...rows.filter(b => !isClosed(b)), ...rows.filter(isClosed)];   // 마감 안 된 공고 먼저, 각자는 받은 순서 그대로
+  list.innerHTML = shownRows.length ? shownRows.map(b => bidCard(b, today)).join('') : `<div class="empty card">${liveDone() ? '조건에 맞는 공고가 없습니다.' : '아직 조건에 맞는 공고를 못 찾았습니다. "더 보기"로 이전 기간을 이어서 조회하세요.'}</div>`;
   $('liveMore').hidden = liveDone();
   $('liveMore').textContent = '더 보기 (이어서 조회)';
   const token = Live.token;
