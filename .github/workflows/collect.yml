@@ -51,6 +51,7 @@ jobs:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
           STEPS: "공고,최근낙찰"
           MAX_MINUTES: "40"
+          API_DAILY_LIMIT: ${{ vars.API_DAILY_LIMIT || '9500' }}   # 운영계정 승인(2026-09-26). 실제 한도가 더 낮으면 조달청 '요청 제한' 응답에서 그날은 멈춤
         run: python scripts/collect.py
 
       - name: 추천 모델·역검증 계산
@@ -77,6 +78,7 @@ jobs:
           STEPS: "빈달,업체정보,물품최근,물품과거,지역보강,과거낙찰,상세"
           WATCH_BIZ: ${{ vars.WATCH_BIZ }}
           MAX_MINUTES: "260"
+          API_DAILY_LIMIT: ${{ vars.API_DAILY_LIMIT || '9500' }}
         run: python scripts/collect.py
 
       - name: 추천 모델·역검증 다시 계산
