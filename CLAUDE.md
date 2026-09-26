@@ -32,6 +32,7 @@ scripts/company_report.py  우리 업체 역검증 보고서(로컬 전용, priv
 scripts/model.py      전국 추천 모델·역검증 → data/model.json (수집 단계마다 실행, numpy)
 scripts/korea.py      시도·시군구 파싱, 면허 23개 + 옛 명칭 별칭표
 scripts/regions.json  개찰 상세(전체 순위·복수예가)를 수집할 시·도 목록. 예: ["강원"]
+scripts/detail_priority.json  개찰 상세 수집 우선순위 {sgg:[시·군], lic:[면허], max_cnt:참가 수} — 관심 시·군 → 관심 면허 → 참가 적은 공고, 같은 등급은 최신부터
 .github/workflows/collect.yml  02:00·14:00 KST 전체 + 09·13·17시 공고만 + 수동 실행(start_date, reset_backfill, quick_only)
 reference/prototype.html       초기 프로토타입 (디자인 참고용, 가상 데이터 코드는 쓰지 않음)
 data/                 수집 결과 (아래)

@@ -1202,8 +1202,16 @@ def step_details(api, meta, store, ostore, regions, now, checkpoint, reserve=3):
         dm[sido] = {"total": len(recs), "done": sum(1 for r in recs if r["id"] in ix["done"]),
                     "failed": sum(1 for r in recs if ix["fail"].get(r["id"], 0) >= DETAIL_MAX_TRIES)}
         queue += [(sido, r) for r in pending]
-    queue.sort(key=lambda x: x[1]["date"], reverse=True)
-    log(f"[상세] 대기 {len(queue)}건")
+    # 우선순위(scripts/detail_priority.json): 관심 시·군 → 관심 면허 → 참가 적은 공고 순으로 먼저, 같은 등급은 최신부터
+    pri = load_json(ROOT / "scripts" / "detail_priority.json", {})
+    p_sgg, p_lic, p_cnt = set(pri.get("sgg", [])), set(pri.get("lic", [])), pri.get("max_cnt") or 0
+
+    def tier(r):
+        return ((r.get("sgg") in p_sgg) * 4 + bool(p_lic & set(r.get("lic") or [])) * 2
+                + bool(p_cnt and (r.get("cnt") or 10 ** 9) < p_cnt))
+
+    queue.sort(key=lambda x: (tier(x[1]), x[1]["date"]), reverse=True)
+    log(f"[상세] 대기 {len(queue)}건 (우선 {sum(1 for _, r in queue if tier(r) >= 4)}건)")
     done_now = 0
     for sido, rec in queue:
         if api.remaining("scsbid") < reserve or api.time_left() < 10:
