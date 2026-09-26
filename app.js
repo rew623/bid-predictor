@@ -132,7 +132,17 @@ const Cloud = {
       firebase.auth().onAuthStateChanged(async (user) => {
         this.user = user;
         if(this.unsub){ this.unsub(); this.unsub = null; }
-        if(user){ this.status = ''; LS.set('cloud', true); await this.pull(true); this.listen(); }
+        if(user){
+          this.status = '';
+          // 이 기기에 마지막으로 로그인한 계정과 다르면(다른 사람) 이 기기의 개인 데이터를 비우고 그 계정 데이터만 받는다 — 앞사람 관심공고·업체·서비스키가 섞이지 않게
+          const prev = localStorage.getItem('bp._uid');
+          const switched = prev && prev !== user.uid;
+          if(switched) this.clearLocal();
+          localStorage.setItem('bp._uid', user.uid);
+          LS.set('cloud', true); await this.pull(true);
+          if(switched){ location.reload(); return; }   // 설정 화면 입력칸까지 새 계정 값으로
+          this.listen();
+        }
         this.paint();
       });
     })().catch(e => { this.loading = null; this.status = e.message; this.paint(); throw e; });
@@ -149,7 +159,14 @@ const Cloud = {
     }catch(e){ this.status = '로그인 실패: ' + (e.code || e.message); }
     this.paint();
   },
-  async signOut(){ await this.init(); await firebase.auth().signOut(); LS.set('cloud', false); this.status = '로그아웃했습니다 (이 기기 데이터는 그대로)'; this.paint(); },
+  clearLocal(){ for(const k of this.keys){ try{ localStorage.removeItem('bp.' + k); }catch(e){} } try{ localStorage.removeItem('bp._ts'); }catch(e){} },
+  async signOut(){
+    await this.init(); await firebase.auth().signOut(); LS.set('cloud', false);
+    // 같이 쓰는 기기에서 다른 사람이 볼 수 없게: 로그아웃하면 이 기기의 개인 데이터를 지운다(계정에는 그대로 있어 다시 로그인하면 돌아옴)
+    this.clearLocal();
+    alert('로그아웃했습니다. 이 기기의 개인 데이터는 지웠고, 다시 로그인하면 그대로 돌아옵니다.');
+    location.reload();
+  },
   /** 서버 값과 이 기기 값을 맞춘다. first = 로그인 직후(관심공고·뺀 공고는 합침) */
   async pull(first){
     try{
