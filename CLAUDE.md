@@ -165,6 +165,7 @@ lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits`(renderLive 뒤 1
 `{연도}.json` {"v":1, year, corps:[[업체명, 사업자번호]], items:[{id, kind(물품|용역|시설), nm, org, cm, dm, bm, date, base(기초예비가격), budget, rng:[하한%,상한%], floor, plan, sr, cnt, amt, rate, win, winBiz, p:[[번호, 예비가격, 추첨0/1]], r:상위 30곳 [[순위(0=없음), corps 인덱스, 금액, 비고?]], h:전원 분포 [[round(금액/기초×1000), 곳수]]}]}` — 참가가 평균 500곳(최대 1만)이라 전원 행은 1년 200MB↑ → 상위 30곳 + 분포(1건 약 1.7KB), `meta.json` {updated_at, files, counts, total, backfill:{cursor, oldest, done}}, `index.json`(수집기 전용 done/fail). 최근 30일 매번 + 한 달씩 과거로 24개월(`D2B_MONTHS`).
 **진행중 국방 공고** `data/d2b/bids.json` (collect_d2b `collect_notices`, 매 실행 처음): `BidPblancInfoService` 의 `getDmstcCmpetBidPblanc{List|Detail}`(물품·용역) + `getFcltyCmpetBidPblanc{List|Detail}`(시설) — 목록(개찰일 오늘~60일) + 공고마다 상세 1회(바뀐 차수만). 항목 {id(DB-…/FB-…), src:'국방', odr, kind(물품|용역|공사), nm, org, cm, dm, bm, se, reg(입찰참가등록 마감), close(입찰서 제출 마감), open, base(기초예비가격), est, budget, rng, floor, rgn[지역 이름], inds[면허·업종 — 시설은 korea.normalize_licenses 로 23개 이름(옛 이름 '조립' 등), 물품·용역은 원문], prd, g2b, url(d2b 목록)}. 2026-09-26 186건(물품 96·용역 68·공사 22).
 앱: 우리 공고에 합침(용역 뺌) — 🏗 공사에 국방 시설, 📦 물품에 국방 물품, 🎖 국방 버튼. 판정은 `goodsEligibility`(지역·면허/업종·소상공인·여성기업 + **참가등록 마감 지나면 불가**), 카드 태그 `d2bTags`(🎖 국방·참가등록 마감). 추천값 없음(국방 역검증 전). 국방 '제한경쟁'이라도 API 에 제한이 없으면(공고문에만 있음) 참가 가능으로 나옴.
+상위 30위 밖이어도 저장소 변수 `WATCH_BIZ`(쉼표 구분 사업자번호, 공개 코드에 넣지 않음 — 우리 업체)의 행은 남긴다(2026-09-26부터 새로 받는 결과).
 다음: 물품 모델 역검증에 D2B 포함.
 
 ### data/goods.json — 진행중 물품 공고 (수집기 `물품최근` 단계 `write_goods`, 추가 호출 없음)

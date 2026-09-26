@@ -43,6 +43,8 @@ MAX_MINUTES = float(os.environ.get("MAX_MINUTES") or 25)
 MONTHS = int(os.environ.get("D2B_MONTHS") or 24)
 RECENT_DAYS = 30
 TOP = 30             # 개찰 순위를 행으로 남길 상위 업체 수
+# 상위 30위 밖이어도 행을 남길 사업자번호(쉼표 구분) — 저장소 변수 WATCH_BIZ(공개 코드에 안 넣음). 우리 업체의 국방 투찰 순위·금액용
+WATCH = {re.sub(r"\D", "", b) for b in (os.environ.get("WATCH_BIZ") or "").split(",") if re.sub(r"\D", "", b)}
 FAIL_STOP = 5          # 연속 실패가 이만큼이면 이번 실행은 멈춘다
 MAX_TRIES = 3          # 공고 하나를 이만큼 실패하면 건너뛴다
 BASES = ["http://openapi.d2b.go.kr/openapi/service/",
@@ -188,7 +190,7 @@ class Store:
         d = self.year(rec["date"][:4])
         # 참가 업체가 공고당 평균 500곳(최대 1만)이라 전원을 저장하면 1년에 200MB를 넘는다 → 상위 TOP 곳만 행으로,
         # 전체는 기초금액 대비 투찰률 분포 h = [[round(금액/기초×1000), 곳수]] (0.1% 간격)로 남긴다
-        rows = [[rk, self.corp(d, nm, biz, ceo), amt] + ([note] if note else []) for rk, nm, biz, amt, rate, note, ceo in bidders[:TOP]]
+        rows = [[rk, self.corp(d, nm, biz, ceo), amt] + ([note] if note else []) for rk, nm, biz, amt, rate, note, ceo in bidders[:TOP] + [b for b in bidders[TOP:] if b[2] in WATCH]]
         rec["r"] = rows
         if rec.get("base"):
             h = {}

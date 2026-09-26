@@ -117,6 +117,7 @@ jobs:
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
           MAX_MINUTES: "40"
+          WATCH_BIZ: ${{ vars.WATCH_BIZ }}
         run: python scripts/collect_d2b.py
 
       - name: 국방 수집 커밋
