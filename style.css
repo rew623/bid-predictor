@@ -605,3 +605,7 @@ td.nowrap{white-space:nowrap;}
 .tag.goods{background:#FFF4E5; color:#B54708; border-color:#FEDF89;}
 .tag.d2b{background:#EEF4E8; color:#3B6D11; border-color:#C7DDB0;}
 .fin-badge{display:inline-block; background:#D92D20; color:#fff; font-size:11px; font-weight:700; border-radius:4px; padding:1px 6px; vertical-align:1px;}
+
+/* 글씨·숫자를 눌러도 선택·구글 '탭하여 검색' 창이 뜨지 않게 (입력칸은 그대로) */
+body{-webkit-user-select:none; user-select:none; -webkit-touch-callout:none;}
+input, textarea, select, [contenteditable]{-webkit-user-select:text; user-select:text; -webkit-touch-callout:default;}

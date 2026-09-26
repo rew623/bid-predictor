@@ -2450,7 +2450,7 @@ async function renderCorpProfile(biz){
   const orgs = cnt(rows.map(r => r.org)), lics = cnt(rows.flatMap(r => r.lic.map(l => LIC_SHORT[l] || l)));
   const watch = LS.get('corpWatch', []), on = watch.includes(biz);
   let wl = [];
-  try{ wl = (await Data.fetchJson(`corpw/${biz.slice(0, 3)}.json`))[biz] || []; }catch(e){}
+  try{ wl = (await Data.fetchJson(`corpw/${biz.slice(0, 3)}.json`, false))[biz] || []; }catch(e){}   // 작은 파일이라 늘 새로(캐시된 옛 형식 방지)
   const nFin = rows.filter(r => r.fin).length;
   out.innerHTML = `<button class="corp-back" id="corpBack" type="button">← 업체 목록으로</button><div class="card corp-prof">
       <div class="corp-top"><div><h2 style="margin:0;">${esc(c.nm)}</h2><div class="meta-line" style="margin:2px 0 0;">${bizFmt(biz)}${c.ceo ? ` · 대표 <b>${esc(c.ceo)}</b>` : ''}</div>
