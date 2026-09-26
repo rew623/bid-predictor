@@ -315,6 +315,17 @@ LOCAL_MIN = 30          # 곡선 하나에 필요한 최소 공고 수
 LOCAL_LEVELS = ("sido", "sgg")
 
 
+LOCAL_ALPHA = 0.05 / 4   # 후보 4개(시도·시군 × small·big)를 한꺼번에 보므로 본페로니
+
+
+def _sign_p(b, c):
+    """한쪽 부호검정: 엇갈린 b+c 건 중 지역만 낙찰이 b 건 이상일 확률(차이 없다는 가정에서)"""
+    n = b + c
+    if n == 0:
+        return 1.0
+    return sum(math.comb(n, k) for k in range(b, n + 1)) / 2 ** n
+
+
 def _local_pool(rows, area, level, rk, seg, small):
     return [r for r in rows if r["rng"] == rk and r["sido"] == area["sido"] and (level == "sido" or r["sgg"] == area["sgg"])
             and ("small" if math.exp(r["lp"]) < small else "big") == seg]
@@ -336,7 +347,7 @@ def local_models(rows, recent, npred):
     tests = [m for m in months[1:]][-VALID_MONTHS:]
     out = {}
     for area in conf.get("areas", []):
-        tal = {seg: {k: 0.0 for k in ("n", "fair", "national", *LOCAL_LEVELS)} for seg in ("small", "big")}
+        tal = {seg: {k: 0.0 for k in ("n", "fair", "national", *LOCAL_LEVELS, *[f"{lv}_{s}" for lv in LOCAL_LEVELS for s in "bc"])} for seg in ("small", "big")}
         for m in tests:
             start = dt.date.fromisoformat(m + "-01")
             tstart = (start - dt.timedelta(days=int(30.44 * TRAIN_MONTHS))).isoformat()
@@ -359,18 +370,26 @@ def local_models(rows, recent, npred):
                 t["n"] += 1
                 t["fair"] += 1 / (r["N"] + 1)
                 xn = G0 + int(np.argmax(got[0])) * GS
-                t["national"] += r["S"] <= xn < r["W"]
+                wn = r["S"] <= xn < r["W"]
+                t["national"] += wn
                 for lv in LOCAL_LEVELS:
                     key = (lv, r["rng"], seg)
                     if key not in cache:
                         cache[key] = _local_x(_local_pool(train, area, lv, r["rng"], seg, small))
                     x = cache[key] if cache[key] is not None else xn
-                    t[lv] += r["S"] <= x < r["W"]
+                    wl = r["S"] <= x < r["W"]
+                    t[lv] += wl
+                    t[f"{lv}_b"] += wl and not wn   # 같은 공고에서 지역만 낙찰
+                    t[f"{lv}_c"] += wn and not wl   # 전국만 낙찰
         segs, curves = {}, {lv: {} for lv in LOCAL_LEVELS}
         for seg, t in tal.items():
-            best = max(LOCAL_LEVELS, key=lambda lv: t[lv])
-            use = best if t["n"] >= 50 and t[best] >= t["national"] + 2 and t[best] >= t["national"] * 1.1 else None
-            segs[seg] = {"use": use, "val": {k: round(v, 2) for k, v in t.items()}}
+            # 채택(2026-09-27 강화): 같은 공고끼리 비교(엇갈린 공고만 셈)해 한쪽 부호검정 p < 0.05 ÷ 후보 수(시도·시군 × 규모 2 = 4),
+            # 그리고 +10% 이상. 예전 기준(+2건·+10%)은 낙찰 7건 수준에서 우연으로도 자주 통과했다
+            for lv in LOCAL_LEVELS:
+                t[f"{lv}_p"] = _sign_p(int(t[f"{lv}_b"]), int(t[f"{lv}_c"]))
+            best = min(LOCAL_LEVELS, key=lambda lv: (t[f"{lv}_p"], -t[lv]))
+            use = best if t["n"] >= 50 and t[f"{best}_p"] < LOCAL_ALPHA and t[best] >= t["national"] * 1.1 else None
+            segs[seg] = {"use": use, "val": {k: round(v, 4 if k.endswith("_p") else 2) for k, v in t.items()}}
             for lv in LOCAL_LEVELS:
                 for rk in RNGS:
                     pool = _local_pool(recent, area, lv, rk, seg, small)
@@ -378,7 +397,7 @@ def local_models(rows, recent, npred):
                         sm = curve(np.array([r["S"] for r in pool]), np.array([r["W"] for r in pool]))
                         curves[lv].setdefault(seg, {})[rk] = summarize(sm, np.array([r["S"] for r in pool]), np.array([r["N"] for r in pool], float))
         out[f'{area["sido"]}|{area["sgg"]}'] = {"label": area.get("label") or area["sgg"], "small": small, "seg": segs, "curves": curves}
-        print(f"local {area['sgg']}: " + " | ".join(f"{seg} 시험 {int(t['n'])} 전국 {int(t['national'])} 시도 {int(t['sido'])} 시군 {int(t['sgg'])} → {segs[seg]['use']}" for seg, t in tal.items()))
+        print(f"local {area['sgg']}: " + " | ".join(f"{seg} 시험 {int(t['n'])} 전국 {int(t['national'])} 시도 {int(t['sido'])} 시군 {int(t['sgg'])} (p 시도 {t['sido_p']:.3f} 시군 {t['sgg_p']:.3f}) → {segs[seg]['use']}" for seg, t in tal.items()))
     return out
 
 
