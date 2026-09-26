@@ -334,8 +334,8 @@ tr.click:hover td{background:var(--bg);}
 .legend i{display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px;}
 
 .kv{display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:13px;}
-.kv dt{color:var(--text-sub);}
-.kv dd{margin:0; font-weight:500; word-break:break-all;}
+.kv dt{color:var(--text-sub); white-space:nowrap;}
+.kv dd{margin:0; font-weight:500; word-break:break-all; min-width:0;}
 .progress{height:8px; background:var(--border); border-radius:99px; overflow:hidden; margin-top:6px;}
 .progress > div{height:100%; background:var(--primary);}
 .loading{color:var(--text-sub); font-size:13px; padding:14px 0; text-align:center;}

@@ -418,8 +418,8 @@
       <dl class="kv">
         <dt>앱 버전</dt><dd id="appVersion">-</dd>
         <dt>문제가 생기면</dt><dd><a class="btn line sm" href="stable/" id="stableLink">🛟 안정판으로 열기</a> <span class="faint" id="stableVer"></span></dd>
-        <dt>화면</dt>
-        <dd><label class="check"><input type="checkbox" id="adminMode"> 🔧 운영자 모드 <span class="faint">— 설명·검증·통계 도구 보이기</span></label></dd>
+        <dt id="adminRow" hidden>운영자 모드</dt>
+        <dd id="adminDd" hidden><label class="check"><input type="checkbox" id="adminMode"> 🔧 켜짐 (끄면 다시 켤 때 코드 필요)</label></dd>
         <dt>화면 테마</dt>
         <dd><div class="seg" id="themeSeg"><button data-v="auto" type="button">시스템</button><button data-v="light" type="button">라이트</button><button data-v="dark" type="button">다크</button></div></dd>
       </dl>

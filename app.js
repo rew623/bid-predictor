@@ -1111,7 +1111,21 @@ function apiKey(){
 }
 const findNotice = (id) => Data.bids?.find(x => x.id === id) || Data.goods?.find(x => x.id === id) || Data.d2bBids?.find(x => x.id === id) || Live.items.find(x => x.id === id);
 
+/** 조달청 호출은 동시에 LIVE_MAX 건까지 — 한꺼번에 많이 보내면 '초당 서비스 요청제한 횟수 초과'로 거절된다(2026-09-27 확인). 그 오류면 잠깐 쉬고 다시 */
+const LIVE_MAX = 5, LiveQ = {n: 0, wait: []};
 async function liveCall(op, params, base=LIVE_BASE){
+  let last;
+  for(let attempt = 0; attempt < 4; attempt++){
+    if(LiveQ.n >= LIVE_MAX) await new Promise(r => LiveQ.wait.push(r));
+    LiveQ.n++;
+    try{ return await liveCall0(op, params, base); }
+    catch(e){ if(!/초당|요청제한|LIMITED/.test(e.message)) throw e; last = e; }
+    finally{ LiveQ.n--; LiveQ.wait.shift()?.(); }
+    await new Promise(r => setTimeout(r, 500 * 2 ** attempt));
+  }
+  throw last;
+}
+async function liveCall0(op, params, base=LIVE_BASE){
   const q = new URLSearchParams({serviceKey: apiKey(), type: 'json', ...params});
   const r = await fetch(`${base}/${op}?${q}`);
   const text = await r.text();
@@ -1191,7 +1205,7 @@ async function enrichLive(b){
     if(net) b.net = net;
     let lo = numF(pickF(it, 'rsrvtnPrceRngBgnRate', 'rsrvtnPrceRngBgnRt')), hi = numF(pickF(it, 'rsrvtnPrceRngEndRate', 'rsrvtnPrceRngEndRt'));
     if(lo != null || hi != null){ if(lo > 0) lo = -lo; b.rng = [lo, hi]; }
-  }catch(e){ console.warn('기초금액 조회 실패', e); }
+  }catch(e){ console.warn('기초금액 조회 실패', e); if(/초당|요청제한|LIMITED/.test(e.message)) b.bsisTried = false; }   // 일시적 거절이면 다음 차례에 다시
 }
 
 function initLive(){
@@ -3322,8 +3336,21 @@ function initSettings(){
     const v = e.target.dataset?.v; if(!v) return;
     LS.set('theme', v); applyTheme(); renderSettings();
   });
-  $('adminMode').checked = !!LS.get('admin', false);
-  $('adminMode').addEventListener('change', () => { LS.set('admin', $('adminMode').checked); applyMode(); });
+  // 운영자 모드: 앱 버전을 5번 누르면 운영자 코드를 묻는다(코드는 해시로만 비교 — 화면 표시 설정일 뿐 권한은 아님). 켜진 뒤엔 체크로 끌 수 있다
+  const showAdmin = () => { $('adminRow').hidden = $('adminDd').hidden = !LS.get('admin', false); $('adminMode').checked = !!LS.get('admin', false); };
+  showAdmin();
+  let taps = 0, tapT = 0;
+  $('appVersion').addEventListener('click', async () => {
+    const now = Date.now(); taps = now - tapT < 1500 ? taps + 1 : 1; tapT = now;
+    if(taps < 5 || LS.get('admin', false)) return;
+    taps = 0;
+    const code = prompt('운영자 코드');
+    if(!code) return;
+    const hex = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code.trim())))].map(x => x.toString(16).padStart(2, '0')).join('');
+    if(hex !== '47a427797f196bee636348eeff3b3790363fc8b87a7c499145b434c732732c61'){ alert('코드가 맞지 않습니다'); return; }
+    LS.set('admin', true); applyMode(); showAdmin();
+  });
+  $('adminMode').addEventListener('change', () => { LS.set('admin', $('adminMode').checked); applyMode(); showAdmin(); });
   $('clearCache').addEventListener('click', async () => {
     if('caches' in window) for(const k of await caches.keys()) if(k.startsWith('data')) await caches.delete(k);
     location.reload();
@@ -3476,7 +3503,6 @@ function initServiceWorker(){
 
 // ============================================================ 시작
 async function init(){
-  if(location.hash === '#admin') LS.set('admin', true);   // 운영자 모드 켜는 링크 (앱주소#admin)
   applyMode();
   // QR/링크로 받은 서비스키 저장 (#key=…) 후 주소에서 바로 지운다
   const km = location.hash.match(/^#key=([^&]+)(?:&co=(.+))?$/);

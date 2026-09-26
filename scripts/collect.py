@@ -49,6 +49,7 @@ KST = dt.timezone(dt.timedelta(hours=9))
 
 DAILY_LIMIT = int(os.environ.get("API_DAILY_LIMIT") or 950)
 MAX_MINUTES = float(os.environ.get("MAX_MINUTES") or 300)
+MIN_GAP = float(os.environ.get("MIN_GAP") or 0.35)   # 호출 사이 최소 간격(초) — 운영계정 초당 한도를 앱과 나눠 쓰기 위해
 MAX_FILE_BYTES = 45 * 1024 * 1024          # 파일 하나 50MB 미만 유지
 ROWS = 999                                  # 페이지당 건수
 NOTICE_CACHE_DAYS = 60                      # 낙찰 정보 보강용 공고 보관 기간
@@ -357,6 +358,7 @@ class Api:
         self.calls = calls
         self.errors = []
         self.net_fail = 0     # 연속 접속 실패 수 — NET_FAIL_STOP 번이면 오늘은 조달청이 안 되는 것으로 보고 멈춘다
+        self.last_at = 0.0    # 마지막 호출 시각 (MIN_GAP 간격 유지)
         self.session = requests.Session()
         self.session.headers["User-Agent"] = "bid-predictor-collector/1.0"
 
@@ -384,13 +386,25 @@ class Api:
             url = f"{base}/{opname}"
             q = {"serviceKey": self.key, "type": "json", **params}
             resp = None
-            for attempt in range(4):
+            for attempt in range(8):
+                gap = MIN_GAP - (time.time() - self.last_at)
+                if gap > 0:
+                    time.sleep(gap)   # 같은 서비스키를 앱(브라우저)도 쓰므로 초당 호출을 남겨 둔다
+                self.last_at = time.time()
                 try:
                     resp = self.session.get(url, params=q, timeout=(15, 60))   # 접속 15초, 응답 60초
-                    break
                 except requests.RequestException as e:
                     last_err = e
-                    time.sleep(2 ** attempt)
+                    resp = None
+                    time.sleep(2 ** min(attempt, 3))
+                    continue
+                if "PER_SECOND_EXCEEDS" in (resp.text or "") or "초당 서비스" in (resp.text or ""):
+                    # 초당 한도(코드 23)는 빈 결과가 아니다 — 쉬었다 다시 (2026-09-27: 빈 응답으로 처리될 뻔함)
+                    last_err = "초당 요청 제한"
+                    resp = None
+                    time.sleep(1 + attempt)
+                    continue
+                break
             if resp is None:
                 continue
             reached = True
@@ -426,6 +440,9 @@ class Api:
 
     @staticmethod
     def _parse(j, op):
+        if isinstance(j, dict) and "OpenAPI_ServiceResponse" in j:   # 게이트웨이 오류(키·한도) — 빈 결과로 보면 안 됨
+            h = (j["OpenAPI_ServiceResponse"] or {}).get("cmmMsgHeader") or {}
+            raise ApiError(str(h.get("returnReasonCode", "99")), h.get("returnAuthMsg") or h.get("errMsg") or "")
         root = j.get("response", j) if isinstance(j, dict) else {}
         header = root.get("header") or {}
         if not header:  # 오류 응답이 다른 이름의 최상위 키로 올 때
