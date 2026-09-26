@@ -794,6 +794,7 @@ let prevVisit = null;       // 이번 세션 시작 전 마지막 방문 시각 
 
 function switchTab(tab, push=true){
   if(!TAB_TITLES[tab]) tab = 'home';
+  if(tab === 'home' && currentTab !== 'home'){ Mine.kind = '공사'; Mine.area = 'sido'; Mine.shown = 60; }   // 우리 공고에 들어오면 늘 '공사 · 우리 시·도'부터 (2026-09-26 요청)
   currentTab = tab;
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'view-' + tab);
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === (tab === 'stats' || tab === 'paper' ? 'predict' : tab)));
@@ -1001,6 +1002,9 @@ function bidCard(b, today, opts = {}){
     : {big:`D-${days}`, small: `${b.close.slice(5,10).replace('-','/')} ${hh}`, cls: days <= 2 ? 'soon' : ''};
   const qp = quickPredict(b);
   const amt = b.base || b.est;
+  // 개찰 끝난 공고: 낙찰가(최종) + 추천가로 넣었다면 몇 위
+  const res = b.sido ? Data.scsbid[b.sido]?.byId.get(b.id) : null;
+  const done = {amt: res?.amt || b.openRes?.win?.amt || null, rec: qp?.bid ? recIfBid(b, qp.bid, res) : null};
   // 한눈에: 지역·수의·정정·참가 가능 여부만. 면허·예가·하한·사정률 같은 세부는 '자세히'로
   const tags = [
     `<span class="tag loc">${esc([b.sido, b.sgg].filter(Boolean).join(' ') || (b.src === '국방' ? (b.rgn?.length ? b.rgn.join('·') + ' 제한' : '전국') : '지역 미상'))}</span>`,
@@ -1016,6 +1020,8 @@ function bidCard(b, today, opts = {}){
         <div class="pv hl big"><span>추천 투찰가</span><b>${qp.bid ? won(qp.bid) : '기초금액 공개 후'}</b></div>
         ${qp.bestSr != null ? `<div class="pv"><span>낙찰확률</span><b>${(qp.winP * 100).toFixed(2)}%${qp.lift ? ` <small class="lift">×${qp.lift.toFixed(1)}</small>` : ''}</b></div>` : ''}
         ${qp.cnt ? `<div class="pv"><span>예상 참가</span><b>~${fmtNum(qp.cnt)}곳</b></div>` : ''}
+        ${done.amt ? `<div class="pv"><span>낙찰가</span><b>${won(done.amt)}</b></div>` : ''}
+        ${done.rec ? `<div class="pv if-rec ${done.rec.cls}"><span>추천가였다면</span><b>${done.rec.text}</b></div>` : ''}
       </div>${qp.area ? `<div class="b-area">🎯 ${esc(qp.area.label)} 전용 추천</div>` : ''}`;
     more = `<div class="b-kv"><span>추천 투찰 사정률 <b>${qp.bestSr != null ? pct(qp.bestSr, 3) : '-'}</b></span><span>예상 사정율 <b>${pct(qp.sr, 3)}</b></span>${qp.value ? `<span>기대 수주액 <b>${eok(qp.value)}</b></span>` : ''}</div>
       <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.area ? ` · ${esc(areaText(qp.area))}` : ''}${qp.model ? (qp.area ? ' · ×는 공정 기대(1÷(참가+1)) 대비' : ' · 추천값·낙찰확률은 전국의 경쟁 규모가 비슷한 공고 기준 · ×는 공정 기대(1÷(참가+1)) 대비') : qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}</div>`;
@@ -1026,10 +1032,7 @@ function bidCard(b, today, opts = {}){
   }else if(b.sido && !Data.hasScsbid(b.sido)){
     pred = '<div class="b-note">이 지역 낙찰 데이터 없음</div>';
   }
-  const res = b.sido ? Data.scsbid[b.sido]?.byId.get(b.id) : null;
-  const ifRec = qp?.bid ? recIfBid(b, qp.bid, res) : '';
-  if(ifRec) pred += ifRec;
-  if(res?.amt) pred += `<div class="b-note result">개찰 결과 · ${res.sr != null ? `사정율 <b>${pct(res.sr, 3)}</b> · ` : ''}1위 ${esc(res.win || '-')} ${won(res.amt)}${res.rate ? ` (${pct(res.rate)})` : ''}${res.cnt ? ` · ${fmtNum(res.cnt)}개사 참가` : ''}</div>`;
+  if(res?.amt) more += `<div class="b-note result">개찰 결과 · ${res.sr != null ? `사정율 <b>${pct(res.sr, 3)}</b> · ` : ''}1위 ${esc(res.win || '-')} ${won(res.amt)}${res.rate ? ` (${pct(res.rate)})` : ''}${res.cnt ? ` · ${fmtNum(res.cnt)}개사 참가` : ''}</div>`;
   const open = b.open ? `개찰 ${b.open.slice(5, 16).replace('-', '/')}` : '';
   return `<article class="bcard ${dd.cls}">
     <div class="b-dday"><b>${dd.big}</b><span>${esc(dd.small)}</span></div>
@@ -1058,18 +1061,18 @@ function bidCard(b, today, opts = {}){
 /** 개찰이 끝난 공고: '추천 투찰가로 넣었다면' 몇 위였나. 결과 = 조달청에서 받은 개찰 결과(b.openRes, 전체 투찰금액) → 수집된 낙찰 기록 + 개찰 상세.
  *  다른 업체 투찰은 그대로라고 가정. 추천값은 지금 모델로 계산 — 그 공고가 학습 기간에 들어 있을 수 있어 표본외 역검증과는 다르다 */
 function recIfBid(b, amt, r0){
-  if(!opened(b)) return '';
+  if(!opened(b)) return null;
   const res = b.openRes?.plan ? b.openRes : null;
   const r = res ? {base: res.base || b.base, plan: res.plan, amt: res.win?.amt || r0?.amt, a: b.a ?? r0?.a, floor: b.floor || r0?.floor}
     : r0?.plan ? {...r0, a: r0.a ?? b.a, floor: r0.floor || b.floor} : null;
-  if(!r?.base) return b.live && b.kind === '공사' && !b.resTried && apiKey() ? '<div class="b-note result">🏁 추천가였다면 — 개찰 결과 확인 중…</div>' : '';
+  if(!r?.base) return b.live && b.kind === '공사' && !b.resTried && apiKey() ? {cls: '', text: '확인 중…'} : null;
   const op = res ? {base: r.base, plan: r.plan, r: res.xs.map((x, i) => [i + 1, 0, x])} : Data.opening[b.sido]?.bids.get(r0.id) || null;
   const j = judgeBid(amt, r, op);
-  if(!j) return '';
-  const n = op?.r?.length || res?.n || r0?.cnt || null;
-  const rank = j.cls === 'below' ? '' : j.rank ? `<b>${fmtNum(j.rank)}위</b>${n ? ` / ${fmtNum(n + 1)}곳` : ''}` : '';
-  const head = j.cls === 'win' ? `🏆 <b>1순위 (낙찰권)</b>` : j.cls === 'below' ? `❌ <b>하한 미달</b>` : rank ? `${rank}` : `<b>${esc(j.label)}</b>`;
-  return `<div class="b-note result if-rec ${j.cls}" title="추천 투찰가 ${won(amt)}로 넣었다면 (다른 업체 투찰은 그대로라고 가정, 추천값은 지금 모델 기준)">🎯 추천가(${won(amt)})였다면 ${head}${j.cls === 'win' && rank ? ` · ${rank}` : ''} · ${esc(j.gapText)}</div>`;
+  if(!j) return null;
+  const n = op?.r?.length || res?.n || r0?.cnt || null, of = n ? ` / ${fmtNum(n + 1)}곳` : '';
+  if(j.cls === 'below') return {cls: 'below', text: '하한 미달'};
+  if(j.cls === 'win') return {cls: 'win', text: `🏆 1위${of}`};
+  return {cls: 'high', text: j.rank ? `${fmtNum(j.rank)}위${of}` : '1위보다 높음'};
 }
 /** 목록의 개찰 끝난 실시간 공사 공고의 개찰 결과를 조달청에서 받는다(한 번에 5건, 공고당 한 번) */
 async function fetchLiveResults(rows){
@@ -1345,6 +1348,7 @@ function initMine(){
     const t = e.target.closest('[data-kind]');
     if(!t) return;
     Mine.kind = t.dataset.kind; LS.set('mineKind', Mine.kind); Mine.shown = 60;
+    Mine.area = Mine.kind === '공사' ? 'sido' : 'all'; LS.set('mineArea', Mine.area);   // 공사는 우리 시·도, 나머지는 전체 지역
     renderMine();
   });
   $('mineMore').addEventListener('click', () => { Mine.shown += 100; renderMine(); });
