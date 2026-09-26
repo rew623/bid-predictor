@@ -220,7 +220,9 @@ tr.click:hover td{background:var(--bg);}
 .mine-head{display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; font-size:13.5px;}
 .mine-head b{font-size:15px;}
 .cal-title{display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; font-size:13.5px; margin-bottom:8px;}
-.cal{display:grid; grid-template-columns:repeat(14, minmax(44px, 1fr)); gap:4px; overflow-x:auto;}
+.cal-card{min-width:0;}
+.cal{display:grid; grid-template-columns:repeat(14, minmax(0, 1fr)); gap:4px;}
+@media (max-width: 760px){ .cal{grid-template-columns:repeat(7, minmax(0, 1fr));} }   /* 폰: 7칸 × 2줄 */
 .cal button{display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 2px; border:1px solid var(--border); border-radius:10px; background:var(--surface); color:var(--text); cursor:pointer; font:inherit; font-size:12px;}
 .cal button .d{color:var(--text-sub);}
 .cal button.sun .d{color:var(--target);}
