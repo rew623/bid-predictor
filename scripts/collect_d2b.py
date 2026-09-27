@@ -70,8 +70,13 @@ def now_kst():
     return dt.datetime.now(KST)
 
 
+def hide_key(s):
+    """오류 문구 속 요청 주소의 serviceKey 를 가린다 — Actions 로그·meta.json(공개 저장소)에 키가 찍히던 일(2026-09-27)"""
+    return re.sub(r"(?i)(serviceKey=)[^&\s'\"]+", r"\1***", str(s))
+
+
 def log(*a):
-    print(now_kst().strftime("%H:%M:%S"), *a, flush=True)
+    print(now_kst().strftime("%H:%M:%S"), *(hide_key(x) for x in a), flush=True)
 
 
 def load_json(path, default):

@@ -185,8 +185,13 @@ def now_kst():
     return dt.datetime.now(KST)
 
 
+def hide_key(s):
+    """오류 문구 속 요청 주소의 serviceKey 를 가린다 — Actions 로그·meta.json(공개 저장소)에 키가 찍히던 일(2026-09-27)"""
+    return re.sub(r"(?i)(serviceKey=)[^&\s'\"]+", r"\1***", str(s))
+
+
 def log(*a):
-    print(now_kst().strftime("%H:%M:%S"), *a, flush=True)
+    print(now_kst().strftime("%H:%M:%S"), *(hide_key(x) for x in a), flush=True)
 
 
 def pick(d, keys):
@@ -334,6 +339,7 @@ class BudgetExhausted(Exception):
 
 class ApiError(Exception):
     def __init__(self, code, msg):
+        msg = hide_key(msg)
         super().__init__(f"{code}: {msg}")
         self.code, self.msg = code, msg
 
@@ -1659,15 +1665,15 @@ def main():
             fn()
         except BudgetExhausted as e:
             log(f"[{name}] 한도/시간 소진: {e}")
-            errors.append(f"{name}: 한도 소진 ({e})")
+            errors.append(hide_key(f"{name}: 한도 소진 ({e})"))
         except FatalApiError as e:
             log(f"[{name}] 치명적 오류: {e}")
-            errors.append(f"{name}: {e}")
+            errors.append(hide_key(f"{name}: {e}"))
             fatal = e
             break
         except Exception as e:  # 한 단계가 죽어도 나머지는 진행
-            traceback.print_exc()
-            errors.append(f"{name}: {type(e).__name__}: {e}")
+            log(traceback.format_exc())
+            errors.append(hide_key(f"{name}: {type(e).__name__}: {e}"))
     save_all(final=True)
     if fatal:
         sys.exit(2)
