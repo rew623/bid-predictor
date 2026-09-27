@@ -86,6 +86,10 @@ const LS = {
   get(k, d){ try{ const v = localStorage.getItem('bp.'+k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } },
   set(k, v){ try{ localStorage.setItem('bp.'+k, JSON.stringify(v)); }catch(e){} if(Cloud.keys.includes(k)) Cloud.touch(k); },
 };
+// 화면 조건(검색·필터·보던 칸)은 이번에 앱을 연 동안만 기억한다 — 앱을 새로 열거나 새로고침하면 모든 탭이 기본(우리 업체 시·도·시·군 등)으로 (2026-09-27 요청).
+// 탭을 오가는 동안은 그대로(탭 상태 유지). 그래서 동기화(Cloud.keys)에도 넣지 않는다.
+const VIEW_KEYS = ['bidsFilter', 'bidsMode', 'mineKind', 'mineArea', 'mineSort', 'watchMode', 'statsFilter', 'pSidos', 'pLics', 'paperArea', 'resKind', 'resPeriod', 'diagPeriod', 'corpF2'];
+try{ VIEW_KEYS.forEach(k => localStorage.removeItem('bp.' + k)); }catch(e){}
 
 // ============================================================ PC·폰 같이 쓰기 (구글 로그인 + Firestore)
 // 개인 데이터(관심공고·투찰 기록·우리 업체·뺀 공고·가져온 이력·서비스키·화면 설정)를 users/{uid}/kv/{키} 문서 하나씩에
@@ -98,7 +102,7 @@ const FIREBASE_CONFIG = {
 };   // 웹 앱 설정값은 공개돼도 되는 값(비밀 아님) — 데이터는 보안 규칙이 지킨다
 const FB_VER = '10.12.2';
 const Cloud = {
-  keys: ['admin', 'company', 'watch', 'hiddenBids', 'history', 'corpWatch', 'mineKind', 'apiKey', 'mineArea', 'mineSort', 'bidsFilter', 'bidsMode', 'watchMode', 'theme', 'myCal', 'curveSmooth', 'pSidos', 'pLics', 'statsFilter', 'guideClosed'],
+  keys: ['admin', 'company', 'watch', 'hiddenBids', 'history', 'corpWatch', 'apiKey', 'theme', 'myCal', 'curveSmooth', 'guideClosed'],
   user: null, db: null, loading: null, status: '', lastSync: null, unsub: null, timers: {},
   dev: (() => { try{ let d = localStorage.getItem('bp._dev'); if(!d){ d = Math.random().toString(36).slice(2, 10); localStorage.setItem('bp._dev', d); } return d; }catch(e){ return 'x'; } })(),
   ts(){ try{ return JSON.parse(localStorage.getItem('bp._ts') || '{}'); }catch(e){ return {}; } },
