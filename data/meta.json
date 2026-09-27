@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 1532,
+   "bid": 1538,
    "date": "20260927",
-   "scsbid": 29907
+   "scsbid": 29918
   }
  },
  "backfill": {
@@ -450,31 +450,22 @@
   "cursor": "202506"
  },
  "last_run": {
-  "at": "2026-09-27T21:22:32+09:00",
+  "at": "2026-09-27T22:18:48+09:00",
   "calls": {
-   "bid": 1532,
+   "bid": 1538,
    "date": "20260927",
-   "scsbid": 29907
+   "scsbid": 29918
   },
-  "errors": [
-   "상세: 한도 소진 (network)",
-   "물품최근: 한도 소진 (network)",
-   "물품상세: 한도 소진 (network)",
-   "A값보강: 한도 소진 (network)",
-   "과거낙찰: 한도 소진 (network)",
-   "상세: 한도 소진 (network)",
-   "과거낙찰: 한도 소진 (network)",
-   "업체정보: 한도 소진 (network)"
-  ],
-  "minutes": 43.1
+  "errors": [],
+  "minutes": 9.1
  },
  "lim_scan": true,
  "mf_scan": true,
  "model": {
   "rows": 118937,
-  "updated_at": "2026-09-27T14:36:32+09:00"
+  "updated_at": "2026-09-27T22:18:53+09:00"
  },
- "notice_last": "2026-09-27T17:54+09:00",
+ "notice_last": "2026-09-27T22:09+09:00",
  "refill": [],
  "rgn_fill": {
   "cursor": null,
@@ -492,6 +483,6 @@
    "total": 2643
   }
  },
- "updated_at": "2026-09-27T21:22:32+09:00",
+ "updated_at": "2026-09-27T22:18:53+09:00",
  "v": 1
 }
