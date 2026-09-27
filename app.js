@@ -834,7 +834,7 @@ function switchTab(tab, push=true, opt={}){
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'view-' + tab);
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === (ANA_TABS.includes(tab) ? 'predict' : tab)));
   $('pageTitle').textContent = TAB_TITLES[tab];
-  if(push && location.hash !== '#' + tab) history.pushState(null, '', '#' + tab);
+  if(push && location.hash !== '#' + tab) history.pushState({t: 1}, '', '#' + tab);
   const y = keep ? tabY[tab] || 0 : 0;
   window.scrollTo(0, y);
   const ver = Data.meta?.updated_at || 1;
@@ -2606,6 +2606,7 @@ const History = {
 /** 개찰 상세를 폰에서 읽을 시·도 = 우리 업체 시·도(없으면 강원). 개찰 상세는 전국(관심 면허)으로 모으지만 17개 시·도 파일을 다 받으면 무거움 */
 const homeDetailSidos = () => [Company.get().sido || '강원'].filter(s => Data.hasDetail(s));
 const Corp = {idx: null, q: '', sel: null};
+let exitAt = 0;   // 뒤로 두 번 눌러 종료 — 첫 번째 누른 시각
 // 업체 목록 필터(2026-09-27 요청): 소재지(주소, 없으면 시·군 제한 공고 투찰로 추정) × 주로 투찰한 면허 × 정렬 — 기본 = 우리 시·군 · 우리 면허 = 경쟁사
 const corpF = () => { const co = Company.get(); return Object.assign({sido: co.sido || '', sgg: co.sgg || '', lic: 'mine', sort: 'dn'}, LS.get('corpF2', {})); };
 const D2B_LIST_URL = 'https://www.d2b.go.kr/mainBidAnnounceList.do';
@@ -2622,7 +2623,7 @@ const bizFmt = (b) => b && b.length === 10 ? `${b.slice(0, 3)}-${b.slice(3, 5)}-
 function openCorp(biz){
   Corp.sel = biz;
   if(currentTab !== 'corp') switchTab('corp'); else renderCorpSearch();
-  history.pushState(null, '', '#corp/' + biz);   // 폰 뒤로 버튼 = 업체 목록으로 (앱이 꺼지지 않게)
+  history.pushState({t: 1}, '', '#corp/' + biz);   // 폰 뒤로 버튼 = 업체 목록으로 (앱이 꺼지지 않게)
 }
 async function renderCorpSearch(){
   const out = $('corpOut'), info = $('cInfo'), inp = $('cQuery');
@@ -3801,6 +3802,15 @@ async function init(){
 
   document.querySelectorAll('.nav-item').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab, true, {nav: true})));
   window.addEventListener('popstate', () => {
+    // 맨 처음 기록(state 없음)까지 돌아왔다 = 한 번 더 뒤로 가면 앱이 꺼짐 → '한 번 더 누르면 종료' (2026-09-27 요청)
+    if(!history.state){
+      if(Date.now() - exitAt < 2000){ history.back(); return; }
+      exitAt = Date.now();
+      history.pushState({g: 1}, '', location.pathname + '#home');
+      if(currentTab !== 'home') switchTab('home', false, {back: true});
+      toast('뒤로 버튼을 한 번 더 누르면 종료됩니다', 2000);
+      return;
+    }
     const h = location.hash.slice(1);
     if(h.startsWith('corp')){ Corp.sel = h.split('/')[1] || null; if(currentTab !== 'corp') switchTab('corp', false, {back: true}); else renderCorpSearch(); return; }   // 업체 보기 → 뒤로 = 업체 목록
     switchTab(h, false, {back: true});
@@ -3853,13 +3863,11 @@ async function init(){
   const reload = performance.getEntriesByType?.('navigation')?.[0]?.type === 'reload';
   let rtab = location.hash.slice(1).split('/')[0];
   if(ANA_TABS.includes(rtab)) rtab = 'predict';
-  if(reload && TAB_TITLES[rtab]){
-    history.replaceState(null, '', location.pathname + '#' + rtab);
-    switchTab(rtab, false, {nav: true});
-  } else {
-    history.replaceState(null, '', location.pathname + '#home');
-    switchTab('home', false);
-  }
+  // 기록: [#home(state 없음) = 종료 확인용 바닥] → [#home 가드] → 탭 이동들
+  history.replaceState(null, '', location.pathname + '#home');
+  history.pushState({g: 1}, '', location.pathname + '#home');
+  if(reload && TAB_TITLES[rtab]) switchTab(rtab, true, {nav: true});
+  else switchTab('home', false);
   if(LS.get('cloud', false)) Cloud.init().catch(e => console.warn(e));
   updateNewBadge();
   updateWatchBadge();
