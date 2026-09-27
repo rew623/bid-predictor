@@ -49,7 +49,7 @@ KST = dt.timezone(dt.timedelta(hours=9))
 
 DAILY_LIMIT = int(os.environ.get("API_DAILY_LIMIT") or 950)
 MAX_MINUTES = float(os.environ.get("MAX_MINUTES") or 300)
-MIN_GAP = float(os.environ.get("MIN_GAP") or 0.35)   # 호출 사이 최소 간격(초) — 운영계정 초당 한도를 앱과 나눠 쓰기 위해
+MIN_GAP = float(os.environ.get("MIN_GAP") or 0.25)   # 호출 사이 최소 간격(초) — 운영계정 초당 한도를 앱과 나눠 쓰기 위해
 MAX_FILE_BYTES = 45 * 1024 * 1024          # 파일 하나 50MB 미만 유지
 ROWS = 999                                  # 페이지당 건수
 NOTICE_CACHE_DAYS = 60                      # 낙찰 정보 보강용 공고 보관 기간
@@ -1342,8 +1342,9 @@ def step_region_fill(api, meta, store, now, checkpoint):
         checkpoint()
 
 
-def step_details(api, meta, store, ostore, regions, now, checkpoint, reserve=3):
-    """reserve: 낙찰정보 서비스 호출을 이만큼 남기고 멈춘다 (뒤에 과거 수집이 쓸 몫)"""
+def step_details(api, meta, store, ostore, regions, now, checkpoint, reserve=3, time_reserve=10):
+    """reserve: 낙찰정보 서비스 호출을 이만큼 남기고 멈춘다 (뒤에 과거 수집이 쓸 몫)
+    time_reserve: 남은 실행 시간(분)이 이만큼이면 멈춘다 — 운영계정(하루 10만)에선 한도보다 시간이 먼저 찬다"""
     target = meta.get("backfill", {}).get("target_start") or (now - dt.timedelta(days=365 * BACKFILL_YEARS)).strftime("%Y%m%d")
     tdate = f"{target[:4]}-{target[4:6]}-{target[6:8]}"
     dm = meta.setdefault("detail", {})
@@ -1370,7 +1371,7 @@ def step_details(api, meta, store, ostore, regions, now, checkpoint, reserve=3):
     log(f"[상세] 대기 {len(queue)}건 (우선 {sum(1 for _, r in queue if tier(r) >= 4)}건)")
     done_now = 0
     for sido, rec in queue:
-        if api.remaining("scsbid") < reserve or api.time_left() < 10:
+        if api.remaining("scsbid") < reserve or api.time_left() < time_reserve:
             break
         try:
             ranks = list(api.paged("opening_rank", {"bidNtceNo": rec["no"], "bidNtceOrd": rec["ord"]}))
@@ -1466,7 +1467,7 @@ def main():
     steps = [
         ("공고", lambda: step_notices(api, meta, cache, now)),
         ("최근낙찰", lambda: step_recent_scsbid(api, meta, store, cache, now)),
-        ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all, reserve=DETAIL_RESERVE)),
+        ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all, reserve=DETAIL_RESERVE, time_reserve=MAX_MINUTES * 0.55)),   # 첫 상세는 실행 시간의 45%까지만
         ("물품최근", lambda: step_thng_recent(api, meta, tstore, now, cache)),   # 앱 '물품' 공고(goods.json) — 가볍고 매일 필요해서 앞에
         ("빈달", lambda: step_refill(api, meta, store, now, save_all)),
         ("물품과거", lambda: step_thng_backfill(api, meta, tstore, now, save_all)),
