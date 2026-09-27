@@ -2344,6 +2344,8 @@ function renderCalc(){
   if(!c.base || !c.sr){ out.innerHTML = '<div class="meta-line">기초금액과 적용 사정율을 입력하세요.</div>'; return; }
   const warns = [];
   const xm = c.manual ? bidToSr(c.manual, c.base, c.a, c.floor) : null;   // 직접 넣은 금액(더비스 제시가 등)의 투찰 사정률
+  const xRaw = c.manual && c.base ? ((c.manual - (c.a || 0)) / (c.floor / 100) + (c.a || 0)) / c.base * 100 : null;   // 90~110 밖이어도 보여 줄 값
+  if(c.manual && xm == null && xRaw != null) warns.push(`직접 입력 ${won(c.manual)}은 투찰 사정률 ${xRaw.toFixed(3)}% — 사정율이 나올 수 있는 범위(예가범위 ±2~3%) 밖이라 ${xRaw < 100 ? '반드시 낙찰하한가 미달입니다. 금액 자릿수를 확인하세요' : '낙찰 가능성이 거의 없습니다'}`);
   if(c.net && c.final < c.net * 0.98) warns.push(`투찰금액이 순공사원가 × 98% (${won(Math.ceil(c.net*0.98))}) 미만입니다 — 입찰 무효 위험`);
   const rng = $('pRng').value ? $('pRng').value.split(',').map(Number) : P.notice?.rng;
   const info = [];
@@ -2366,14 +2368,16 @@ function renderCalc(){
   out.innerHTML = `<div class="stat-grid">
       <div class="stat"><div class="t">예정가격</div><div class="v">${won(c.plan)}</div></div>
       <div class="stat"><div class="t">투찰금액 (낙찰하한가)</div><div class="v" style="color:var(--primary-dark);">${won(c.computed)}</div></div>
-      ${c.manual ? `<div class="stat"><div class="t">직접 입력 금액의 투찰 사정률</div><div class="v">${xm != null ? xm.toFixed(3) + '%' : '-'}</div></div>` : ''}
+      ${c.manual ? `<div class="stat"><div class="t">직접 입력 금액의 투찰 사정률</div><div class="v"${xm == null ? ' style="color:var(--target);"' : ''}>${xRaw != null ? xRaw.toFixed(3) + '%' : '-'}</div></div>` : ''}
       ${c.net ? `<div class="stat"><div class="t">순공사원가 × 98%</div><div class="v">${won(Math.ceil(c.net*0.98))}</div></div>` : ''}
     </div>
     ${warns.map(w => `<div class="alert danger">⚠️ ${esc(w)}</div>`).join('')}
     ${info.map(w => `<div class="alert info">${w}</div>`).join('')}
     <div class="meta-line">낙찰하한율 ${c.floor}% · A값 ${won(c.a)} · 참고용이며 낙찰을 보장하지 않습니다.</div>
-    ${P.notice ? `<div class="btn-row" style="margin-top:10px;"><button class="btn reg" id="calcReg" type="button">📝 ${won(c.final)}으로 투찰 등록</button></div>` : ''}`;
-  $('calcReg')?.addEventListener('click', () => registerBid(P.notice, c.final, c.sr, c.manual ? '직접' : '계산기'));
+    <div class="btn-row" style="margin-top:10px;">${xm != null && Math.abs(xm - c.sr) > 5e-5 ? `<button class="btn line" id="calcApplyManual" type="button">직접 입력 금액을 계산에 적용 (사정율 ${xm.toFixed(4)}%)</button>` : ''}${P.notice ? `<button class="btn reg" id="calcReg" type="button">📝 ${won(c.final)}으로 투찰 등록</button>` : ''}</div>`;
+  $('calcReg')?.addEventListener('click', () => registerBid(P.notice, c.final, xm ?? c.sr, c.manual ? '직접' : '계산기'));
+  // 직접 넣은 금액을 적용 사정율로 되돌려 넣는다 → 예정가격·투찰금액·과거 낙찰확률 줄이 모두 그 금액 기준 (2026-09-27 요청)
+  $('calcApplyManual')?.addEventListener('click', () => { $('cRate').value = xm.toFixed(4); renderCalc(); });
 }
 
 // ---------- 발주기관 예가 구간확률
