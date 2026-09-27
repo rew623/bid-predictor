@@ -16,6 +16,7 @@
   "oldest": "20250401",
   "target_start": "20230926"
  },
+ "bsis_fill": {},
  "counts": {
   "bids": 1653,
   "opening": {
@@ -442,17 +443,22 @@
   "cursor": "202506"
  },
  "last_run": {
-  "at": "2026-09-27T14:36:25+09:00",
+  "at": "2026-09-27T14:54:32+09:00",
   "calls": {
    "bid": 1518,
    "date": "20260927",
    "scsbid": 29896
   },
   "errors": [
-   "공고: ApiError: NET: getBidPblancListInfoCnstwk: HTTPSConnectionPool(host='apis.data.go.kr', port=443): Max retries exceeded with url: /1230000/BidPublicInfoService04/getBidPblancListInfoCnstwk?serviceKey=ExsurRG5CjkB44Ob8nW6MeuHfudT1GuSleyT9sEkZLGVNVwYELNlQXJ8TAH2EbeSRvesxeV7%2FZjO9HpBucCkGg%3D%3D&type=json&inqryDiv=1&inqryBgnDt=202608281413&inqryEndDt=202609271413&pageNo=1&numOfRows=100 (Caused by ConnectTimeoutError(<HTTPSConnection(host='apis.data.go.kr', port=443) at 0x7fc3445ec140>, 'Connection to apis.data.go.kr timed out. (connect timeout=15)'))",
-   "최근낙찰: 한도 소진 (network)"
+   "상세: 한도 소진 (network)",
+   "물품최근: 한도 소진 (network)",
+   "A값보강: 한도 소진 (network)",
+   "과거낙찰: 한도 소진 (network)",
+   "상세: 한도 소진 (network)",
+   "과거낙찰: 한도 소진 (network)",
+   "업체정보: 한도 소진 (network)"
   ],
-  "minutes": 22.7
+  "minutes": 17.2
  },
  "lim_scan": true,
  "mf_scan": true,
