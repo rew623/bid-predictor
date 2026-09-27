@@ -797,21 +797,21 @@ let prevVisit = null;       // 이번 세션 시작 전 마지막 방문 시각 
 /** 간단 모드(기본) / 운영자 모드(bp.admin, 동기화, 누구나 설정에서 켬): 기능은 같고, 간단 모드는 설명 문구만 CSS 로 숨긴다(body.simple — style.css '간단 모드') */
 const applyMode = () => document.body.classList.toggle('simple', !LS.get('admin', false));
 /** 탭을 옮겨 다녀도 하던 화면 그대로(2026-09-27 요청): 조건·펼침·결과는 DOM·변수에 남기고, 하단 탭·뒤로 버튼으로 돌아오면 스크롤도 되돌린다.
- *  분석 탭은 마지막으로 보던 화면(금액 분석·모의 투찰·통계), 내 투찰 탭은 늘 ⭐ 관심부터(요청). */
+ *  분석 탭은 마지막으로 보던 화면(금액 분석·모의 투찰·통계). 내 투찰 탭도 보던 칸 그대로, 앱을 열고 처음 들어갈 때만 🏁 개찰 결과부터(요청). */
 const ANA_TABS = ['predict', 'paper', 'stats'];
 let lastAna = 'predict';
 const tabY = {}, tabSeen = {};   // 탭별 스크롤 위치, 마지막으로 그렸을 때의 데이터 갱신 시각
 function switchTab(tab, push=true, opt={}){
   if(!TAB_TITLES[tab]) tab = 'home';
   if(opt.nav && tab === 'predict') tab = lastAna;
-  if(opt.nav && tab === 'watch'){ watchMode = 'watch'; LS.set('watchMode', watchMode); }
   if(ANA_TABS.includes(tab)) lastAna = tab;
   applyMode();
   updateWatchBadge();   // 다른 기기에서 동기화된 관심공고도 반영
   if(currentTab) tabY[currentTab] = window.scrollY;
   const first = !tabSeen[tab];
-  if(tab === 'home' && first){ Mine.kind = '공사'; Mine.area = 'sido'; Mine.shown = 60; }   // 앱을 열면 '공사 · 우리 시·도'부터 (2026-09-26 요청) — 다른 탭 다녀올 땐 보던 그대로
-  const keep = opt.refresh || ((opt.nav || opt.back) && !first && tab !== 'watch');
+  if(tab === 'home' && first){ Mine.kind = '공사'; Mine.area = 'sido'; Mine.shown = 60; }
+  if(tab === 'watch' && first && opt.nav){ watchMode = 'result'; LS.set('watchMode', watchMode); }   // 카드의 '내 투찰'·투찰 등록으로 들어올 땐 그 칸(투찰 중) 그대로   // 앱을 열면 '공사 · 우리 시·도'부터 (2026-09-26 요청) — 다른 탭 다녀올 땐 보던 그대로
+  const keep = opt.refresh || ((opt.nav || opt.back) && !first);
   currentTab = tab;
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'view-' + tab);
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === (ANA_TABS.includes(tab) ? 'predict' : tab)));
