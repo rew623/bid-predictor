@@ -2603,7 +2603,7 @@ const History = {
 const homeDetailSidos = () => [Company.get().sido || '강원'].filter(s => Data.hasDetail(s));
 const Corp = {idx: null, q: '', sel: null};
 // 업체 목록 필터(2026-09-27 요청): 소재지(주소, 없으면 시·군 제한 공고 투찰로 추정) × 주로 투찰한 면허 × 정렬 — 기본 = 우리 시·군 · 우리 면허 = 경쟁사
-const corpF = () => Object.assign({area: 'sgg', lic: 'mine', sort: 'dn'}, LS.get('corpF', {}));
+const corpF = () => { const co = Company.get(); return Object.assign({sido: co.sido || '', sgg: co.sgg || '', lic: 'mine', sort: 'dn'}, LS.get('corpF2', {})); };
 const D2B_LIST_URL = 'https://www.d2b.go.kr/mainBidAnnounceList.do';
 async function loadCorps(){
   if(!Corp.idx){
@@ -2633,33 +2633,41 @@ async function renderCorpSearch(){
   const F = corpF(), co = Company.get();
   if(!$('cfLic').dataset.bound){
     $('cfLic').dataset.bound = 1;
-    $('cfLic').innerHTML = `<option value="mine">우리 면허</option><option value="all">전체 면허</option>` + idx.lics.map(l => `<option value="${esc(l)}">${esc(LIC_SHORT[l] || l)}</option>`).join('');
-    ['cfArea', 'cfLic', 'cfSort'].forEach(id => $(id).addEventListener('change', () => {
-      LS.set('corpF', {area: $('cfArea').value, lic: $('cfLic').value, sort: $('cfSort').value}); Corp.sel = null; renderCorpSearch(); }));
+    const my = co.lics || [];
+    $('cfLic').innerHTML = `<option value="all">전체 면허</option>` + (my.length ? `<option value="mine">우리 면허(${esc(my.map(l => LIC_SHORT[l] || l).join('·'))})</option>` : '')
+      + idx.lics.map(l => `<option value="${esc(l)}">${esc(LIC_SHORT[l] || l)}</option>`).join('');
+    $('cfSido').innerHTML = `<option value="">전체 시·도</option>` + SIDOS.map(x => `<option>${x}</option>`).join('');
+    const save = () => { LS.set('corpF2', {sido: $('cfSido').value, sgg: $('cfSgg').value, lic: $('cfLic').value, sort: $('cfSort').value}); Corp.sel = null; renderCorpSearch(); };
+    $('cfSido').addEventListener('change', () => { $('cfSgg').value = ''; save(); });
+    ['cfSgg', 'cfLic', 'cfSort'].forEach(id => $(id).addEventListener('change', save));
   }
-  $('cfArea').value = F.area; $('cfLic').value = F.lic; $('cfSort').value = F.sort;
+  const sggs = [...new Set(idx.items.map(c => c.home).filter(h => F.sido && h.startsWith(F.sido + '|')).map(h => h.split('|')[1]).filter(Boolean))].sort();
+  $('cfSgg').innerHTML = `<option value="">전체 시·군</option>` + sggs.map(x => `<option>${esc(x)}</option>`).join('');
+  $('cfSgg').disabled = !F.sido;
+  $('cfSido').value = F.sido; $('cfSgg').value = sggs.includes(F.sgg) ? F.sgg : ''; $('cfLic').value = F.lic; $('cfSort').value = F.sort;
+  if(!$('cfLic').value) $('cfLic').value = 'all';
   $('bidsCorp').querySelector('.corp-filter').hidden = !!Corp.sel;
-  info.innerHTML = `업체 ${fmtNum(idx.items.length)}곳 — 전국 낙찰자(공사·물품·국방) + 강원 개찰 상세(전체 투찰) + 국방 상위 투찰. 대표자로도 찾을 수 있습니다.<span class="ops"> 소재지 = 주소(낙찰한 업체), 없으면 시·군 제한 공고에 투찰한 곳으로 추정. 면허 = 주로 투찰한 공고의 면허(추정).</span>`;
+  info.innerHTML = `업체 ${fmtNum(idx.items.length)}곳 — 전국 낙찰자(공사·물품·국방) + 강원 개찰 상세(전체 투찰) + 국방 상위 투찰. 대표자로도 찾을 수 있습니다.<span class="ops"> 소재지 = 주소(낙찰한 업체), 없으면 시·군 제한 공고에 투찰한 곳으로 추정. 면허 = 주로 투찰한 공고의 면허(추정). 투찰·1순위 = 수집된 개찰 상세(강원은 전부, 다른 시·도는 관심 면허 공고만) 기준이라 강원 밖 업체는 적게 나옵니다.</span>`;
   if(Corp.sel) return renderCorpProfile(Corp.sel);
   const watch = LS.get('corpWatch', []);
   const q = Corp.q.replace(/[\s-]/g, '');
   const row = (c) => `<button type="button" class="corp-row" data-corp="${esc(c.biz)}">
       <div><b>${esc(c.nm)}</b>${watch.includes(c.biz) ? ' ⭐' : ''}<small>${bizFmt(c.biz)}${c.ceo ? ' · 대표 ' + esc(c.ceo) : ''}${c.home ? ' · ' + esc(c.home.replace('|', ' ')) + (c.adr ? '' : '(추정)') : c.ws.length ? ' · 낙찰 지역 ' + esc(c.ws.join('·')) : ''}</small>${c.lics.length ? `<small class="corp-lics">${c.lics.map(l => esc(LIC_SHORT[l] || l)).join(' · ')}</small>` : ''}</div>
-      <div class="corp-nums"><span>강원 투찰 <b>${fmtNum(c.dn)}</b>${c.d1 ? ` · 1순위 ${fmtNum(c.d1)}` : ''}</span><span>낙찰 강원 <b>${fmtNum(c.gw)}</b> · 전국 ${fmtNum(c.wins)}</span></div></button>`;
+      <div class="corp-nums"><span>투찰 <b>${fmtNum(c.dn)}</b>${c.d1 ? ` · 1순위 ${fmtNum(c.d1)}` : ''}</span><span>낙찰 전국 <b>${fmtNum(c.wins)}</b>${c.gw ? ` · 강원 ${fmtNum(c.gw)}` : ''}</span></div></button>`;
   if(!q){
     const me = String(Company.get().biz || '');
     const mine = idx.items.find(c => c.biz === me);
     const w = watch.map(b => idx.items.find(c => c.biz === b)).filter(Boolean);
     const myLics = co.lics || [];
-    const area = F.area === 'sgg' && co.sido && co.sgg ? `${co.sido}|${co.sgg}` : F.area !== 'all' && co.sido ? co.sido + '|' : '';
-    const lic = F.lic === 'mine' ? myLics : F.lic === 'all' ? [] : [F.lic];
+    const sgg = $('cfSgg').value, area = F.sido ? (sgg ? `${F.sido}|${sgg}` : F.sido + '|') : '';
+    const lic = $('cfLic').value === 'mine' ? myLics : $('cfLic').value === 'all' ? [] : [$('cfLic').value];
     const list = idx.items.filter(c => c.biz !== me && (!area || (area.endsWith('|') ? c.home.startsWith(area) : c.home === area))
       && (!lic.length || c.lics.some(l => lic.includes(l))) && (c.dn || c.wins));
     list.sort((a, b) => (b[F.sort] || 0) - (a[F.sort] || 0) || b.dn - a.dn);
-    const label = `${area ? esc(area.replace('|', ' ').trim()) : '전체 지역'} · ${F.lic === 'mine' ? (myLics.length ? '우리 면허' : '전체 면허') : F.lic === 'all' ? '전체 면허' : esc(LIC_SHORT[F.lic] || F.lic)}`;
+    const lv = $('cfLic').value, label = `${area ? esc(area.replace('|', ' ').trim()) : '전체 지역'} · ${lv === 'mine' ? '우리 면허' : lv === 'all' ? '전체 면허' : esc(LIC_SHORT[lv] || lv)}`;
     out.innerHTML = (mine ? `<h3 class="corp-h">우리 업체</h3>${row(mine)}` : '')
       + (w.length ? `<h3 class="corp-h">⭐ 관심 업체</h3>${w.map(row).join('')}` : '')
-      + `<h3 class="corp-h">${F.area === 'sgg' && F.lic === 'mine' ? '경쟁사 — ' : ''}${label} ${fmtNum(list.length)}곳${list.length > 50 ? ' (위 50곳)' : ''}</h3>`
+      + `<h3 class="corp-h">${label} ${fmtNum(list.length)}곳${list.length > 50 ? ' (위 50곳)' : ''}</h3>`
       + (list.length ? list.slice(0, 50).map(row).join('') : '<div class="card empty">조건에 맞는 업체가 없습니다.</div>');
     return;
   }
