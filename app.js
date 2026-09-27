@@ -3009,11 +3009,12 @@ async function renderWatch(){
       ${body}
       ${resultMode && w.myBid && r ? '<details class="b-more res-edit"><summary>투찰금액 고치기 · 다시 조회</summary>' : ''}
       <div class="mybid-row">
-        <label>내가 넣은 투찰금액</label>
-        <input type="text" class="money" inputmode="numeric" autocomplete="off" data-mybid-in="${esc(w.id)}" value="${moneyText(w.myBid)}" placeholder="${w.pred?.bid ? '예: ' + moneyText(w.pred.bid) : '원 단위'}">
-        <button class="btn sm ghost" data-mybid-save="${esc(w.id)}" type="button">기록</button>
+        <label>${isJoined(w) || resultMode ? '내가 넣은 투찰금액' : '넣은 금액 (비우면 추천가로 기록)'}</label>
+        <input type="text" class="money" inputmode="numeric" autocomplete="off" data-mybid-in="${esc(w.id)}" value="${moneyText(w.myBid)}" placeholder="${w.pred?.bid ? moneyText(w.pred.bid) : '원 단위'}">
+        ${resultMode || w.auto ? `<button class="btn sm ghost" data-mybid-save="${esc(w.id)}" type="button">기록</button>`
+          : isJoined(w) ? `<button class="btn sm ghost" data-mybid-save="${esc(w.id)}" type="button">금액 고치기</button><button class="btn sm line" data-unjoin="${esc(w.id)}" type="button">↩ 관심으로 되돌리기</button>`
+          : `<button class="btn sm reg" data-joined="${esc(w.id)}" type="button">📝 투찰 완료</button>`}
         ${opened(w) && apiKey() ? `<button class="btn sm line" data-res-fetch="${esc(w.id)}" type="button">개찰 결과 조회</button>` : ''}
-        ${!w.auto ? `<button class="btn sm line" data-join-toggle="${esc(w.id)}" type="button">${w.joined ? '참여 표시 해제' : '참여 표시'}</button>` : ''}
       </div>
       ${resultMode && w.myBid && r ? '</details>' : ''}
       ${resultMode ? '' : `<div class="bid-actions">${findNotice(w.id) ? `<button class="btn sm" data-predict="${esc(w.id)}" type="button">이 공고로 예측</button>` : ''}
@@ -3076,9 +3077,20 @@ function bindWatch(el, pseudo){
     await WatchStore.save({...rest, savedAt: new Date().toISOString()});
     renderWatch();
   }));
-  el.querySelectorAll('[data-join-toggle]').forEach(btn => btn.addEventListener('click', async () => {
-    const w = await getW(btn.dataset.joinToggle); if(!w) return;
-    await WatchStore.save({...w, joined: !w.joined});
+  // 관심 → 투찰 중: '📝 투찰 완료' (금액을 비우면 저장 때의 추천가로 기록)
+  el.querySelectorAll('[data-joined]').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.dataset.joined, w = await getW(id); if(!w) return;
+    const amt = numOf(el.querySelector(`[data-mybid-in="${CSS.escape(id)}"]`)) || w.pred?.bid || null;
+    await WatchStore.save({...w, joined: true, myBid: amt});
+    toast(amt ? `${won(amt)}으로 투찰 중에 옮겼습니다` : '투찰 중에 옮겼습니다 (금액은 나중에 기록)');
+    renderWatch();
+  }));
+  // 투찰 중 → 관심: 참여 표시와 넣은 금액을 지운다
+  el.querySelectorAll('[data-unjoin]').forEach(btn => btn.addEventListener('click', async () => {
+    const w = await getW(btn.dataset.unjoin); if(!w) return;
+    if(w.myBid && !confirm(`기록한 투찰금액 ${won(w.myBid)}을 지우고 관심으로 되돌릴까요?`)) return;
+    await WatchStore.save({...w, joined: false, myBid: null});
+    toast('관심으로 되돌렸습니다');
     renderWatch();
   }));
   el.querySelectorAll('[data-res-fetch]').forEach(btn => btn.addEventListener('click', async () => {
