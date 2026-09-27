@@ -3845,8 +3845,16 @@ async function init(){
   initStats();
   initSettings();
   // 앱을 열면 언제나 우리 공고부터 (주소에 #watch 등이 남아 있어도 — 홈 화면 바로가기·북마크가 마지막 탭 주소로 저장되는 일이 있음)
-  history.replaceState(null, '', location.pathname + '#home');
-  switchTab('home', false);
+  // 단, 당겨서 새로고침(reload)이면 보던 탭에서 다시 시작 (2026-09-27 요청). 업체 보기(#corp/번호)는 그 업체로
+  const reload = performance.getEntriesByType?.('navigation')?.[0]?.type === 'reload';
+  const rh = location.hash.slice(1), rtab = rh.split('/')[0];
+  if(reload && TAB_TITLES[rtab]){
+    if(rtab === 'corp') Corp.sel = rh.split('/')[1] || null;
+    switchTab(rtab, false);
+  } else {
+    history.replaceState(null, '', location.pathname + '#home');
+    switchTab('home', false);
+  }
   if(LS.get('cloud', false)) Cloud.init().catch(e => console.warn(e));
   updateNewBadge();
   updateWatchBadge();
