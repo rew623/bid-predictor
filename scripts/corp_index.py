@@ -5,7 +5,7 @@
       + 국방(data/d2b/{연도}/{월}.json 참가 업체 전원·낙찰자, 대표자) + 낙찰 업체 대표자·주소·전화(data/corp_info.json, 수집기 CorpInfo).
 corps.json {"v":1, "updated_at", "sidos":[시도…], "items":[[사업자번호, 업체명, 전국 낙찰 수(공사+물품+국방), 마지막 낙찰일,
             낙찰 시도 번호들, 상세 투찰 수, 상세 1순위 수, 국방 투찰 수, 국방 1순위 수, 대표자, 주소, 전화,
-            소재지 번호(homes ["시도|시군"…], 주소 → 없으면 시·군 제한 공고 투찰로 추정), 투찰 면허 번호들(lics, 개찰 상세 공고 면허로 추정), 강원 최종 낙찰 수], …], "lics":[면허…]}
+            소재지 번호(homes ["시도|시군"…], 주소 → 없으면 시·군 제한 공고 투찰로 추정), 투찰 면허 번호들(lics, 개찰 상세 공고 면허로 추정), 강원 공사 최종 낙찰 수], …], "lics":[면허…]}
 corpw/{앞 3자리}.json {사업자번호: [[개찰일, 공고명(40자), 낙찰금액, 발주기관(20자), 업무(공사|물품|국방), 참가수, 시도, 공고ID, 낙찰률, 사정율, 기초금액], …최근 20건]} — 강원 관련 업체만
 업체별 투찰 내역(금액·순위)은 앱이 개찰 상세 파일을 직접 읽어 계산한다.
 """
@@ -58,6 +58,7 @@ def main():
             return
     name, ceo = {}, {}
     wins = collections.Counter()
+    whome = collections.Counter()
     last = {}
     wsido = collections.defaultdict(collections.Counter)
     wlist = collections.defaultdict(list)
@@ -75,6 +76,8 @@ def main():
                     last[b] = d
                     name[b] = r.get("win") or name[b]
                 s = r.get("sido") or ""
+                if kind == "공사" and s == HOME:
+                    whome[b] += 1   # 강원 공사 최종 낙찰 — 업체 보기 '강원 최종 낙찰'(개찰 상세, 공사)과 같은 기준 (물품까지 세면 목록 3 · 보기 1 로 달랐음)
                 if s:
                     if s not in sidos:
                         sidos.append(s)
@@ -154,7 +157,7 @@ def main():
             homes.append(home)
         items.append([b, nm, wins[b], last.get(b, ""), [k for k, _ in wsido[b].most_common(3)],
                       dbid[b], dtop[b], mbid[b], mtop[b], ci[0] or ceo.get(b, ""), ci[1], ci[2],
-                      hidx[home], lx, wsido[b][home_i] if home_i >= 0 else 0])
+                      hidx[home], lx, whome[b]])
     items.sort(key=lambda x: (-(x[2] + x[5]), x[1]))
     body = {"v": 1, "updated_at": dt.datetime.now(KST).isoformat(timespec="seconds"), "sidos": sidos, "lics": lics, "homes": homes, "items": items}
     write_if_changed(DATA / "corps.json", dumps(body))

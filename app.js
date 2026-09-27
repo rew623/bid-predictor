@@ -2658,7 +2658,7 @@ async function renderCorpSearch(){
   const q = Corp.q.replace(/[\s-]/g, '');
   const row = (c) => `<button type="button" class="corp-row" data-corp="${esc(c.biz)}">
       <div><b>${esc(c.nm)}</b>${watch.includes(c.biz) ? ' ⭐' : ''}<small>${bizFmt(c.biz)}${c.ceo ? ' · 대표 ' + esc(c.ceo) : ''}${c.home ? ' · ' + esc(c.home.replace('|', ' ')) + (c.adr ? '' : '(추정)') : c.ws.length ? ' · 낙찰 지역 ' + esc(c.ws.join('·')) : ''}</small>${c.lics.length ? `<small class="corp-lics">${c.lics.map(l => esc(LIC_SHORT[l] || l)).join(' · ')}</small>` : ''}</div>
-      <div class="corp-nums"><span>투찰 <b>${fmtNum(c.dn)}</b>${c.d1 ? ` · 1순위 ${fmtNum(c.d1)}` : ''}</span><span>낙찰 전국 <b>${fmtNum(c.wins)}</b>${c.gw ? ` · 강원 ${fmtNum(c.gw)}` : ''}</span></div></button>`;
+      <div class="corp-nums"><span>투찰 <b>${fmtNum(c.dn)}</b>${c.d1 ? ` · 1순위 ${fmtNum(c.d1)}` : ''}</span><span>낙찰 전국 <b>${fmtNum(c.wins)}</b>${c.gw ? ` · 강원 공사 ${fmtNum(c.gw)}` : ''}</span></div></button>`;
   if(!q){
     const me = String(Company.get().biz || '');
     const mine = idx.items.find(c => c.biz === me);
@@ -3108,7 +3108,7 @@ async function findMyBidsInOpening(skipIds){
               mine: {rank: row[0], amt: row[2], biz, name: b.corps[ci][0]}, top, xs: b.r.map(x => x[2])}});
     }
   }
-  return out.sort((x, y) => (y.open || '').localeCompare(x.open || '')).slice(0, 200);
+  return out.sort((x, y) => (y.open || '').localeCompare(x.open || '')).slice(0, 2000);   // 예전 200 제한 때문에 개찰 결과·진단이 업체 보기(전체)와 숫자가 달랐음
 }
 
 /** 공고번호로 참여 공고 추가: 진행중·실시간·수집 데이터에서 정보를 찾고, 개찰됐으면 결과까지 조회 */
