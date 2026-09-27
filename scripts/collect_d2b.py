@@ -273,14 +273,16 @@ def fetch_one(api, kind, it):
                           **{k: v for k, v in key.items() if k != "opengDate"}, **extra)
         if kind == "N":   # 공개수의는 날짜 이름이 ntatPlanDate 일 수 있어 둘 다 보냄(모르는 조건은 무시됨)
             key["ntatPlanDate"] = day
+            key.update(pblancNo=it.get("pblancNo"), pblancOdr=it.get("pblancOdr"))   # 없으면 참가업체 0건 (2026-09-27 _probe 확인)
         mn, _ = api.call(K["mnuf"], numOfRows=9999, **key)
         bs, _ = api.call(K["bsic"], numOfRows=99, **key)
     else:
         key = dict(orntCode=it.get("orntCode"), cntrwkNo=it.get("cntrwkNo"))
         if kind == "F":
             det, _ = api.call(K["detail"], numOfRows=1, opengDate=day, pblancNo=it.get("pblancNo"), pblancOdr=it.get("pblancOdr"), **key)
-        else:
-            det, _ = api.call(K["detail"], numOfRows=1, ntatPlanDate=day, pblancOdr=it.get("pblancOdr"), **key)
+        else:   # 시설 공개수의: 상세·참가업체 모두 공고번호·차수까지 있어야 나온다 (없으면 0건, 넣으면 753곳 — 2026-09-27 _probe)
+            key.update(pblancNo=it.get("pblancNo"), pblancOdr=it.get("pblancOdr"))
+            det, _ = api.call(K["detail"], numOfRows=1, ntatPlanDate=day, **key)
         mn, _ = api.call(K["mnuf"], numOfRows=9999, ntatPlanDate=day, **key)
         bs, _ = api.call(K["bsic"], numOfRows=99, ntatPlanDate=day, **key)
     prices = [(int(num(x.get("bsicSeqn") or x.get("epprRank")) or 0), num(x.get("prdfPrce") or x.get("planPrce")), x.get("choiYsno") == "Y") for x in bs]

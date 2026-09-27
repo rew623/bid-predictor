@@ -363,6 +363,7 @@ class Api:
         api["calls"] = calls
         self.calls = calls
         self.errors = []
+        self.cooldowns = 0    # 접속 실패로 10분 쉰 횟수
         self.net_fail = 0     # 연속 접속 실패 수 — NET_FAIL_STOP 번이면 오늘은 조달청이 안 되는 것으로 보고 멈춘다
         self.last_at = 0.0    # 마지막 호출 시각 (MIN_GAP 간격 유지)
         self.session = requests.Session()
@@ -439,6 +440,12 @@ class Api:
             return items, total
         if not reached:
             self.net_fail += 1
+            if self.net_fail >= NET_FAIL_STOP and self.cooldowns < 2 and self.time_left() > 25:
+                # 2026-09-27 14·20시: Actions → apis.data.go.kr 접속 시간 초과가 수십 분 이어짐 → 바로 멈추지 말고 10분 쉬고 다시 (실행마다 2번까지)
+                self.cooldowns += 1
+                log(f"  ! 조달청 접속 {NET_FAIL_STOP}번 연속 실패 — 10분 쉬고 다시 ({self.cooldowns}/2)")
+                time.sleep(600)
+                self.net_fail = 0
             if self.net_fail >= NET_FAIL_STOP:
                 log(f"  ! 조달청 접속이 {NET_FAIL_STOP}번 연속 안 됨 — 오늘 수집은 여기서 멈춤")
                 raise BudgetExhausted("network")
