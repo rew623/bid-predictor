@@ -55,7 +55,7 @@ ROWS = 999                                  # 페이지당 건수
 NOTICE_CACHE_DAYS = 60                      # 낙찰 정보 보강용 공고 보관 기간
 RECENT_SCSBID_DAYS = 40                     # 매일 다시 훑는 최근 낙찰 기간
 BACKFILL_YEARS = 3
-DETAIL_RESERVE = 250                        # 첫 상세 단계는 낙찰정보 호출을 이만큼 남겨 과거 수집에 쓴다
+DETAIL_RESERVE = max(250, int(DAILY_LIMIT * 0.4))   # 첫 상세 단계는 낙찰정보 호출을 이만큼 남겨 물품·과거 수집에 쓴다 (운영계정 9500 → 3800)
 RECENT_FIRST_MONTHS = 24                    # 과거 낙찰은 이 기간을 먼저 채운 뒤 상세 → 나머지 과거 순으로
 DETAIL_MAX_TRIES = 3
 NET_FAIL_STOP = 3                           # 조달청 접속이 연속 이만큼 안 되면 그 실행은 멈춘다 (2026-09-26 새벽 5시간 헛돈 일)
@@ -1467,14 +1467,14 @@ def main():
         ("공고", lambda: step_notices(api, meta, cache, now)),
         ("최근낙찰", lambda: step_recent_scsbid(api, meta, store, cache, now)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all, reserve=DETAIL_RESERVE)),
+        ("물품최근", lambda: step_thng_recent(api, meta, tstore, now, cache)),   # 앱 '물품' 공고(goods.json) — 가볍고 매일 필요해서 앞에
         ("빈달", lambda: step_refill(api, meta, store, now, save_all)),
-        ("업체정보", lambda: step_corp_info(api, meta, now, save_all)),
-        ("물품최근", lambda: step_thng_recent(api, meta, tstore, now, cache)),
         ("물품과거", lambda: step_thng_backfill(api, meta, tstore, now, save_all)),
         ("지역보강", lambda: step_region_fill(api, meta, store, now, save_all)),
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all, horizon)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all)),
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all)),
+        ("업체정보", lambda: step_corp_info(api, meta, now, save_all)),   # 대표자·주소 채우기는 남는 한도로 (2026-09-27: 앞에 두었더니 물품·과거 수집 몫을 다 씀)
     ]
     only = {s.strip() for s in (os.environ.get("STEPS") or "").split(",") if s.strip()}
     fatal = None
