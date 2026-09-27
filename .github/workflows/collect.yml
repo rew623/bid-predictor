@@ -76,7 +76,7 @@ jobs:
           START_DATE: ${{ inputs.start_date }}
           RESET_BACKFILL: ${{ inputs.reset_backfill }}
           STEPS: "빈달,업체정보,물품최근,물품과거,지역보강,과거낙찰,상세"
-          WATCH_BIZ: ${{ vars.WATCH_BIZ }}
+          WATCH_BIZ: ${{ secrets.WATCH_BIZ || vars.WATCH_BIZ }}   # 시크릿이면 로그에 *** 로 가려짐(변수는 공개 로그에 그대로 찍힘)
           MAX_MINUTES: "260"
           API_DAILY_LIMIT: ${{ vars.API_DAILY_LIMIT || '95000' }}
         run: python scripts/collect.py
@@ -125,7 +125,7 @@ jobs:
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
           MAX_MINUTES: "55"
-          WATCH_BIZ: ${{ vars.WATCH_BIZ }}
+          WATCH_BIZ: ${{ secrets.WATCH_BIZ || vars.WATCH_BIZ }}
         run: python scripts/collect_d2b.py
 
       - name: 국방 수집 커밋

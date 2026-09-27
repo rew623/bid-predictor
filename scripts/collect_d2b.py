@@ -146,12 +146,14 @@ class Api:
                 last = e
                 time.sleep(5 * (attempt + 1))
         self.fails += 1
+        # 직접 주소는 한 번(3번 시도)만 실패해도 게이트웨이로 바꿔 같은 호출을 다시 — 예전엔 5번을 기다리다
+        # 첫 오류에 실행 전체가 멈춰 게이트웨이를 한 번도 못 썼다(2026-09-27 09시 접속 시간 초과)
+        if self.base == 0 and self.key:
+            log("D2B 직접 주소가 안 됨 → 공공데이터포털 게이트웨이로 바꿈:", last)
+            self.base, self.fails = 1, 0
+            return self.call(op, svc, **params)
         if self.fails >= FAIL_STOP:
-            if self.base == 0 and self.key:
-                log("D2B 직접 주소가 안 됨 → 공공데이터포털 게이트웨이로 바꿈")
-                self.base, self.fails = 1, 0
-            else:
-                raise Stop(f"연속 {self.fails}번 실패: {last}")
+            raise Stop(f"연속 {self.fails}번 실패: {last}")
         raise RuntimeError(str(last))
 
     def list_all(self, kind, bgn, end):
