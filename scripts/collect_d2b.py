@@ -466,6 +466,9 @@ def main():
         index, meta = {"v": 2, "done": {}, "fail": {}}, {k: v for k, v in meta.items() if k not in ("backfill", "files", "counts", "total")}
         write_if_changed(OUT / "meta.json", dumps(meta))
         log("v2(참가 업체 전원)로 처음부터 다시 받습니다")
+    if not meta.get("othbc_fix"):   # 2026-09-27 공개수의 조회 조건(공고번호·차수) 고치기 전의 실패 기록은 지우고 다시 시도 — 한 번만
+        index["fail"] = {k: v for k, v in index.get("fail", {}).items() if not k.startswith(("N-", "NF-"))}
+        meta["othbc_fix"] = 1
     if not index.get("done"):   # 진행 기록이 없거나 지워졌으면 저장된 결과에서 다시 만든다
         for p in OUT.glob("[0-9][0-9][0-9][0-9]/[0-9][0-9].json"):
             for it in load_json(p, {}).get("items", []):
