@@ -116,6 +116,7 @@ class Api:
         self.base = 0
         self.fails = 0
         self.calls = 0
+        self.sampled = set()
 
     def call(self, op, svc="BidResultInfoService", **params):
         """items 목록과 totalCount 를 돌려준다. 오류면 예외"""
@@ -140,6 +141,11 @@ class Api:
                     raise RuntimeError(f"{code.group(1)} {msg.group(1) if msg else ''}")
                 items = [dict(re.findall(r"<(\w+)>([^<]*)</\1>", it)) for it in re.findall(r"<item>(.*?)</item>", t, re.S)]
                 tc = re.search(r"<totalCount>(\d+)", t)
+                if "Othbc" in op and op not in self.sampled:   # 공개수의 필드명 확인용 — 오퍼레이션마다 첫 응답 1건
+                    self.sampled.add(op)
+                    write_if_changed(OUT / f"_sample_{op}.json", dumps({"params": {k: v for k, v in p.items() if k != "serviceKey"},
+                                                                       "total": tc.group(1) if tc else None, "item": items[0] if items else None,
+                                                                       "raw": None if items else t[:1500]}))
                 self.fails = 0
                 return items, int(tc.group(1)) if tc else len(items)
             except (urllib.error.URLError, TimeoutError, ConnectionError, RuntimeError) as e:
@@ -254,12 +260,14 @@ def rank_of(x):
 def fetch_one(api, kind, it):
     """결과 1건 → (레코드, 참가업체 목록)"""
     K = KINDS[kind]
-    day = it.get("opengDate") or it.get("ntatPlanDate")
+    day = it.get("opengDate") or it.get("ntatPlanDate") or it.get("ntatComptDate") or re.sub(r"\D", "", it.get("othbcNtatDt") or "")[:8] or None
     if kind in ("D", "N"):
         key = dict(demandYear=it.get("demandYear"), orntCode=it.get("orntCode"), dcsNo=it.get("dcsNo"), iemNo=it.get("iemNo"), opengDate=day)
         extra = {"ntatPlanDate": day} if kind == "N" else {"opengDate": day}
         det, _ = api.call(K["detail"], numOfRows=1, pblancNo=it.get("pblancNo"), pblancOdr=it.get("pblancOdr"),
                           **{k: v for k, v in key.items() if k != "opengDate"}, **extra)
+        if kind == "N":   # 공개수의는 날짜 이름이 ntatPlanDate 일 수 있어 둘 다 보냄(모르는 조건은 무시됨)
+            key["ntatPlanDate"] = day
         mn, _ = api.call(K["mnuf"], numOfRows=9999, **key)
         bs, _ = api.call(K["bsic"], numOfRows=99, **key)
     else:
@@ -324,8 +332,12 @@ def process(api, store, index, kind, items, label):
             index["fail"][i] = index["fail"].get(i, 0) + 1
             log("  실패", i, e)
             continue
-        if bidders:
-            store.add(rec, bidders)
+        if not bidders:   # 낙찰·순위확정인데 참가업체가 비면 조회 조건이 틀린 것 — 완료로 치면 영영 안 받는다(2026-09-27 공개수의 3,453건이 이렇게 버려짐)
+            index["fail"][i] = index["fail"].get(i, 0) + 1
+            if index["fail"][i] == 1:
+                log("  참가업체 없음", i)
+            continue
+        store.add(rec, bidders)
         index["done"][i] = 1
         index["fail"].pop(i, None)
         n += 1

@@ -108,7 +108,7 @@ jobs:
   # 국방전자조달(D2B) 입찰결과 — 나라장터와 서비스·한도가 달라 따로(동시에) 돈다. 서비스키 없이 응답(2026-09-26 확인)
   d2b:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 240
     concurrency:
       group: collect-d2b
       cancel-in-progress: false
@@ -124,7 +124,8 @@ jobs:
       - name: 국방 입찰결과 수집
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
-          MAX_MINUTES: "55"
+          # 국방 게이트웨이도 운영계정(오퍼레이션마다 하루 10만, 2026-09-27) — 한도보다 실행 시간이 먼저 참. 02·14시 전체 수집 때는 본 수집(260분)과 나란히 길게
+          MAX_MINUTES: ${{ (github.event.schedule == '0 0,4,8 * * *' || inputs.quick_only) && '55' || '220' }}
           WATCH_BIZ: ${{ secrets.WATCH_BIZ || vars.WATCH_BIZ }}
         run: python scripts/collect_d2b.py
 

@@ -162,7 +162,7 @@ lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits`(renderLive 뒤 1
 시도를 알 수 없는 레코드는 `scsbid/기타.json`.
 
 ### data/d2b/ — 국방전자조달(D2B) 입찰결과 (scripts/collect_d2b.py)
-`openapi.d2b.go.kr/openapi/service/BidResultInfoService` 는 **서비스키 없이** 응답(User-Agent 필요, 2026-09-26 확인). 막히면 게이트웨이 `apis.data.go.kr/1690000/BidResultInfoService`(DATA_GO_KR_KEY, 개발계정 하루 100회 — 사용자가 활용신청함)로 자동 전환.
+`openapi.d2b.go.kr/openapi/service/BidResultInfoService` 는 **서비스키 없이** 응답(User-Agent 필요, 2026-09-26 확인). 막히면 게이트웨이 `apis.data.go.kr/1690000/BidResultInfoService`(DATA_GO_KR_KEY, **운영계정 — 오퍼레이션마다 하루 10만**, 2026-09-27 확인. 입찰공고·계약정보 서비스도 같음)로 자동 전환. 한도보다 실행 시간이 먼저 차므로 d2b 잡은 02·14시 전체 수집 때 220분(본 수집과 나란히), 09·13·17시는 55분.
 오퍼레이션: 물품·용역 `getDmstcCmpetBidResult{List|Detail|MnufList(참가업체)|BsicList(복수예가)}`, 시설 `getFcltyCmpetBidResult…`(키: orntCode·cntrwkNo·ntatPlanDate). 목록 조건 opengDateBegin/End(YYYYMMDD). 공개수의(`…OthbcVltrnNtatResult…`)는 아직 안 받음. 스펙 원본은 data.go.kr/data/15158417 (옛 15002018 페이지는 없어짐).
 예정가격 = 추첨(choiYsno=Y) 복수예가 4개 평균 — 1순위 투찰률 역산과 0.001% 안에서 일치. 2026-09 국내 경쟁 391건·시설 353건/월, 참가 수십~수백 곳(나라장터 물품 수천 곳보다 적음).
 **v2(2026-09-26, 사용자 요청 '국방도 조달청처럼 다')**: 경쟁(D 물품·용역, F 시설) + **공개수의**(N `getDmstcOthbcVltrnNtatResult…`, NF `getFcltyOthbcVltrnNtatResult…`, 목록 조건 ntatComptDateBegin/End, 행 필드 negnRate·tnegnAmnt/vnegnAmnt·negnNote('1순위')). 2026-08~09 두 달에 공개수의 물품 923·시설 1,987건(시설 수의 한 건 753곳).
@@ -171,6 +171,7 @@ lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits`(renderLive 뒤 1
 앱: 우리 공고에 합침(용역 뺌) — 🏗 공사에 국방 시설, 📦 물품에 국방 물품, 🎖 국방 공사·🎖 국방 물품 버튼(국방만). 설정 등록 업종은 지금 물품 공고의 업종 제한을 눌러 추가(`#coIndSug`). 판정은 `goodsEligibility`(지역·면허/업종·소상공인·여성기업 + **참가등록 마감 지나면 불가**), 카드 태그 `d2bTags`(🎖 국방·참가등록 마감). 추천값 없음(국방 역검증 전). 국방 '제한경쟁'이라도 API 에 제한이 없으면(공고문에만 있음) 참가 가능으로 나옴.
 상위 30위 밖이어도 저장소 변수 `WATCH_BIZ`(쉼표 구분 사업자번호, 공개 코드에 넣지 않음 — 우리 업체)의 행은 남긴다(2026-09-26부터 새로 받는 결과).
 `WATCH_BIZ` 는 **시크릿**으로 둘 것 — 저장소 *변수*는 공개 저장소 Actions 로그 env 에 그대로 찍힌다(2026-09-27 발견). 워크플로는 `secrets.WATCH_BIZ || vars.WATCH_BIZ`.
+**공개수의(N·NF) 버그(2026-09-27 발견)**: 참가업체 조회가 비어도 '완료'로 쳐서 3,453건(N 1,070·NF 2,383)이 저장 없이 index.done 에만 들어갔다 → done 에서 지우고, 이제 참가업체가 비면 fail(3번까지 재시도)로 센다. 공개수의 오퍼레이션 첫 응답은 `data/d2b/_sample_{op}.json`(파라미터·첫 항목·빈 응답이면 원문)에 남기니 다음 실행 뒤 이걸 보고 조회 조건(날짜 이름 opengDate/ntatPlanDate 등)을 고칠 것.
 직접 주소(openapi.d2b.go.kr)가 한 번(3번 시도)이라도 안 되면 바로 게이트웨이로 바꿔 같은 호출을 다시 한다(2026-09-27 09시 시간 초과로 공고·결과 0건 멈춤 → 수정).
 다음: 물품 모델 역검증에 D2B 포함.
 
