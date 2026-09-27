@@ -48,7 +48,8 @@ function ddayLabel(close){
   const d = parseKst(close);
   if(!d) return {text:'마감 미정', urgent:false};
   const diff = d - Date.now();
-  const days = Math.floor(diff / 86400000);
+  // 달력 날짜(KST) 차이 — 남은 시간 ÷ 24시간으로 세면 '내일 10시 마감'이 오늘로, D-2 가 D-1 로 나왔다(2026-09-27)
+  const days = Math.round((Date.parse(close.slice(0, 10)) - Date.parse(new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10))) / 86400000);
   const hh = close.length > 10 ? close.slice(11,16) : '';
   const md = close.slice(5,10).replace('-','/');
   if(diff < 0) return {text:`마감 ${md}`, urgent:false};
