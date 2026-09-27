@@ -2891,7 +2891,9 @@ async function renderResults(el, appItems, pseudo, head){
   let list = byKind(Res.kind);
   if(Res.top) list = list.filter(x => x.rank === 1 || x.fin);
   const isTop = (x) => x.rank === 1 || x.fin;
-  list.sort((a, b) => (isTop(b) - isTop(a)) || b.date.localeCompare(a.date));   // 1순위·최종 낙찰을 맨 위로, 그다음 최근 개찰순
+  const isApp = (x) => !isTop(x) && x.app?.cls === 'win';   // 앱 추천가였다면 1순위 — 우리 1순위 다음에 (2026-09-27 요청)
+  const grp = (x) => isTop(x) ? 2 : isApp(x) ? 1 : 0;
+  list.sort((a, b) => (grp(b) - grp(a)) || b.date.localeCompare(a.date));   // 1순위·최종 낙찰 → 앱 추천가였다면 1순위 → 최근 개찰순
   // 요약
   const valid = list.filter(x => x.S && x.n);
   const nWin = list.filter(x => x.rank === 1 || x.fin).length, fair = valid.reduce((t, x) => t + 1 / x.n, 0);
@@ -2915,8 +2917,8 @@ async function renderResults(el, appItems, pseudo, head){
   // 카드 (개찰일별로 묶음)
   let html = '', last = null;
   for(const x of list.slice(0, Res.shown)){
-    const d = isTop(x) ? 'top' : x.date.slice(0, 10);
-    if(d !== last){ last = d; html += `<div class="day-sep">${d === 'top' ? '🏆 1순위·최종 낙찰' : d ? dayLabel(d) : '개찰일 미상'}</div>`; }
+    const d = isTop(x) ? 'top' : isApp(x) ? 'app' : x.date.slice(0, 10);
+    if(d !== last){ last = d; html += `<div class="day-sep">${d === 'top' ? '🏆 1순위·최종 낙찰' : d === 'app' ? '📱 앱 추천가였다면 1순위' : d ? dayLabel(d) : '개찰일 미상'}</div>`; }
     const rk = x.rank == null ? '-' : x.rank < 0 ? '미달' : fmtNum(x.rank);
     const ratio = x.amt && x.base ? x.amt / x.base * 100 : null;
     const more = x.src === 'app' ? `<details class="rc-more"><summary>자세히 · 금액 고치기</summary>
