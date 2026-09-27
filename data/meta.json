@@ -38,7 +38,9 @@
    "충남": 1049,
    "충북": 446
   },
-  "opening_thng": {},
+  "opening_thng": {
+   "강원": 0
+  },
   "scsbid": {
    "강원": 13961,
    "경기": 13407,
@@ -328,7 +330,9 @@
     ]
    }
   },
-  "opening_thng": {},
+  "opening_thng": {
+   "강원": {}
+  },
   "scsbid": {
    "강원": [
     "scsbid/강원.json"
@@ -446,17 +450,23 @@
   "cursor": "202506"
  },
  "last_run": {
-  "at": "2026-09-27T20:38:24+09:00",
+  "at": "2026-09-27T21:22:32+09:00",
   "calls": {
    "bid": 1532,
    "date": "20260927",
    "scsbid": 29907
   },
   "errors": [
-   "공고: ApiError: NET: getBidPblancListInfoCnstwk: HTTPSConnectionPool(host='apis.data.go.kr', port=443): Max retries exceeded with url: /1230000/BidPublicInfoService04/getBidPblancListInfoCnstwk?serviceKey=***&type=json&inqryDiv=1&inqryBgnDt=202609252007&inqryEndDt=202609272007&pageNo=1&numOfRows=100 (Caused by ConnectTimeoutError(<HTTPSConnection(host='apis.data.go.kr', port=443) at 0x7f6618ddf950>, 'Connection to apis.data.go.kr timed out. (connect timeout=15)'))",
-   "최근낙찰: 한도 소진 (network)"
+   "상세: 한도 소진 (network)",
+   "물품최근: 한도 소진 (network)",
+   "물품상세: 한도 소진 (network)",
+   "A값보강: 한도 소진 (network)",
+   "과거낙찰: 한도 소진 (network)",
+   "상세: 한도 소진 (network)",
+   "과거낙찰: 한도 소진 (network)",
+   "업체정보: 한도 소진 (network)"
   ],
-  "minutes": 30.7
+  "minutes": 43.1
  },
  "lim_scan": true,
  "mf_scan": true,
@@ -475,6 +485,13 @@
   "done": true,
   "oldest": "20240901"
  },
- "updated_at": "2026-09-27T18:48:47+09:00",
+ "thng_detail": {
+  "강원": {
+   "done": 0,
+   "failed": 0,
+   "total": 2643
+  }
+ },
+ "updated_at": "2026-09-27T21:22:32+09:00",
  "v": 1
 }
