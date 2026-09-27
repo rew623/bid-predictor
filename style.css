@@ -653,3 +653,6 @@ body.simple .bcard > .b-note:not(.result){display:none !important;}
 .ind-sug{margin-top:4px}
 .ind-sug>summary{cursor:pointer;color:var(--primary);font-size:.9em;padding:4px 0}
 .ind-sug .chip-group{margin-top:6px}
+.corp-filter{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;}
+.corp-filter select{flex:1 1 30%; min-width:0;}
+.corp-row small.corp-lics{color:var(--text-sub);}
