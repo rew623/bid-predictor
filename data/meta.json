@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 1538,
+   "bid": 1544,
    "date": "20260927",
-   "scsbid": 29918
+   "scsbid": 29929
   }
  },
  "backfill": {
@@ -450,22 +450,22 @@
   "cursor": "202506"
  },
  "last_run": {
-  "at": "2026-09-27T22:18:48+09:00",
+  "at": "2026-09-27T22:51:00+09:00",
   "calls": {
-   "bid": 1538,
+   "bid": 1544,
    "date": "20260927",
-   "scsbid": 29918
+   "scsbid": 29929
   },
   "errors": [],
-  "minutes": 9.1
+  "minutes": 9.2
  },
  "lim_scan": true,
  "mf_scan": true,
  "model": {
   "rows": 118937,
-  "updated_at": "2026-09-27T22:18:53+09:00"
+  "updated_at": "2026-09-27T22:51:06+09:00"
  },
- "notice_last": "2026-09-27T22:09+09:00",
+ "notice_last": "2026-09-27T22:41+09:00",
  "refill": [],
  "rgn_fill": {
   "cursor": null,
@@ -483,6 +483,6 @@
    "total": 2643
   }
  },
- "updated_at": "2026-09-27T22:18:53+09:00",
+ "updated_at": "2026-09-27T22:51:06+09:00",
  "v": 1
 }
