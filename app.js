@@ -2214,7 +2214,7 @@ async function runPredict(){
       const amt = given || (base ? amtAt(x) : null);
       const below = rows.length ? rows.filter(r => r.sr > x).length / rows.length : null;   // 실제 사정율이 이 값보다 높으면 하한 미달
       const vsRec = Math.abs(x - rec.x) > 1e-9 && rec.at(rec.x) ? rec.at(x) / rec.at(rec.x) : null;
-      return `${given ? `입력 금액 <b>${won(given)}</b> → ` : ''}<b>${given ? '투찰 사정률' : '선택'} ${pct(x, 3)}</b> · 과거 낙찰확률 ${(rec.at(x) * 100).toFixed(2)}%${rec.random ? ` (공정 기대 ×${(rec.at(x) / rec.random).toFixed(2)})` : ''}${vsRec ? ` · 추천의 ${Math.round(vsRec * 100)}%` : ''}${!given && amt ? ` · 투찰금액 <b>${won(amt)}</b>` : ''}${below != null ? `<br><span class="faint">하한 미달 확률 ${(below * 100).toFixed(0)}% (실제 사정율이 이 값보다 높았던 비율, ${sampleText(rows.length)})</span>` : ''}
+      return `${given ? `입력 금액 <b>${won(given)}</b> → ` : ''}<b>${given ? '투찰 사정률' : '선택'} ${pct(x, 3)}</b> · 과거 낙찰확률 ${(rec.at(x) * 100).toFixed(2)}%${rec.random ? ` (공정 기대 ×${(rec.at(x) / rec.random).toFixed(2)})` : ''}${vsRec ? ` · 추천의 ${Math.round(vsRec * 100)}%` : ''}${x < rec.view[0] || x > rec.view[1] ? ' · <span class="faint">그래프 범위 밖이라 선은 안 보임</span>' : ''}${!given && amt ? ` · 투찰금액 <b>${won(amt)}</b>` : ''}${below != null ? `<br><span class="faint">하한 미달 확률 ${(below * 100).toFixed(0)}% (실제 사정율이 이 값보다 높았던 비율, ${sampleText(rows.length)})</span>` : ''}
         <div class="btn-row" style="margin-top:8px;">${P.notice && amt ? `<button class="btn sm reg" data-reg-amt="${amt}" data-reg-sr="${x}" type="button">📝 이 금액으로 투찰 등록</button>` : ''}<button class="btn sm line" data-use-sr="${x}" type="button">계산기로</button></div>`;
     };
     curveCard = `<div class="card">
@@ -2226,9 +2226,14 @@ async function runPredict(){
           <div class="cand-main"><b>${pct(c.x, 3)}</b><span>과거 낙찰확률 ${(c.p * 100).toFixed(2)}%${rec.random ? ` · ×${(c.p / rec.random).toFixed(2)}` : ''}</span></div>
           <div class="cand-amt">${base ? won(amtAt(c.x)) : '-'}</div>
           <div class="cand-btns"><button class="btn sm line" data-pick-sr="${c.x}" type="button">적용</button><button class="btn sm ghost" data-use-sr="${c.x}" type="button">계산기로</button></div>
-        </div>`).join('')}</div>
+        </div>`).join('')}
+        ${base ? `<div class="cand probe" id="probeRow">
+          <div class="cand-no">직접 입력</div>
+          <div class="cand-main"><input type="text" class="money" id="probeAmt" inputmode="numeric" autocomplete="off" placeholder="금액 (예: 더비스 제시가)"><span id="probeInfo">넣으면 투찰 사정률·과거 낙찰확률</span></div>
+          <div class="cand-amt" id="probeSr"></div>
+          <div class="cand-btns"><button class="btn sm line" id="probeApply" type="button" disabled>적용</button><button class="btn sm ghost" id="probeCalc" type="button" disabled>계산기로</button></div>
+        </div>` : ''}</div>
       <div class="pick-box" id="pickBox">${pickInfo(rec.x)}</div>
-      ${base ? `<div class="probe-row"><label for="probeAmt">금액 넣어 보기</label><input type="text" class="money" id="probeAmt" inputmode="numeric" autocomplete="off" placeholder="예: 더비스 제시가 — 그래프에 위치 표시"></div>` : ''}
       <div class="meta-line ops">곡선 표본: ${esc(rec.note)} · 곡선 폭 ±${rec.src === 'model' && Model.m?.smooth ? Model.m.smooth : curveSmooth()}%p · 과거 낙찰확률은 과거에 맞춘 값이라 새 공고에선 더 낮음(위 예상 낙찰확률은 역검증 기준) · 공정 기대 = 1 ÷ (참가업체 수 + 1), 우리가 들어가면 한 곳 늘어나므로</div>
     </div>`;
 
@@ -2303,9 +2308,28 @@ async function runPredict(){
     $('pickBox').innerHTML = pickInfo(x, amt);
     out.querySelectorAll('.cand').forEach(el => el.classList.remove('pick-row'));
   } : null;
-  $('probeAmt')?.addEventListener('input', () => {
-    const amt = numOf($('probeAmt')), x = bidToSr(amt, base, a, floor);
-    if(x != null) P.markCurve?.(x, amt);
+  // 후보 아래 '직접 입력' 줄: 금액 → 투찰 사정률·과거 낙찰확률, '적용' = 그래프에 표시, '계산기로' = 계산기 직접 투찰금액·사정율에 넣기
+  const probe = () => {
+    const amt = numOf($('probeAmt')), x = amt ? bidToSr(amt, base, a, floor) : null;
+    const raw = amt && base ? ((amt - (a || 0)) / (floor / 100) + (a || 0)) / base * 100 : null;
+    $('probeSr').textContent = raw != null ? pct(raw, 3) : '';
+    $('probeInfo').innerHTML = !amt ? '넣으면 투찰 사정률·과거 낙찰확률'
+      : x == null ? `<span style="color:var(--target)">범위 밖 — ${raw < 100 ? '반드시 하한 미달, 자릿수 확인' : '낙찰 가능성 거의 없음'}</span>`
+      : `과거 낙찰확률 ${(rec.at(x) * 100).toFixed(2)}%${rec.random ? ` · ×${(rec.at(x) / rec.random).toFixed(2)}` : ''}${rec.at(rec.x) ? ` · 추천의 ${Math.round(rec.at(x) / rec.at(rec.x) * 100)}%` : ''}`;
+    $('probeApply').disabled = $('probeCalc').disabled = x == null;
+    return {amt, x};
+  };
+  $('probeAmt')?.addEventListener('input', probe);
+  $('probeApply')?.addEventListener('click', () => {
+    const {amt, x} = probe(); if(x == null) return;
+    P.markCurve?.(x, amt);
+    $('probeRow').classList.add('pick-row');
+    $('curvePlot').scrollIntoView({behavior:'smooth', block:'center'});
+  });
+  $('probeCalc')?.addEventListener('click', () => {
+    const {amt, x} = probe(); if(x == null) return;
+    setMoney($('cManual'), amt); $('cRate').value = x.toFixed(4); renderCalc();
+    $('calcResult').scrollIntoView({behavior:'smooth', block:'center'});
   });
   // 버튼은 위임(후보 '적용'으로 새로 그린 버튼도 동작): 계산기로 / 그래프에 표시 / 투찰 등록
   out.onclick = (e) => {
@@ -2319,6 +2343,7 @@ async function runPredict(){
       $('curvePlot').innerHTML = drawCurve(x);
       $('pickBox').innerHTML = pickInfo(x);
       out.querySelectorAll('[data-pick-sr]').forEach(b => b.closest('.cand').classList.toggle('pick-row', b === pk));
+      $('probeRow')?.classList.remove('pick-row');
       $('curvePlot').scrollIntoView({behavior:'smooth', block:'center'});
     }else if(rg){
       registerBid(P.notice, +rg.dataset.regAmt, +rg.dataset.regSr, '추천');
