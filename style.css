@@ -660,3 +660,7 @@ body.simple .bcard > .b-note:not(.result){display:none !important;}
 /* 긴 주소·오류 문구가 화면 폭을 넓혀 폰에서 전체가 축소돼 보이던 문제(2026-09-27, 설정 데이터 현황 오류) */
 .alert, .meta-line, dd{overflow-wrap:anywhere; word-break:break-word;}
 main{overflow-x:hidden;}
+
+.to-top{position:fixed; right:16px; bottom:calc(var(--nav-h) + 16px); width:44px; height:44px; border-radius:50%; border:1px solid var(--border); background:var(--surface); color:var(--primary); font-size:20px; font-weight:700; box-shadow:0 4px 14px rgba(0,0,0,.18); cursor:pointer; z-index:90;}
+.to-top[hidden]{display:none;}
+@media (min-width: 900px){ .to-top{bottom:24px;} }

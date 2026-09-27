@@ -893,7 +893,7 @@ function initBidsFilters(){
   $('bElig').checked = saved.elig ?? Company.isSet();
   ['bSgg','bLic','bAmt','bSort','bElig'].forEach(id => $(id).addEventListener('change', onChange));
   let t; $('bQuery').addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { bidsShown = PAGE_SIZE; renderBids(); }, 200); });
-  $('bidsMore').addEventListener('click', () => { bidsShown += PAGE_SIZE; renderBids(); });
+  $('bidsMore').addEventListener('click', () => keepY(() => { bidsShown += PAGE_SIZE; return renderBids(); }));
   $('bidsKpis').addEventListener('click', (e) => {
     const k = e.target.closest('[data-quick]');
     if(!k) return;
@@ -914,6 +914,12 @@ function fillBidsSgg(value){
 let watchIds = new Set();
 let bidMap = new Map();   // 공고ID → 내가 등록한 투찰금액 (카드에 '✓ 투찰 등록함' 표시)
 /** 화면 아래 잠깐 뜨는 알림 */
+/** '더 보기'처럼 목록을 늘릴 때 보던 자리 그대로 — 다시 그려도 스크롤을 되돌린다 (2026-09-27: 누르면 맨 위로 올라가던 문제) */
+async function keepY(fn){
+  const y = window.scrollY;
+  await fn();
+  requestAnimationFrame(() => window.scrollTo(0, y));
+}
 function toast(msg, ms=1800){
   let el = document.getElementById('toast');
   if(!el){ el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
@@ -1294,7 +1300,7 @@ function initLive(){
   $('lKind').addEventListener('change', () => { $('lLic').disabled = $('lKind').value !== '공사'; if($('lLic').disabled) $('lLic').value = ''; });
   $('lSearch').addEventListener('click', () => liveSearch());
   ['lQuery', 'lOrg', 'lDmd'].forEach(id => $(id).addEventListener('keydown', (e) => { if(e.key === 'Enter') liveSearch(); }));
-  $('liveMore').addEventListener('click', () => liveSearch(true));
+  $('liveMore').addEventListener('click', () => keepY(() => liveSearch(true)));
   $('lElig').checked = Company.isSet();
   $('lOpen').checked = true;
   $('lElig').addEventListener('change', async () => { if(!Live.params) return; await Data.loadLicMap(); renderLive(); if(liveRows().length < 30 && !liveDone()) await liveSearch(true); });
@@ -1434,7 +1440,7 @@ function initMine(){
     Mine.area = Mine.kind === '공사' ? 'sido' : 'all'; LS.set('mineArea', Mine.area);   // 공사는 우리 시·도, 나머지는 전체 지역
     renderMine();
   });
-  $('mineMore').addEventListener('click', () => { Mine.shown += 100; renderMine(); });
+  $('mineMore').addEventListener('click', () => keepY(() => { Mine.shown += 100; return renderMine(); }));
   $('mineArea').addEventListener('click', (e) => {
     const t = e.target.closest('[data-area]');
     if(!t) return;
@@ -2829,7 +2835,7 @@ async function renderPaper(){
     ${html ? `<div class="rc-list">${html}</div>` : '<div class="card empty">이 지역 기록이 아직 없습니다.</div>'}
     ${list.length > Paper.shown ? `<div class="more"><button class="btn sm line" id="paperMore" type="button">더 보기</button></div>` : ''}`;
   $('paperArea').onclick = (e) => { const k = e.target.closest('[data-a]')?.dataset.a; if(!k) return; Paper.area = k; LS.set('paperArea', k); renderPaper(); };
-  $('paperMore') && ($('paperMore').onclick = () => { Paper.shown += 100; renderPaper(); });
+  $('paperMore') && ($('paperMore').onclick = () => keepY(() => { Paper.shown += 100; return renderPaper(); }));
 }
 
 // ---------- 🏁 개찰 결과 (더비스식 한 줄 카드): 앱 기록 + 개찰 상세 자동 찾기 + 가져온 엑셀 이력을 한 목록으로
@@ -2955,7 +2961,7 @@ async function renderResults(el, appItems, pseudo, head){
   $('resKind').onclick = (e) => { const k = e.target.closest('[data-k]')?.dataset.k; if(!k) return; Res.kind = k; LS.set('resKind', k); Res.shown = 50; renderWatch(); };
   $('resPeriod').onchange = () => { Res.period = +$('resPeriod').value; LS.set('resPeriod', Res.period); Res.shown = 50; renderWatch(); };
   $('resTop').onclick = () => { Res.top = !Res.top; renderWatch(); };
-  $('resMore') && ($('resMore').onclick = () => { Res.shown += 100; renderWatch(); });
+  $('resMore') && ($('resMore').onclick = () => keepY(() => { Res.shown += 100; return renderWatch(); }));
 }
 // ---------- 🩺 내 투찰 진단: 내 개찰 결과(앱 기록·개찰 상세 자동·가져온 엑셀)로 투찰 위치 습관을 보고, 같은 공고에서 앱 추천가와 비교해 조언
 // 조언은 차이가 통계적으로 뚜렷할 때만(p < 0.05, 표본 20건↑) 내고, 아니면 '잡음 범위'라고 말한다 — 공고 고르기는 권하지 않는다(사용자는 참가 가능한 공고에 다 넣음)
@@ -3884,6 +3890,10 @@ async function init(){
     b.addEventListener('click', () => { d.open = false; d.querySelector(':scope > summary')?.scrollIntoView({block: 'nearest'}); });
     d.appendChild(b);
   }, true);
+  // 맨 위로 버튼: 조금 내려가면 오른쪽 아래에 나타남 (2026-09-27 요청)
+  const toTop = $('toTop');
+  window.addEventListener('scroll', () => { toTop.hidden = window.scrollY < 600; }, {passive: true});
+  toTop.addEventListener('click', () => window.scrollTo({top: 0, behavior: 'smooth'}));
   initBidsFilters();
   initLive();
   initMine();
