@@ -2714,7 +2714,8 @@ async function renderPaper(){
 // ---------- 🏁 개찰 결과 (더비스식 한 줄 카드): 앱 기록 + 개찰 상세 자동 찾기 + 가져온 엑셀 이력을 한 목록으로
 const Res = {kind: LS.get('resKind', 'all'), period: LS.get('resPeriod', 3), top: false, shown: 50};
 const normNm = (s) => String(s || '').replace(/[\s()\[\]·,.\-_'"]/g, '');
-async function renderResults(el, appItems, pseudo, head){
+/** 개찰 결과 한 목록: 앱 기록(관심·투찰·개찰 상세 자동 찾기) + 가져온 엑셀 이력 → 같은 모양의 행 */
+function buildResultRows(appItems){
   const findRec = (w) => { const s = Data.scsbid[w.sido]; return s ? s.byId.get(w.id) || s.recs.find(r => r.no === w.no) || null : null; };
   const judged = [];
   // 앱 기록 → 한 모양
@@ -2755,6 +2756,10 @@ async function renderResults(el, appItems, pseudo, head){
     rows.push({src: 'hist', nm: h.nm, org: h.org, rgn: h.rgn, lic: h.lic, date: h.date || '', base: h.base, amt: h.amt, S: h.S || null, x: h.x,
       rank: h.rank, n: h.n, kind: h.kind === '공사' ? '공사' : h.kind, cls: j.cls, label: j.label});
   }
+  return rows;
+}
+async function renderResults(el, appItems, pseudo, head){
+  const rows = buildResultRows(appItems);
   // 거르기: 업무 · 기간 · 1순위만
   const cut = Res.period ? kstDay(new Date(Date.now() - Res.period * 30.4 * 86400000)) : '';
   const inPeriod = rows.filter(x => !cut || x.date.slice(0, 10) >= cut);
@@ -2823,6 +2828,87 @@ async function renderResults(el, appItems, pseudo, head){
   $('resPeriod').onchange = () => { Res.period = +$('resPeriod').value; LS.set('resPeriod', Res.period); Res.shown = 50; renderWatch(); };
   $('resTop').onclick = () => { Res.top = !Res.top; renderWatch(); };
   $('resMore') && ($('resMore').onclick = () => { Res.shown += 100; renderWatch(); });
+}
+// ---------- 🩺 내 투찰 진단: 내 개찰 결과(앱 기록·개찰 상세 자동·가져온 엑셀)로 투찰 위치 습관을 보고, 같은 공고에서 앱 추천가와 비교해 조언
+// 조언은 차이가 통계적으로 뚜렷할 때만(p < 0.05, 표본 20건↑) 내고, 아니면 '잡음 범위'라고 말한다 — 공고 고르기는 권하지 않는다(사용자는 참가 가능한 공고에 다 넣음)
+const Diag = {period: LS.get('diagPeriod', 0)};
+/** 포아송 95% 구간(Wilson–Hilferty 근사) */
+function poisCI(k){
+  const z = 1.96, lo = k === 0 ? 0 : k * Math.pow(1 - 1 / (9 * k) - z / (3 * Math.sqrt(k)), 3), k1 = k + 1;
+  return [lo, k1 * Math.pow(1 - 1 / (9 * k1) + z / (3 * Math.sqrt(k1)), 3)];
+}
+const normCdf = (z) => { const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2), p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; };
+/** 같은 공고 짝 비교의 두 비율 차이(맥니마 근사, 양쪽): b = 나만 해당, c = 앱만 해당 */
+function mcnemarP(b, c){ const n = b + c; if(n < 1) return 1; let t = 0; for(let k = Math.max(b, c); k <= n; k++){ let v = 1; for(let i = 0; i < k; i++) v *= (n - i) / (k - i); t += v / 2 ** n; } return Math.min(1, 2 * t); }
+async function renderDiag(el, appItems, pseudo, head){
+  const all = buildResultRows(appItems);
+  const cut = Diag.period ? kstDay(new Date(Date.now() - Diag.period * 30.4 * 86400000)) : '';
+  const rows = all.filter(x => (!cut || x.date.slice(0, 10) >= cut) && x.S && x.x != null && x.n);
+  const periodSel = `<select id="diagPeriod" class="sort-select" aria-label="기간">${[[0, '전체 기간'], [12, '최근 12개월'], [6, '최근 6개월'], [3, '최근 3개월']].map(([v, t]) => `<option value="${v}"${+Diag.period === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+  const src = {app: all.filter(x => x.src === 'app' && !x.w?.auto).length, auto: all.filter(x => x.w?.auto).length, hist: all.filter(x => x.src === 'hist').length};
+  let body = '';
+  if(!rows.length){
+    body = `<div class="empty">진단할 개찰 결과가 없습니다. 투찰한 공고가 개찰되면(또는 사업자번호를 넣어 개찰 상세에서 자동으로 찾거나, 더비스 투찰 이력 엑셀을 가져오면) 여기서 내 투찰 습관을 봅니다.</div>`;
+  }else{
+    const N = rows.length, isWin = (x) => x.rank === 1 || x.fin;
+    const k = rows.filter(isWin).length, E = rows.reduce((t, x) => t + 1 / x.n, 0);
+    const [lo, hi] = poisCI(k);
+    const below = rows.filter(x => x.cls === 'below').length, high = rows.filter(x => x.cls === 'high').length;
+    const pc = (a, n) => n ? Math.round(a / n * 100) : 0;
+    const d = rows.map(x => x.x - x.S), xs = rows.map(x => x.x).sort((a, b) => a - b);
+    // 같은 공고에서 앱 추천가와 짝 비교
+    const pr = rows.filter(x => x.app);
+    const mW = pr.filter(isWin).length, aW = pr.filter(x => x.app.cls === 'win').length;
+    const mB = pr.filter(x => x.cls === 'below').length, aB = pr.filter(x => x.app.cls === 'below').length;
+    const bW = pr.filter(x => x.app.cls === 'win' && !isWin(x)).length, cW = pr.filter(x => isWin(x) && x.app.cls !== 'win').length;
+    const bB = pr.filter(x => x.cls === 'below' && x.app.cls !== 'below').length, cB = pr.filter(x => x.cls !== 'below' && x.app.cls === 'below').length;
+    const pB = mcnemarP(bB, cB), pW = mcnemarP(bW, cW);
+    const nowCnt = pr.filter(x => x.app.now).length;
+    const appXs = pr.map(x => bidToSr(x.app.amt, x.r?.base || x.base, x.r?.a || 0, x.r?.floor || DEFAULT_FLOOR)).filter(v => v != null).sort((a, b) => a - b);
+    const myXsP = pr.map(x => x.x).sort((a, b) => a - b);
+    const med = (a) => a.length ? quantile(a, .5) : null;
+    // 조언 (뚜렷한 것만)
+    const tips = [];
+    if(N < 30) tips.push(['warn', `<b>참고 부족</b> — 개찰 결과 ${fmtNum(N)}건. 아래는 방향만 참고하세요(30건 이상이면 더 믿을 만합니다).`]);
+    if(pr.length >= 20 && pB < 0.05 && mB > aB) tips.push(['bad', `<b>하한 미달이 앱 추천보다 많습니다.</b> 같은 ${fmtNum(pr.length)}건에서 내 투찰은 ${pc(mB, pr.length)}%(${fmtNum(mB)}건)가 낙찰하한가 아래로 무효, 앱 추천가였다면 ${pc(aB, pr.length)}%(${fmtNum(aB)}건). 투찰 위치가 낮은 편이라 <b>앱 추천가대로 넣으면 무효가 줄어듭니다.</b>`]);
+    else if(pr.length >= 20 && pB < 0.05 && mB < aB) tips.push(['info', `하한 미달은 앱 추천보다 적습니다(내 ${pc(mB, pr.length)}% vs 앱 ${pc(aB, pr.length)}%, 같은 ${fmtNum(pr.length)}건) — 대신 높게 넣어 '1위보다 높음'이 ${pc(pr.filter(x => x.cls === 'high').length, pr.length)}%입니다.`]);
+    else if(pr.length >= 20) tips.push(['ok', `하한 미달 비율은 앱 추천과 뚜렷한 차이가 없습니다(내 ${pc(mB, pr.length)}% vs 앱 ${pc(aB, pr.length)}%, 같은 ${fmtNum(pr.length)}건 · 잡음 범위).`]);
+    if(pr.length && aB / pr.length >= 0.4) tips.push(['info', `앱 추천가도 하한 미달이 ${pc(aB, pr.length)}%입니다 — 앱 추천은 <b>무효를 줄이는 위치가 아니라 1순위 확률이 가장 높은 위치</b>라서, 참가 업체가 많은 공고일수록 낮게 잡혀 하한 미달이 원래 많습니다. 하한 미달 자체보다 1순위 수로 판단하세요.`]);
+    if(pr.length >= 20){
+      const txt = `같은 ${fmtNum(pr.length)}건에서 1순위: 내 투찰 <b>${fmtNum(mW)}건</b> · 앱 추천가였다면 <b>${fmtNum(aW)}건</b>`;
+      tips.push(pW < 0.05 ? [aW > mW ? 'bad' : 'ok', `${txt} — 뚜렷한 차이입니다${aW > mW ? '. <b>앱 추천가를 그대로 쓰는 편이 유리했습니다.</b>' : '. 지금 방식이 앱보다 나았습니다.'}`]
+        : ['info', `${txt} — 이 정도 차이는 <b>운의 범위</b>입니다(엇갈린 공고 ${fmtNum(bW + cW)}건). 1순위 몇 건으로는 어느 쪽이 낫다고 말할 수 없습니다.`]);
+      if(med(appXs) != null && med(myXsP) != null && Math.abs(med(myXsP) - med(appXs)) >= 0.1)
+        tips.push(['info', `내 투찰 사정률 중앙값 ${med(myXsP).toFixed(3)}% · 앱 추천 중앙값 ${med(appXs).toFixed(3)}% — 앱보다 <b>${Math.abs(med(myXsP) - med(appXs)).toFixed(2)}%p ${med(myXsP) < med(appXs) ? '낮게' : '높게'}</b> 넣는 편입니다.`]);
+    }else if(pr.length) tips.push(['info', `앱 추천가와 같은 공고로 비교할 수 있는 결과가 ${fmtNum(pr.length)}건뿐이라(20건 미만) 비교 조언은 아직 안 합니다.`]);
+    tips.push(k / E >= 1 && lo / E > 1 ? ['ok', `전체 1순위 ${fmtNum(k)}건은 평균 업체였을 때 기대(${fmtNum(E, 1)}건)보다 뚜렷하게 많습니다.`]
+      : hi / E < 1 ? ['bad', `전체 1순위 ${fmtNum(k)}건은 평균 업체였을 때 기대(${fmtNum(E, 1)}건)보다 뚜렷하게 적습니다 — 투찰 위치(금액)를 점검하세요.`]
+      : ['info', `전체 1순위 ${fmtNum(k)}건 · 평균 업체였을 때 기대 ${fmtNum(E, 1)}건 — 평균과 구별되지 않는 수준입니다(참가가 많은 공고는 누구든 1순위가 드뭅니다).`]);
+    const hist = histogram(d.filter(v => v > -3 && v < 3), {min: -3, max: 3, step: 0.1, lines: [{x: 0, color: 'var(--target)', label: '실제 사정율'}], label: (v) => (v > 0 ? '+' : '') + v.toFixed(1)});
+    // 업무별
+    const kinds = [...new Set(rows.map(x => x.kind))];
+    const kindRows = kinds.map(kd => { const r = rows.filter(x => x.kind === kd), kk = r.filter(isWin).length, e = r.reduce((t, x) => t + 1 / x.n, 0);
+      return `<tr><td>${esc(kd || '-')}</td><td class="num">${fmtNum(r.length)}</td><td class="num">${fmtNum(kk)}</td><td class="num">${fmtNum(e, 1)}</td><td class="num">${pc(r.filter(x => x.cls === 'below').length, r.length)}%</td></tr>`; }).join('');
+    body = `<div class="res-sum">
+        <div><span>진단 건수</span><b>${fmtNum(N)}</b></div>
+        <div class="${k ? 'win' : ''}"><span>🏆 1순위</span><b>${fmtNum(k)}</b></div>
+        <div><span>평균 업체 기대</span><b>${fmtNum(E, 1)}</b></div>
+        <div><span>하한 미달</span><b class="below">${pc(below, N)}%</b></div>
+        <div><span>1위보다 높음</span><b>${pc(high, N)}%</b></div>
+      </div>
+      <h3>🩺 조언</h3>
+      <ul class="diag-tips">${tips.map(([c, t]) => `<li class="${c}">${t}</li>`).join('')}</ul>
+      <h3>내 투찰 위치 (내 투찰 사정률 − 실제 사정율)</h3>
+      ${hist}
+      <p class="sub">0(빨간 선)보다 왼쪽 = 낙찰하한가 아래(무효), 오른쪽으로 갈수록 높게 넣은 것. 실제 사정율은 추첨이라 미리 알 수 없으니, 막대가 0 바로 오른쪽에 몰릴수록 운이 좋았던 것입니다. 한쪽으로 크게 치우쳐 있으면 위치를 옮길 여지가 있습니다.</p>
+      <div class="meta-line">내 투찰 사정률 중앙값 ${med(xs).toFixed(3)}% (가운데 절반 ${quantile(xs, .25).toFixed(3)}~${quantile(xs, .75).toFixed(3)}%)</div>
+      <h3>업무별</h3>
+      <div class="table-wrap" style="max-height:none;"><table><thead><tr><th>업무</th><th class="num">건수</th><th class="num">1순위</th><th class="num">평균 업체 기대</th><th class="num">하한 미달</th></tr></thead><tbody>${kindRows}</tbody></table></div>
+      <p class="meta-line ops">자료: 앱 기록 ${fmtNum(src.app)}건 · 개찰 상세 자동 ${fmtNum(src.auto)}건 · 가져온 엑셀 ${fmtNum(src.hist)}건 (예정가격·투찰률을 아는 것만 진단). 앱 추천가 비교 ${fmtNum(pr.length)}건 중 ${fmtNum(nowCnt)}건은 개찰 전 추천 기록이 없어 지금 모델로 계산 — 그 공고가 모델 학습 기간에 들어 있어 앱에 조금 유리할 수 있습니다. 평균 업체 기대 = Σ 1÷참가 수. 조언은 같은 공고 짝 비교에서 p &lt; 0.05 일 때만.</p>`;
+  }
+  el.innerHTML = head + `<div class="res-ctrl"><div class="res-row2">${periodSel}</div></div>` + body;
+  bindWatch(el, pseudo);
+  $('diagPeriod').onchange = () => { Diag.period = +$('diagPeriod').value; LS.set('diagPeriod', Diag.period); renderWatch(); };
 }
 /** 과거 투찰 이력 판정: 1순위 / 하한 미달 / 1위보다 높음 / 예정가격 비공개(나라장터 밖) */
 function histJudge(r){
@@ -2926,18 +3012,19 @@ async function renderWatch(){
       items = await WatchStore.list();
     }
   }
-  if(!['watch', 'joined', 'result'].includes(watchMode)) watchMode = 'watch';
+  if(!['watch', 'joined', 'result', 'diag'].includes(watchMode)) watchMode = 'watch';
   const joinedMode = watchMode === 'joined', resultMode = watchMode === 'result';
   const auto = await findMyBidsInOpening(new Set(items.map(w => w.id)));   // 수집된 개찰 상세의 우리 투찰 = 모두 개찰 끝난 것
   const pseudo = new Map(auto.map(w => [w.id, w]));
   const lists = {watch: items.filter(w => !isDone(w) && !isJoined(w)), joined: items.filter(w => !isDone(w) && isJoined(w)), result: [...items.filter(isDone), ...auto]};
   lists.result.sort((a, b) => (b.open || b.close || '').localeCompare(a.open || a.close || ''));
-  const list = lists[watchMode];
+  const list = lists[watchMode] || [];
   const nHist = History.rows().length;
   const modeSeg = `<div class="seg mode-seg three" id="wMode">
       <button data-v="watch" class="${watchMode === 'watch' ? 'on' : ''}" type="button">⭐ 관심 <span class="cnt">${fmtNum(lists.watch.length)}</span></button>
       <button data-v="joined" class="${joinedMode ? 'on' : ''}" type="button">📝 투찰 중 <span class="cnt">${fmtNum(lists.joined.length)}</span></button>
       <button data-v="result" class="${resultMode ? 'on' : ''}" type="button">🏁 개찰 결과 <span class="cnt">${fmtNum(lists.result.length + nHist)}</span></button>
+      <button data-v="diag" class="${watchMode === 'diag' ? 'on' : ''}" type="button">🩺 진단</button>
     </div>`;
   const hasBiz = !!Company.get().biz;
   const joinForm = joinedMode || resultMode ? `<div class="join-add">
@@ -2949,6 +3036,7 @@ async function renderWatch(){
       : hasBiz ? `강원 공고는 수집된 개찰 상세에서 우리 투찰을 자동으로 찾습니다(${fmtNum(auto.length)}건). 다른 지역은 공고번호로 추가하거나 맨 아래에서 더비스 투찰 이력 엑셀을 가져오세요.`
       : '설정 → 우리 업체에 <b>사업자번호</b>를 넣으면 수집된 개찰 상세에서 우리 순위·금액을 자동으로 찾습니다.'}</div>` : '';
   if(resultMode) return renderResults(el, list, pseudo, modeSeg + joinForm);
+  if(watchMode === 'diag') return renderDiag(el, lists.result, pseudo, modeSeg);
   if(!list.length){
     el.innerHTML = modeSeg + joinForm + `<div class="empty">${joinedMode ? '개찰을 기다리는 투찰이 없습니다.' : resultMode ? '앱에 기록된 개찰 결과가 없습니다.' : '저장한 관심공고가 없습니다. 우리 공고·공고 검색에서 ☆를 눌러 보세요.'}</div>` + (resultMode ? renderHistory() : '');
     bindWatch(el, pseudo);

@@ -636,3 +636,11 @@ body.simple .bcard > .b-note:not(.result){display:none !important;}
 .rc-app.below b{color:var(--target);}
 .toast{position:fixed; left:50%; bottom:calc(var(--nav-h) + 20px); transform:translateX(-50%) translateY(10px); background:#1F2937; color:#fff; padding:9px 16px; border-radius:20px; font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:100;}
 .toast.on{opacity:1; transform:translateX(-50%) translateY(0);}
+
+/* 🩺 내 투찰 진단 */
+.diag-tips{list-style:none; padding:0; margin:8px 0 4px; display:grid; gap:8px;}
+.diag-tips li{padding:10px 12px; border-radius:10px; background:var(--bg); font-size:13.5px; line-height:1.55; border-left:4px solid var(--border);}
+.diag-tips li.ok{border-left-color:var(--ok);}
+.diag-tips li.bad{border-left-color:var(--target); background:var(--target-soft);}
+.diag-tips li.warn{border-left-color:var(--warn); background:var(--warn-soft);}
+.diag-tips li.info{border-left-color:var(--primary);}
