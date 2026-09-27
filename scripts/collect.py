@@ -915,6 +915,7 @@ class OpeningStore:
     index.json: {"done":{공고ID:연도}, "fail":{공고ID:시도횟수}}
     """
     dir = DATA / "opening"
+    top_only = False   # True(물품): 상위 30곳 + 우리 업체 행만, 전원 c·x 는 안 남김
 
     def __init__(self):
         self.years = {}   # (sido, year) -> {"corps":[], "cidx":{}, "bids":{}}
@@ -975,7 +976,10 @@ class OpeningStore:
             rows.append(row)
         rows.sort(key=lambda r: (r[0] <= 0, r[0], r[2]))
         compact = {}
-        if sido not in FULL_SIDOS:   # 전국 전원 행은 1년 약 1GB → 상위 30곳(+우리 업체) 금액 행 + 전원은 업체·투찰률(국방 v2 와 같은 방식)
+        if self.top_only:   # 물품은 참가 수천 곳 — 1위 자리(적격 탈락 포함 순위)만 알면 역검증이 되므로 상위 30곳만
+            compact = {"k": sum(1 for r in rows if r[0] > 0), "n": len(rows)}
+            rows = rows[:OPEN_TOP] + [r for r in rows[OPEN_TOP:] if y["corps"][r[1]][1] in WATCH_BIZ]
+        elif sido not in FULL_SIDOS:   # 전국 전원 행은 1년 약 1GB → 상위 30곳(+우리 업체) 금액 행 + 전원은 업체·투찰률(국방 v2 와 같은 방식)
             compact = {"c": [r[1] for r in rows], "k": sum(1 for r in rows if r[0] > 0)}
             xs = [round((r[3] or 0) * 1000) for r in rows]
             compact["x"] = xs[:1] + [b - a for a, b in zip(xs, xs[1:])]
@@ -1069,6 +1073,14 @@ class OpeningStore:
             out[sd.name] = years
             counts[sd.name] = len(self.idx(sd.name)["done"])
         return out, counts
+
+
+class ThngOpeningStore(OpeningStore):
+    """물품 개찰 순위 → data/opening_thng/{시도}/{연도}.json (2026-09-27, 물품 역검증용 — 낙찰 목록만으로는 1위가 하한 바로 위가 아닌
+    공고(36%, 적격·규격 탈락 추정)에서 '우리가 x 로 넣었으면'을 판정할 수 없다). 형식은 opening 과 같고 r 은 상위 30곳 + 우리 업체,
+    k = 순위 있는 업체 수, n = 전체 행 수. 복수예가(p)는 안 받음(예정가격은 낙찰 기록 plan)."""
+    dir = DATA / "opening_thng"
+    top_only = True
 
 
 # ---------------------------------------------------------------- 단계별 작업
@@ -1531,6 +1543,47 @@ def step_details(api, meta, store, ostore, regions, now, checkpoint, reserve=3, 
     log(f"  이번 실행 {done_now}건, 남은 {remaining}건 (약 {dm['eta_days']}일)")
 
 
+def step_thng_details(api, meta, tstore, tostore, now, checkpoint, minutes):
+    """물품 개찰 순위 — 관심 시·도(detail_priority sido) 물품 낙찰 중 역검증에 쓸 수 있는 것(기초·하한율·예가범위·참가 2곳↑), 최근 24개월, 최신부터.
+    공고 1건당 순위 조회 1~몇 회(참가 수에 따라 쪽 수). minutes 분까지만."""
+    stop = time.time() + minutes * 60
+    since = (now - dt.timedelta(days=round(30.44 * 24))).strftime("%Y-%m-%d")
+    tm = meta.setdefault("thng_detail", {})
+    queue = []
+    for sido in sorted(FULL_SIDOS):
+        ix = tostore.idx(sido)
+        recs = [r for r in tstore.recs.values() if r.get("sido") == sido and (r.get("date") or "") >= since
+                and r.get("base") and r.get("floor") and r.get("rng") and (r.get("cnt") or 0) >= 2]
+        pending = [r for r in recs if r["id"] not in ix["done"] and ix["fail"].get(r["id"], 0) < DETAIL_MAX_TRIES]
+        tm[sido] = {"total": len(recs), "done": sum(1 for r in recs if r["id"] in ix["done"]),
+                    "failed": sum(1 for r in recs if ix["fail"].get(r["id"], 0) >= DETAIL_MAX_TRIES)}
+        queue += [(sido, r) for r in pending]
+    queue.sort(key=lambda x: x[1]["date"], reverse=True)
+    log(f"[물품상세] 대기 {len(queue)}건")
+    done_now = 0
+    for sido, rec in queue:
+        if time.time() > stop or api.remaining("scsbid") < 50 or api.time_left() < 10:
+            break
+        try:
+            ranks = list(api.paged("opening_rank", {"bidNtceNo": rec["no"], "bidNtceOrd": rec["ord"]}))
+        except ApiError as e:
+            log(f"  ! {rec['id']} {e}")
+            tostore.fail(sido, rec["id"])
+            continue
+        rb = [to_int(pick(i, F_RBID)) or 0 for i in ranks]
+        if rb and max(rb) > 0:
+            ranks = [i for i, n in zip(ranks, rb) if n == max(rb)]
+        if not ranks:
+            tostore.fail(sido, rec["id"])
+            continue
+        tostore.add(sido, rec, ranks, [])
+        tm[sido]["done"] += 1
+        done_now += 1
+        if done_now % 200 == 0:
+            checkpoint()
+    log(f"  이번 실행 {done_now}건")
+
+
 # ---------------------------------------------------------------- main
 def main():
     started = time.time()
@@ -1548,22 +1601,25 @@ def main():
     store = ScsbidStore()
     tstore = ThngStore()
     ostore = OpeningStore()
+    tostore = ThngOpeningStore()
     errors = []
 
     def save_all(final=False):
         cache.save()
         corp_info().save()
         ostore.save()
+        tostore.save()
         files_s, counts_s = store.save()
         files_t, counts_t = tstore.save()
         files_o, counts_o = ostore.files()
+        files_to, counts_to = tostore.files()
         bids = cache.bids(now)
         changed = write_if_changed(DATA / "bids.json", dumps({"items": bids, "v": SCHEMA_VERSION}))
         changed = write_lic_map(cache) or changed
         old_files = meta.get("files", {})
-        meta["files"] = {"scsbid": files_s, "opening": files_o, "thng": files_t}
+        meta["files"] = {"scsbid": files_s, "opening": files_o, "thng": files_t, "opening_thng": files_to}
         meta["counts"] = {"bids": len(bids), "scsbid": counts_s, "opening": counts_o,
-                          "scsbid_total": sum(counts_s.values()), "thng": counts_t, "thng_total": sum(counts_t.values())}
+                          "scsbid_total": sum(counts_s.values()), "thng": counts_t, "thng_total": sum(counts_t.values()), "opening_thng": counts_to}
         meta["v"] = SCHEMA_VERSION
         if changed or store.dirty or tstore.dirty or ostore.dirty or old_files != meta["files"]:
             meta["updated_at"] = now_kst().isoformat(timespec="seconds")
@@ -1586,6 +1642,7 @@ def main():
         ("물품최근", lambda: step_thng_recent(api, meta, tstore, now, cache)),   # 앱 '물품' 공고(goods.json) — 가볍고 매일 필요해서 앞에
         ("빈달", lambda: step_refill(api, meta, store, now, save_all)),
         ("물품과거", lambda: step_thng_backfill(api, meta, tstore, now, save_all)),
+        ("물품상세", lambda: step_thng_details(api, meta, tstore, tostore, now, save_all, float(os.environ.get("THNG_DETAIL_MINUTES") or 40))),   # 물품 개찰 순위(관심 시·도) — 물품 역검증용 (2026-09-27)
         ("지역보강", lambda: step_region_fill(api, meta, store, now, save_all)),
         ("A값보강", lambda: step_bsis_fill(api, meta, store, now, save_all)),   # 2026-09-27: 기초금액 조회가 빠진 과거 낙찰(A값 모름)을 다시 채워 곡선·역검증 표본을 늘림
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all, horizon)),
