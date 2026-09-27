@@ -2907,7 +2907,27 @@ async function renderDiag(el, appItems, pseudo, head){
       <div class="table-wrap" style="max-height:none;"><table><thead><tr><th>업무</th><th class="num">건수</th><th class="num">1순위</th><th class="num">평균 업체 기대</th><th class="num">하한 미달</th></tr></thead><tbody>${kindRows}</tbody></table></div>
       <p class="meta-line ops">자료: 앱 기록 ${fmtNum(src.app)}건 · 개찰 상세 자동 ${fmtNum(src.auto)}건 · 가져온 엑셀 ${fmtNum(src.hist)}건 (예정가격·투찰률을 아는 것만 진단). 앱 추천가 비교 ${fmtNum(pr.length)}건 중 ${fmtNum(nowCnt)}건은 개찰 전 추천 기록이 없어 지금 모델로 계산 — 그 공고가 모델 학습 기간에 들어 있어 앱에 조금 유리할 수 있습니다. 평균 업체 기대 = Σ 1÷참가 수. 조언은 같은 공고 짝 비교에서 p &lt; 0.05 일 때만.</p>`;
   }
-  el.innerHTML = head + `<div class="res-ctrl"><div class="res-row2">${periodSel}</div></div>` + body;
+  // 우리 지역 × 우리 면허 공사 역검증(수집 워크플로가 매일 계산, scripts/company_val.py) — 설정의 우리 업체와 시·도·면허가 맞을 때만
+  let cvHtml = '';
+  try{
+    const cv = await Data.fetchJson('company_val.json'), c = Company.get();
+    if(cv?.n && c.sido === cv.sido && (!cv.lics.length || cv.lics.some(l => c.lics.includes(l)))){
+      const r = (w) => cv.fair ? w / cv.fair : 0, [lo, hi] = cv.ci.map(v => v / cv.fair);
+      const verdict = lo > 1 ? `<b>평균 업체보다 뚜렷하게 많습니다</b> (95% 구간 ×${lo.toFixed(2)}~×${hi.toFixed(2)})`
+        : `평균 업체보다 ${cv.ours >= cv.fair ? '많지만' : '적고'} <b>아직 잡음 범위</b>입니다 (95% 구간 ×${lo.toFixed(2)}~×${hi.toFixed(2)} — 1을 걸침)`;
+      cvHtml = `<h3>📊 ${esc(cv.sido)} × 우리 면허 공사 — 앱 추천가로 넣었다면 (매일 자동 역검증)</h3>
+        <p class="sub">${esc(cv.from)}~${esc(cv.to)} ${esc(cv.sido)}의 우리 면허 공사 ${fmtNum(cv.n)}건(참가 중앙값 ${fmtNum(cv.median_N)}곳)에, 각 달 <b>그 이전 자료만으로</b> 정한 추천값을 넣었다고 보고 셌습니다(실전과 같은 조건).</p>
+        <div class="table-wrap" style="max-height:none;"><table><thead><tr><th>방식</th><th class="num">1순위</th><th class="num">평균 업체 대비</th></tr></thead><tbody>
+          <tr><td><b>📱 앱 추천가</b></td><td class="num"><b>${fmtNum(cv.ours)}</b></td><td class="num"><b>×${r(cv.ours).toFixed(2)}</b></td></tr>
+          <tr><td>평균 사정율로 넣기</td><td class="num">${fmtNum(cv.mean)}</td><td class="num">×${r(cv.mean).toFixed(2)}</td></tr>
+          <tr><td>평균 업체 기대 Σ1÷(참가+1)</td><td class="num">${fmtNum(cv.fair, 1)}</td><td class="num">×1.00</td></tr>
+        </tbody></table></div>
+        <ul class="diag-tips"><li class="${lo > 1 ? 'ok' : 'info'}">앱 추천가 ${fmtNum(cv.ours)}건 vs 평균 업체 기대 ${fmtNum(cv.fair, 1)}건 — ${verdict}. 참고용이며 낙찰을 보장하지 않습니다.</li></ul>
+        ${cv.seg?.length ? `<div class="table-wrap ops" style="max-height:none;"><table><thead><tr><th>참가 수</th><th class="num">공고</th><th class="num">앱 추천 1순위</th><th class="num">평균 업체 기대</th></tr></thead><tbody>${cv.seg.map(g => `<tr><td>${esc(g.k)}곳</td><td class="num">${fmtNum(g.n)}</td><td class="num">${fmtNum(g.ours)}</td><td class="num">${fmtNum(g.fair, 1)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+        <div class="meta-line ops">계산 ${esc((cv.updated_at || '').slice(0, 16).replace('T', ' '))} · ${esc(cv.rule || '')}</div>`;
+    }
+  }catch(e){ /* 아직 없음 */ }
+  el.innerHTML = head + `<div class="res-ctrl"><div class="res-row2">${periodSel}</div></div>` + body + cvHtml;
   bindWatch(el, pseudo);
   $('diagPeriod').onchange = () => { Diag.period = +$('diagPeriod').value; LS.set('diagPeriod', Diag.period); renderWatch(); };
 }

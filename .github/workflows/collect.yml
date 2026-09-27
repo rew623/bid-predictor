@@ -91,6 +91,11 @@ jobs:
         continue-on-error: true
         run: python scripts/paper.py
 
+      - name: 우리 지역·면허 역검증 (앱 🩺 진단)
+        if: always()
+        continue-on-error: true
+        run: python scripts/company_val.py
+
       - name: 업체 색인 (하루 한 번)
         if: always()
         continue-on-error: true

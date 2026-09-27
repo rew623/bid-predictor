@@ -32,7 +32,8 @@ icons/                아이콘 (svg, 192/512 png)
 .nojekyll             _sample_*.json 등 밑줄 파일도 Pages 에 게시되도록
 scripts/collect.py    수집기 (Actions 에서 실행)
 scripts/commit_data.sh  data/ 변경 커밋·푸시 (워크플로에서 단계마다 호출)
-scripts/company_report.py  우리 업체 역검증 보고서(로컬 전용, private/ 읽고 씀)
+scripts/company_report.py  우리 업체 역검증 보고서(로컬 전용, private/ 읽고 씀 — 2026-09-27부터 안 돌림, 아래 company_val.py 와 앱 🩺 진단이 대신)
+scripts/company_val.py 우리 지역 × 우리 면허 공사 표본외 역검증 → data/company_val.json (수집 워크플로 2차 뒤 하루 한 번, 설정 scripts/company.json {sido, lics, months} — 공개 값만). 앱 내 투찰 '🩺 진단' 맨 아래 '📊 … 앱 추천가로 넣었다면'(설정 우리 업체의 시·도·면허와 맞을 때만). 2026-09-27 첫 계산: 강원 1,128건 앱 49 / 평균 사정율 43 / 공정 기대 41.0 (×1.19, 95% ×0.88~1.58 — 잡음 범위)
 scripts/paper.py      모의 투찰: 강원 공사 공고마다 마감 전 앱과 같은 추천 투찰가 기록 → 개찰 뒤 채점 → data/paper.json (앱 분석 탭 '🧪 모의 투찰'). 2026-09-26 67건 앱 quickPredict 와 원 단위 일치 확인
 scripts/corp_index.py 업체 색인 → data/corps.json [biz, 이름, 낙찰 수(공사+물품+국방), 마지막 낙찰일, 낙찰 시도, 상세 투찰, 상세 1순위, 국방 투찰, 국방 1순위, 대표자, 주소, 전화] + data/corpw/{앞3자리}.json 최종 낙찰 이력(강원 관련 업체만, 최근 20건) — 하루 한 번. 앱 하단 탭 '👥 업체'
   대표자·주소·전화 = data/corp_info.json {biz:[대표, 주소, 전화]} — 수집기 `CorpInfo` 가 낙찰 목록(bidwinnrCeoNm·Adrs·TelNo)에서 모음(낙찰한 업체만 있음). 단계 `업체정보`가 과거 36개월 낙찰 목록을 한 번에 12개월씩 다시 훑어 채움(meta.info_fill). 개찰 상세·국방 corps 에도 3번째 칸에 대표자(prcbdrCeoNm·rptrKore).
@@ -56,7 +57,7 @@ data/                 수집 결과 (아래)
 - 물품(2026-09 추가, 앱·모델은 데이터가 쌓인 뒤): `물품최근` = `getScsbidListSttusThng` 최근 40일 + `getBidPblancListInfoThngBsisAmount` 최근 60일로 기초금액·예가범위 보강, `물품과거` = 한 달씩 24개월까지(`meta.thng_backfill`) → `data/thng/{시도}.json`. 낙찰정보 `THNG_RESERVE`(250)·입찰공고 `THNG_BID_RESERVE`(400) 남김. 실제 순서(2026-09-27): 공고 → 최근낙찰 → 상세(낙찰정보 한도의 40% `DETAIL_RESERVE` 남김) → 물품최근 → 빈달 → 물품과거 → 지역보강 → 과거낙찰(24개월) → 상세 → 과거낙찰(나머지) → 업체정보(남는 한도). 업체정보를 앞에 뒀을 때 36개월 재조회가 한도를 다 써 goods.json 이 한 번도 안 만들어졌다.
 - `빈달`: 이미 지난 달 중 수집이 비었던 달을 다시 받는다(`meta.refill` [YYYYMM…], 기본 2026-03~06 — 이 달들만 낙찰 수가 평소의 1/10 이하였다). 한 달 = `backfill_month`(과거낙찰과 같은 처리).
 - `private/` (gitignore): 회사 투찰 이력(더비스 엑셀 등) 같은 개인 자료. 분석은 로컬에서만.
-  `scripts/company_report.py` → `private/report.html`: ① 우리 시·도 × 우리 면허 공사 전부를 월별 표본외 추천값으로(평균 사정율·회사 실제 투찰률 분포·공정 기대와 비교) ② 더비스 엑셀의 공사 투찰을 개찰일±1+기초금액으로 수집 낙찰과 맞춰 재채점. 설정 `private/company.json` {sido, sgg, lics}. 사용자 PC 작업 스케줄러 "bid-predictor 우리업체 역검증"이 매일 08:30(꺼져 있었으면 켜질 때) `private/run_report.cmd`(git pull → 보고서) 실행.
+  `scripts/company_report.py` → `private/report.html`: ① 우리 시·도 × 우리 면허 공사 전부를 월별 표본외 추천값으로(평균 사정율·회사 실제 투찰률 분포·공정 기대와 비교) ② 더비스 엑셀의 공사 투찰을 개찰일±1+기초금액으로 수집 낙찰과 맞춰 재채점. 설정 `private/company.json` {sido, sgg, lics}. 사용자 PC 작업 스케줄러 "bid-predictor 우리업체 역검증"은 2026-09-27 **사용 안 함**으로 바꿈(클라우드 전환 — ①은 company_val.py, ②는 앱 🩺 진단의 더비스 엑셀 가져오기).
   2026-09-26 결과: 강원 × 금속창호·지붕/도장·습식·방수·석공 541건 — 우리 27건(5.0%) / 평균 사정율 17 / 더비스식 17.2 / 공정 기대 19.2. 회사 1,034건 실제 1순위 2건 ≈ 공정 기대 2.44건.
 - `지역보강`: 과거 낙찰 레코드에 참가가능지역(`rgn`)을 채운다. 공고 게시일 7일 단위로 최신→가장 오래된 낙찰 달 앞까지 한 번(`meta.rgn_fill` {cursor: YYYYMMDD, done}), 입찰공고 호출 `REGION_RESERVE`(250)회는 남김. 최근낙찰은 notice_cache 의 rgn 으로 보강.
   참가가능지역·면허제한 API 는 공사·물품·용역 전부를 돌려줘 한 달치 호출이 많다 → 과거낙찰(달 단위, 중간 저장 없음)에 넣으면 한 달을 못 끝내 매일 같은 달만 반복한다(2026-09-25 실제로 겪음). 달 단위 단계에 무거운 조회를 더하지 말 것.
