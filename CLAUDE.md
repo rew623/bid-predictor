@@ -44,7 +44,7 @@ scripts/korea.py      시도·시군구 파싱, 면허 23개 + 옛 명칭 별칭
 scripts/regions.json  개찰 상세(전체 순위·복수예가)를 수집할 시·도 목록 — 2026-09-26부터 전국 17개. detail_priority.json 의 sido(강원)는 전부·전원 행, 그 밖은 **관심 면허(lic) 공고만** + 압축(상위 30곳 `OPEN_TOP` 금액 행 + WATCH_BIZ 행 + 전원 c·x·k, 국방 v2 와 같은 방식). 전국 전부는 1년 수백 MB~1GB라 저장소 한도 때문에 안 함(요금은 없음 — 공개 저장소 Actions·Pages·공공데이터 모두 무료). 앱은 우리 시·도 파일만 읽음(`homeDetailSidos`).
 scripts/local_models.json  지역 전용 추천 설정 {areas:[{sido, sgg, label}], small}
 scripts/detail_priority.json  개찰 상세 수집 우선순위 {sgg:[시·군], lic:[면허], max_cnt:참가 수} — 관심 시·군 → 관심 면허 → 참가 적은 공고, 같은 등급은 최신부터
-.github/workflows/collect.yml  02:00·14:00 KST 전체 + 09·13·17시 공고만 + 수동 실행(start_date, reset_backfill, quick_only)
+.github/workflows/collect.yml  02:00·14:00·20:00 KST 전체 + 09·13·17시 공고만 + 수동 실행(start_date, reset_backfill, quick_only)
 stable/               안정판(예전 버전 사본, scripts/make_stable.py 로만 만든다 — 직접 고치지 않음). data 는 ../data/ 를 읽고 서비스워커는 안 씀. 설정 '🛟 안정판으로 열기'
 scripts/make_stable.py  python scripts/make_stable.py <커밋> <버전> → stable/ (예: 7314795 1.7.5). 사용자가 '지금 버전을 안정판으로' 하면 이걸로 교체
 reference/prototype.html       초기 프로토타입 (디자인 참고용, 가상 데이터 코드는 쓰지 않음)
@@ -163,7 +163,7 @@ lic_map 에 없는 실시간 공사 공고는 `fetchLiveLimits`(renderLive 뒤 1
 시도를 알 수 없는 레코드는 `scsbid/기타.json`.
 
 ### data/d2b/ — 국방전자조달(D2B) 입찰결과 (scripts/collect_d2b.py)
-`openapi.d2b.go.kr/openapi/service/BidResultInfoService` 는 **서비스키 없이** 응답(User-Agent 필요, 2026-09-26 확인). 막히면 게이트웨이 `apis.data.go.kr/1690000/BidResultInfoService`(DATA_GO_KR_KEY, **운영계정 — 오퍼레이션마다 하루 10만**, 2026-09-27 확인. 입찰공고·계약정보 서비스도 같음)로 자동 전환. 한도보다 실행 시간이 먼저 차므로 d2b 잡은 02·14시 전체 수집 때 220분(본 수집과 나란히), 09·13·17시는 55분.
+`openapi.d2b.go.kr/openapi/service/BidResultInfoService` 는 **서비스키 없이** 응답(User-Agent 필요, 2026-09-26 확인). 막히면 게이트웨이 `apis.data.go.kr/1690000/BidResultInfoService`(DATA_GO_KR_KEY, **운영계정 — 오퍼레이션마다 하루 10만**, 2026-09-27 확인. 입찰공고·계약정보 서비스도 같음)로 자동 전환. 한도보다 실행 시간이 먼저 차므로 d2b 잡은 02·14·20시 전체 수집 때 220분(본 수집과 나란히), 09·13·17시는 55분.
 오퍼레이션: 물품·용역 `getDmstcCmpetBidResult{List|Detail|MnufList(참가업체)|BsicList(복수예가)}`, 시설 `getFcltyCmpetBidResult…`(키: orntCode·cntrwkNo·ntatPlanDate). 목록 조건 opengDateBegin/End(YYYYMMDD). 공개수의(`…OthbcVltrnNtatResult…`)는 아직 안 받음. 스펙 원본은 data.go.kr/data/15158417 (옛 15002018 페이지는 없어짐).
 예정가격 = 추첨(choiYsno=Y) 복수예가 4개 평균 — 1순위 투찰률 역산과 0.001% 안에서 일치. 2026-09 국내 경쟁 391건·시설 353건/월, 참가 수십~수백 곳(나라장터 물품 수천 곳보다 적음).
 **v2(2026-09-26, 사용자 요청 '국방도 조달청처럼 다')**: 경쟁(D 물품·용역, F 시설) + **공개수의**(N `getDmstcOthbcVltrnNtatResult…`, NF `getFcltyOthbcVltrnNtatResult…`, 목록 조건 ntatComptDateBegin/End, 행 필드 negnRate·tnegnAmnt/vnegnAmnt·negnNote('1순위')). 2026-08~09 두 달에 공개수의 물품 923·시설 1,987건(시설 수의 한 건 753곳).
