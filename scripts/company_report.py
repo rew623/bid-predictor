@@ -36,10 +36,12 @@ def load_rows():
             if not (base and plan and amt and n and r.get("date")):
                 continue
             S = plan / base * 100
+            # 하한율이 없으면 W(1위 투찰 사정률)를 기본 87.745 로 계산해 틀린다(강원 개찰 상세 공식 하한 미달 판정과 2.9% 일치, 2026-09-27) → rng 를 비워 곡선·역검증에서 뺀다(참가수 예측엔 씀).
+            # A값이 비어 있어도 rng 가 있으면 A값 조회를 한 것(진짜 0, 100% 일치) — rng 없는 기록은 A값을 모르는 것이라 원래 곡선·역검증에 안 쓴다.
             W = M.bid_to_sr(amt, base, r.get("a") or 0, r.get("floor") or 87.745)
             if W is None or not (0 <= W - S < 1):
                 continue
-            rows.append({"S": S, "W": W, "N": n, "rng": M.rng_key(r.get("rng")), "date": r["date"],
+            rows.append({"S": S, "W": W, "N": n, "rng": M.rng_key(r.get("rng")) if r.get("floor") else "", "date": r["date"],
                          "org": r.get("org") or r.get("dmd") or "", "sido": r.get("sido") or "", "sgg": r.get("sgg") or "",
                          "ab": M.amt_bin(base), "fl": M.floor_key(r.get("floor")), "lic": "+".join(sorted(r.get("lic") or [])),
                          "sc": M.rgn_scope(r.get("rgn")), "id": r["id"], "base": base, "nm": r.get("nm", "")})
