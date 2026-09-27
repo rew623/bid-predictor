@@ -2133,7 +2133,7 @@ async function runPredict(){
   let rows = filterRecords(recs, o);
   const notes = [];
   if(o.rng && rows.length < MIN_SAMPLE){ rows = filterRecords(recs, {...o, rng: null}); notes.push('예가범위 일치 표본 부족 → 예가범위 조건 제외'); }
-  $('matchCount').textContent = `${fmtNum(rows.length)}건의 과거 낙찰로 계산${notes.length ? ' · ' + notes.join(' · ') : ''}`;
+  $('matchCount').textContent = `참고 분포 ${fmtNum(rows.length)}건(고급 조건으로 거른 과거 낙찰)${notes.length ? ' · ' + notes.join(' · ') : ''} — 추천 금액은 전국 비슷한 규모 공고 곡선으로 계산`;
   const pred = predictFrom(rows);
   const homeSido = P.notice?.sido || (sidos.length === 1 ? sidos[0] : null);
   // 곡선은 넓은 표본으로: 선택 지역 최근 24개월 + 예가범위 같음(30건↑). 면허·금액으로 쪼개면 우연한 봉우리가 생긴다(설계 문서 3-4)
@@ -2143,7 +2143,7 @@ async function runPredict(){
   const wc = pred ? winCurve(curveRows, {sido: homeSido, opening}) : null;
   // 이 공고의 예상 참가업체 수: 입력값 → 비슷한 과거 공고 중앙값
   const ec = numOf($('inCnt')) ? {n: numOf($('inCnt')), k: 0} : expectedCnt(recs.filter(r => (r.date || '') >= monthsAgo(24)), P.notice || {lic: [...P.lics], base: o.base});
-  P.last = pred ? {pred, rows, wc, ec} : null;
+  P.last = pred ? {pred, rows, wc, ec, broad: curveRows} : null;   // broad = 하한 미달 확률용 넓은 표본(지역 최근 24개월·같은 예가범위) — 사정율은 기관·면허·금액으로 예측 안 되므로 좁힐 이유가 없다
   if(!pred || rows.length < 3){
     out.innerHTML = `<div class="card"><div class="empty">조건에 맞는 과거 데이터가 너무 적습니다 (${rows.length}건). 조건을 넓혀 보세요.${missing.length ? `<br>데이터 없는 지역: ${esc(missing.join(', '))}` : ''}</div></div>`;
     return;
@@ -2212,9 +2212,10 @@ async function runPredict(){
           ...(sel != null && Math.abs(sel - rec.x) > 1e-9 ? [{x: sel, color: 'var(--ok)', label: `선택 ${sel.toFixed(3)}`}] : [])]});
     pickInfo = (x, given) => {
       const amt = given || (base ? amtAt(x) : null);
-      const below = rows.length ? rows.filter(r => r.sr > x).length / rows.length : null;   // 실제 사정율이 이 값보다 높으면 하한 미달
+      const sPool = curveRows.filter(r => r.sr != null);
+      const below = sPool.length ? sPool.filter(r => r.sr > x).length / sPool.length : null;   // 실제 사정율이 이 값보다 높으면 하한 미달 — 넓은 표본으로
       const vsRec = Math.abs(x - rec.x) > 1e-9 && rec.at(rec.x) ? rec.at(x) / rec.at(rec.x) : null;
-      return `${given ? `입력 금액 <b>${won(given)}</b> → ` : ''}<b>${given ? '투찰 사정률' : '선택'} ${pct(x, 3)}</b> · 과거 낙찰확률 ${(rec.at(x) * 100).toFixed(2)}%${rec.random ? ` (공정 기대 ×${(rec.at(x) / rec.random).toFixed(2)})` : ''}${vsRec ? ` · 추천의 ${Math.round(vsRec * 100)}%` : ''}${x < rec.view[0] || x > rec.view[1] ? ' · <span class="faint">그래프 범위 밖이라 선은 안 보임</span>' : ''}${!given && amt ? ` · 투찰금액 <b>${won(amt)}</b>` : ''}${below != null ? `<br><span class="faint">하한 미달 확률 ${(below * 100).toFixed(0)}% (실제 사정율이 이 값보다 높았던 비율, ${sampleText(rows.length)})</span>` : ''}
+      return `${given ? `입력 금액 <b>${won(given)}</b> → ` : ''}<b>${given ? '투찰 사정률' : '선택'} ${pct(x, 3)}</b> · 과거 낙찰확률 ${(rec.at(x) * 100).toFixed(2)}%${rec.random ? ` (공정 기대 ×${(rec.at(x) / rec.random).toFixed(2)})` : ''}${vsRec ? ` · 추천의 ${Math.round(vsRec * 100)}%` : ''}${x < rec.view[0] || x > rec.view[1] ? ' · <span class="faint">그래프 범위 밖이라 선은 안 보임</span>' : ''}${!given && amt ? ` · 투찰금액 <b>${won(amt)}</b>` : ''}${below != null ? `<br><span class="faint">하한 미달 확률 ${(below * 100).toFixed(0)}% (실제 사정율이 이 값보다 높았던 비율, ${esc(homeSido || '')} 최근 24개월 ${sampleText(sPool.length)})</span>` : ''}
         <div class="btn-row" style="margin-top:8px;">${P.notice && amt ? `<button class="btn sm reg" data-reg-amt="${amt}" data-reg-sr="${x}" type="button">📝 이 금액으로 투찰 등록</button>` : ''}<button class="btn sm line" data-use-sr="${x}" type="button">계산기로</button></div>`;
     };
     curveCard = `<div class="card">
@@ -2380,15 +2381,17 @@ function renderCalc(){
     info.push(`이 투찰 사정률(${c.sr}%)의 과거 낙찰확률 <b>${(r.at(c.sr)*100).toFixed(2)}%</b> · 추천 ${pct(r.x, 3)}에서 ${(r.p*100).toFixed(2)}%`);
   }
   if(xm != null && P.last?.rec){
-    const r = P.last.rec, below = P.last.rows?.length ? P.last.rows.filter(q => q.sr > xm).length / P.last.rows.length : null;
+    const pool = (P.last.broad || P.last.rows || []).filter(q => q.sr != null);
+    const r = P.last.rec, below = pool.length ? pool.filter(q => q.sr > xm).length / pool.length : null;
     info.unshift(`<b>직접 입력 ${won(c.manual)}</b> → 투찰 사정률 <b>${xm.toFixed(3)}%</b> · 과거 낙찰확률 <b>${(r.at(xm) * 100).toFixed(2)}%</b>${r.at(r.x) ? ` (추천 ${pct(r.x, 3)}의 ${Math.round(r.at(xm) / r.at(r.x) * 100)}%)` : ''}${below != null ? ` · 하한 미달 확률 ${(below * 100).toFixed(0)}%` : ''} — 위 그래프에 초록 선`);
     P.markCurve?.(xm, c.manual);
   }else if(xm != null){
     info.unshift(`<b>직접 입력 ${won(c.manual)}</b> → 투찰 사정률 <b>${xm.toFixed(3)}%</b>`);
   }
-  if(P.last?.rows?.length){
-    const above = P.last.rows.filter(r => r.sr > c.sr).length / P.last.rows.length;
-    info.push(`과거 분포상 실제 사정율이 적용값보다 높을 확률 ${(above*100).toFixed(1)}% — 이 경우 이 금액은 실제 낙찰하한가에 못 미칩니다. (${sampleText(P.last.rows.length)})`);
+  const pool = (P.last?.broad || P.last?.rows || []).filter(q => q.sr != null);
+  if(pool.length){
+    const above = pool.filter(r => r.sr > c.sr).length / pool.length;
+    info.push(`과거 분포상 실제 사정율이 적용값보다 높을 확률 ${(above*100).toFixed(1)}% — 이 경우 이 금액은 실제 낙찰하한가에 못 미칩니다. (${sampleText(pool.length)})`);
   }
   out.innerHTML = `<div class="stat-grid">
       <div class="stat"><div class="t">예정가격</div><div class="v">${won(c.plan)}</div></div>
