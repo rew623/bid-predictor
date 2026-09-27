@@ -649,3 +649,7 @@ body.simple .bcard > .b-note:not(.result){display:none !important;}
 .diag-tips li.bad{border-left-color:var(--target); background:var(--target-soft);}
 .diag-tips li.warn{border-left-color:var(--warn); background:var(--warn-soft);}
 .diag-tips li.info{border-left-color:var(--primary);}
+
+.ind-sug{margin-top:4px}
+.ind-sug>summary{cursor:pointer;color:var(--primary);font-size:.9em;padding:4px 0}
+.ind-sug .chip-group{margin-top:6px}

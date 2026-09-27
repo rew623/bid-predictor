@@ -3424,18 +3424,20 @@ async function renderStats(){
       <p class="sub">참여가 많은 순. 투찰 사정률 = 투찰금액을 예정가격으로 되돌린 값 ÷ 기초금액. 누르면 분포를 봅니다.</p>
       <div class="table-wrap" style="max-height:none;"><table>
         <thead><tr><th>#</th><th>업체</th><th class="num">참여</th><th class="num">낙찰</th><th class="num">평균 투찰 사정률</th><th class="num">표준편차</th></tr></thead>
-        <tbody>${top.map((c,i) => `<tr class="click" data-corp="${i}"><td>${i+1}</td><td>${esc(c.name)}${sampleBadge(c.st.n)}</td><td class="num">${fmtNum(c.n)}</td><td class="num">${fmtNum(c.wins)}</td><td class="num">${pct(c.st.mean)}</td><td class="num">${isFinite(c.st.std) ? c.st.std.toFixed(3) : '-'}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">데이터 없음</td></tr>'}</tbody>
+        <tbody>${top.map((c,i) => `<tr class="click" data-sc="${i}"><td>${i+1}</td><td>${esc(c.name)}${sampleBadge(c.st.n)}</td><td class="num">${fmtNum(c.n)}</td><td class="num">${fmtNum(c.wins)}</td><td class="num">${pct(c.st.mean)}</td><td class="num">${isFinite(c.st.std) ? c.st.std.toFixed(3) : '-'}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">데이터 없음</td></tr>'}</tbody>
       </table></div>
       <div class="meta-line">개찰 순위 ${sampleText(nRank)}</div>
       <div id="corpDetail"></div>
     </div>`;
-  el.querySelectorAll('tr[data-corp]').forEach(tr => tr.addEventListener('click', () => {
-    const c = top[+tr.dataset.corp];
+  // 표 줄을 누르면 아래 분포만 그 업체로 바꾼다(업체 탭으로 넘어가지 않음 — 2026-09-27). 업체 탭은 분포 아래 '업체 보기' 링크로
+  el.querySelectorAll('tr[data-sc]').forEach(tr => tr.addEventListener('click', () => {
+    const c = top[+tr.dataset.sc];
+    el.querySelectorAll('tr[data-sc]').forEach(t => t.classList.toggle('hl-row', t === tr));
     const s = [...c.srs].sort((a,b) => a-b);
     $('corpDetail').innerHTML = `<h3>${esc(c.name)} 투찰 사정률 분포</h3>
       ${s.length ? histogram(c.srs, {min: Math.floor(quantile(s,.01)*2)/2, max: Math.ceil(quantile(s,.99)*2)/2 || 101, step:0.1,
          lines:[{x:c.st.mean, color:'var(--primary-dark)', label:`평균 ${c.st.mean.toFixed(2)}`}]}) : '<div class="empty">계산 가능한 투찰 없음</div>'}
-      <div class="meta-line">${sampleText(c.srs.length)} · 낙찰 ${fmtNum(c.wins)}회 / 참여 ${fmtNum(c.n)}회${c.biz ? ` · 사업자번호 ${esc(c.biz)}` : ''}</div>`;
+      <div class="meta-line">${sampleText(c.srs.length)} · 낙찰 ${fmtNum(c.wins)}회 / 참여 ${fmtNum(c.n)}회${c.biz ? ` · 사업자번호 ${esc(c.biz)} · <a href="#" class="corp-link" data-corp="${esc(c.biz)}">업체 보기 →</a>` : ''}</div>`;
     $('corpDetail').scrollIntoView({behavior:'smooth', block:'nearest'});
   }));
 }
