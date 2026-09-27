@@ -121,6 +121,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: 국방 오퍼레이션 탐색 (한 번, data/d2b/_probe.json 없을 때만)
+        continue-on-error: true
+        env:
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+        run: python scripts/d2b_probe.py
+
       - name: 국방 입찰결과 수집
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
