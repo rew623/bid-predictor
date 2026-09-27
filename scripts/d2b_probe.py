@@ -112,13 +112,6 @@ def main():
             dict(numOfRows=3, pageNo=1, pblancDateBegin=past, pblancDateEnd=today),
             dict(numOfRows=3, pageNo=1)])[0]
 
-    # ③ 계약정보 (서비스 이름 후보)
-    for svc in ("CntrctInfoService", "CntrctInfoInfoService"):
-        for op in ("getDmstcCntrctInfoList", "getFcltyCntrctInfoList"):
-            res[f"{svc}.{op}"] = try_op(svc, op, [
-                dict(numOfRows=3, pageNo=1, cntrctDateBegin=past, cntrctDateEnd=today),
-                dict(numOfRows=3, pageNo=1, cntrctConclsDateBegin=past, cntrctConclsDateEnd=today),
-                dict(numOfRows=3, pageNo=1)])[0]
     res["calls"] = calls
     PATH.write_text(dumps(res), encoding="utf-8")
     print("탐색 끝:", calls, "회 →", PATH)
