@@ -102,7 +102,7 @@ const FIREBASE_CONFIG = {
 };   // 웹 앱 설정값은 공개돼도 되는 값(비밀 아님) — 데이터는 보안 규칙이 지킨다
 const FB_VER = '10.12.2';
 const Cloud = {
-  keys: ['admin', 'company', 'watch', 'hiddenBids', 'history', 'corpWatch', 'apiKey', 'theme', 'myCal', 'curveSmooth', 'guideClosed'],
+  keys: ['admin', 'company', 'watch', 'hiddenBids', 'resHidden', 'history', 'corpWatch', 'apiKey', 'theme', 'myCal', 'curveSmooth', 'guideClosed'],
   user: null, db: null, loading: null, status: '', lastSync: null, unsub: null, timers: {},
   dev: (() => { try{ let d = localStorage.getItem('bp._dev'); if(!d){ d = Math.random().toString(36).slice(2, 10); localStorage.setItem('bp._dev', d); } return d; }catch(e){ return 'x'; } })(),
   ts(){ try{ return JSON.parse(localStorage.getItem('bp._ts') || '{}'); }catch(e){ return {}; } },
@@ -2885,10 +2885,17 @@ function buildResultRows(appItems){
     rows.push({src: 'hist', nm: h.nm, org: h.org, rgn: h.rgn, lic: h.lic, date: h.date || '', base: h.base, amt: h.amt, S: h.S || null, x: h.x,
       rank: h.rank, n: h.n, kind: h.kind === '공사' ? '공사' : h.kind, cls: j.cls, label: j.label});
   }
+  rows.forEach(x => { x.key = x.src === 'app' ? x.id : 'h:' + normNm(x.nm) + '|' + (x.date || '').slice(0, 10); });
   return rows;
 }
+// 개찰 결과 '목록에서 빼기' → 지우지 않고 뺀 목록으로(맨 아래에서 되돌리기). 자동 찾은 것·앱 기록·가져온 엑셀 모두 같은 방식 (2026-09-27 요청)
+const ResHidden = {
+  get(){ return new Set(LS.get('resHidden', [])); },
+  set(key, on){ const s = this.get(); on ? s.add(key) : s.delete(key); LS.set('resHidden', [...s]); },
+};
 async function renderResults(el, appItems, pseudo, head){
-  const rows = buildResultRows(appItems);
+  const allRows = buildResultRows(appItems), hid = ResHidden.get();
+  const rows = allRows.filter(x => !hid.has(x.key)), hiddenRows = allRows.filter(x => hid.has(x.key));
   // 거르기: 업무 · 기간 · 1순위만
   const cut = Res.period ? kstDay(new Date(Date.now() - Res.period * 30.4 * 86400000)) : '';
   const inPeriod = rows.filter(x => !cut || x.date.slice(0, 10) >= cut);
@@ -2935,10 +2942,10 @@ async function renderResults(el, appItems, pseudo, head){
           <input type="text" class="money" inputmode="numeric" autocomplete="off" data-mybid-in="${esc(x.id)}" value="${moneyText(x.amt)}" placeholder="원 단위">
           <button class="btn sm ghost" data-mybid-save="${esc(x.id)}" type="button">기록</button>
           ${apiKey() ? `<button class="btn sm line" data-res-fetch="${esc(x.id)}" type="button">다시 조회</button>` : ''}
-          ${x.w.auto ? '' : `<button class="btn sm line" data-res-remove="${esc(x.id)}" type="button">목록에서 지우기</button>`}</div>
+          <button class="btn sm line" data-res-hide="${esc(x.key)}" type="button">목록에서 빼기</button></div>
         ${x.w.res?.mine?.amt && x.w.res.mine.amt !== x.amt ? `<div class="meta-line">조달청 기록 투찰금액 <b>${won(x.w.res.mine.amt)}</b> <button class="btn sm line" data-mybid-reset="${esc(x.id)}" type="button">이 값으로 되돌리기</button></div>` : ''}
-        <div class="meta-line ops">기록 = 내가 넣은 금액을 고쳐 저장 · 다시 조회 = 조달청 개찰 결과를 새로 받아 순위·금액을 조달청 값으로 · 목록에서 지우기 = 이 기록 삭제(강원 공고는 개찰 상세에서 다시 자동으로 나옴)</div>
-      </details>` : '';
+        <div class="meta-line ops">기록 = 내가 넣은 금액을 고쳐 저장 · 다시 조회 = 조달청 개찰 결과를 새로 받아 순위·금액을 조달청 값으로 · 목록에서 빼기 = 맨 아래 '뺀 목록'으로 옮김(진단·요약에서도 빠짐, 언제든 되돌리기)</div>
+      </details>` : `<details class="rc-more"><summary>자세히</summary><div class="mybid-row"><button class="btn sm line" data-res-hide="${esc(x.key)}" type="button">목록에서 빼기</button></div></details>`;
     html += `<div class="rc ${x.cls}">
       <div class="rc-nm">${esc(x.nm)} ${x.src === 'app' ? sdTag(x.w) : ''}</div>
       <div class="rc-sub">${esc(x.date.slice(11, 16) ? x.date.slice(0, 16) + ' 개찰' : x.date.slice(0, 10))} · ${esc(x.org || '')}</div>
@@ -2956,8 +2963,12 @@ async function renderResults(el, appItems, pseudo, head){
   }
   el.innerHTML = head + ctrl + (html ? `<div class="rc-list">${html}</div>` : '<div class="empty">조건에 맞는 개찰 결과가 없습니다.</div>')
     + (list.length > Res.shown ? `<div class="more"><button class="btn sm line" id="resMore" type="button">더 보기 (${fmtNum(list.length - Res.shown)}건 남음)</button></div>` : '')
+    + (hiddenRows.length ? `<details class="res-bin"><summary>🗑 뺀 목록 ${fmtNum(hiddenRows.length)}건</summary>
+        ${hiddenRows.map(x => `<div class="res-bin-row"><span>${esc(x.nm)}<small>${esc((x.date || '').slice(0, 10))}${x.label ? ' · ' + esc(x.label) : ''}</small></span><button class="btn sm line" data-res-unhide="${esc(x.key)}" type="button">되돌리기</button></div>`).join('')}</details>` : '')
     + renderHistory();
   bindWatch(el, pseudo);
+  el.querySelectorAll('[data-res-hide]').forEach(b => b.onclick = () => { ResHidden.set(b.dataset.resHide, true); toast('뺀 목록으로 옮겼습니다 — 맨 아래에서 되돌릴 수 있어요', 2600); keepY(renderWatch); });
+  el.querySelectorAll('[data-res-unhide]').forEach(b => b.onclick = () => { ResHidden.set(b.dataset.resUnhide, false); toast('되돌렸습니다'); keepY(renderWatch); });
   $('resKind').onclick = (e) => { const k = e.target.closest('[data-k]')?.dataset.k; if(!k) return; Res.kind = k; LS.set('resKind', k); Res.shown = 50; renderWatch(); };
   $('resPeriod').onchange = () => { Res.period = +$('resPeriod').value; LS.set('resPeriod', Res.period); Res.shown = 50; renderWatch(); };
   $('resTop').onclick = () => { Res.top = !Res.top; renderWatch(); };
@@ -2975,7 +2986,7 @@ const normCdf = (z) => { const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989
 /** 같은 공고 짝 비교의 두 비율 차이(맥니마 근사, 양쪽): b = 나만 해당, c = 앱만 해당 */
 function mcnemarP(b, c){ const n = b + c; if(n < 1) return 1; let t = 0; for(let k = Math.max(b, c); k <= n; k++){ let v = 1; for(let i = 0; i < k; i++) v *= (n - i) / (k - i); t += v / 2 ** n; } return Math.min(1, 2 * t); }
 async function renderDiag(el, appItems, pseudo, head){
-  const all = buildResultRows(appItems);
+  const hidD = ResHidden.get(), all = buildResultRows(appItems).filter(x => !hidD.has(x.key));
   const cut = Diag.period ? kstDay(new Date(Date.now() - Diag.period * 30.4 * 86400000)) : '';
   const rows = all.filter(x => (!cut || x.date.slice(0, 10) >= cut) && x.S && x.x != null && x.n);
   const periodSel = `<select id="diagPeriod" class="sort-select" aria-label="기간">${[[0, '전체 기간'], [12, '최근 12개월'], [6, '최근 6개월'], [3, '최근 3개월']].map(([v, t]) => `<option value="${v}"${+Diag.period === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
@@ -3336,15 +3347,6 @@ function bindWatch(el, pseudo){
     await WatchStore.save({...rest, myBid: w.res.mine.amt});
     toast(`조달청 기록 ${won(w.res.mine.amt)}으로 되돌렸습니다`);
     stay(id);
-  }));
-  el.querySelectorAll('[data-res-remove]').forEach(btn => btn.addEventListener('click', async () => {
-    const id = btn.dataset.resRemove, w = await getW(id); if(!w) return;
-    const again = !!Data.opening[w.sido]?.bids?.get?.(w.id);
-    if(!confirm(again ? '이 기록을 지울까요? 강원 개찰 상세에 우리 투찰이 있어 조달청 값으로 다시 자동으로 나옵니다.'
-                      : '이 기록을 지울까요? 목록에서 사라지고, 다시 보려면 공고번호로 추가해야 합니다.')) return;
-    await WatchStore.remove(id);
-    toast('지웠습니다');
-    renderWatch();
   }));
   el.querySelectorAll('[data-join-save]').forEach(btn => btn.addEventListener('click', async () => {
     const w = pseudo.get(btn.dataset.joinSave); if(!w) return;
