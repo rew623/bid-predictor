@@ -2929,7 +2929,9 @@ async function renderResults(el, appItems, pseudo, head){
           <input type="text" class="money" inputmode="numeric" autocomplete="off" data-mybid-in="${esc(x.id)}" value="${moneyText(x.amt)}" placeholder="원 단위">
           <button class="btn sm ghost" data-mybid-save="${esc(x.id)}" type="button">기록</button>
           ${apiKey() ? `<button class="btn sm line" data-res-fetch="${esc(x.id)}" type="button">다시 조회</button>` : ''}
-          ${x.w.auto ? '' : `<button class="btn sm line" data-unwatch="${esc(x.id)}" type="button">목록에서 지우기</button>`}</div>
+          ${x.w.auto ? '' : `<button class="btn sm line" data-res-remove="${esc(x.id)}" type="button">목록에서 지우기</button>`}</div>
+        ${x.w.res?.mine?.amt && x.w.res.mine.amt !== x.amt ? `<div class="meta-line">조달청 기록 투찰금액 <b>${won(x.w.res.mine.amt)}</b> <button class="btn sm line" data-mybid-reset="${esc(x.id)}" type="button">이 값으로 되돌리기</button></div>` : ''}
+        <div class="meta-line ops">기록 = 내가 넣은 금액을 고쳐 저장 · 다시 조회 = 조달청 개찰 결과를 새로 받아 순위·금액을 조달청 값으로 · 목록에서 지우기 = 이 기록 삭제(강원 공고는 개찰 상세에서 다시 자동으로 나옴)</div>
       </details>` : '';
     html += `<div class="rc ${x.cls}">
       <div class="rc-nm">${esc(x.nm)} ${x.src === 'app' ? sdTag(x.w) : ''}</div>
@@ -3304,6 +3306,13 @@ function bindWatch(el, pseudo){
       setTimeout(renderWatch, 600);
     }catch(e){ msg.textContent = e.message; }
   });
+  // 버튼을 누른 뒤 다시 그려도 그 카드 자리에 그대로 (2026-09-27: 매번 맨 위로 올라가던 문제)
+  const stay = async (id) => {
+    await renderWatch();
+    const inp = el.querySelector(`[data-mybid-in="${CSS.escape(id)}"]`);
+    const d = inp?.closest('details'); if(d) d.open = true;
+    inp?.closest('.rc, .bcard')?.scrollIntoView({block: 'center'});
+  };
   el.querySelectorAll('[data-mybid-save]').forEach(btn => btn.addEventListener('click', async () => {
     const id = btn.dataset.mybidSave;
     const inp = el.querySelector(`[data-mybid-in="${CSS.escape(id)}"]`);
@@ -3311,6 +3320,24 @@ function bindWatch(el, pseudo){
     if(!w) return;
     const {auto, ...rest} = w;
     await WatchStore.save({...rest, myBid: numOf(inp) || null});
+    toast('투찰금액을 기록했습니다');
+    stay(id);
+  }));
+  el.querySelectorAll('[data-mybid-reset]').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.dataset.mybidReset, w = await getW(id);
+    if(!w?.res?.mine?.amt) return;
+    const {auto, ...rest} = w;
+    await WatchStore.save({...rest, myBid: w.res.mine.amt});
+    toast(`조달청 기록 ${won(w.res.mine.amt)}으로 되돌렸습니다`);
+    stay(id);
+  }));
+  el.querySelectorAll('[data-res-remove]').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.dataset.resRemove, w = await getW(id); if(!w) return;
+    const again = !!Data.opening[w.sido]?.bids?.get?.(w.id);
+    if(!confirm(again ? '이 기록을 지울까요? 강원 개찰 상세에 우리 투찰이 있어 조달청 값으로 다시 자동으로 나옵니다.'
+                      : '이 기록을 지울까요? 목록에서 사라지고, 다시 보려면 공고번호로 추가해야 합니다.')) return;
+    await WatchStore.remove(id);
+    toast('지웠습니다');
     renderWatch();
   }));
   el.querySelectorAll('[data-join-save]').forEach(btn => btn.addEventListener('click', async () => {
@@ -3342,10 +3369,12 @@ function bindWatch(el, pseudo){
     try{
       const res = await fetchOpeningResult(w);
       const {auto, ...rest} = w;
-      await WatchStore.save({...rest, resTried: new Date().toISOString(), ...(res ? {res, myBid: w.myBid || res.mine?.amt || null} : {})});
+      // 다시 조회 = 조달청 값으로: 우리 행이 있으면 그 금액으로 되돌린다(예전엔 고친 금액이 그대로 남아 '원래 값'을 못 찾았음)
+      await WatchStore.save({...rest, resTried: new Date().toISOString(), ...(res ? {res, myBid: res.mine?.amt || w.myBid || null} : {})});
       if(!res){ btn.textContent = '아직 결과 없음'; return; }
+      toast(res.mine?.amt ? `조달청 결과로 새로 고쳤습니다 (우리 ${won(res.mine.amt)})` : '조달청 결과를 새로 받았습니다');
     }catch(e){ btn.textContent = '조회 실패'; btn.title = e.message; return; }
-    renderWatch();
+    stay(w.id);
   }));
 }
 
