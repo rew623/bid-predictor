@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 1518,
+   "bid": 1532,
    "date": "20260927",
-   "scsbid": 29896
+   "scsbid": 29907
   }
  },
  "backfill": {
@@ -18,7 +18,7 @@
  },
  "bsis_fill": {},
  "counts": {
-  "bids": 1653,
+  "bids": 1659,
   "opening": {
    "강원": 13883,
    "경기": 599,
@@ -38,6 +38,7 @@
    "충남": 1049,
    "충북": 446
   },
+  "opening_thng": {},
   "scsbid": {
    "강원": 13961,
    "경기": 13407,
@@ -196,6 +197,7 @@
    "total": 1051
   }
  },
+ "doc_scan": true,
  "files": {
   "opening": {
    "강원": {
@@ -326,6 +328,7 @@
     ]
    }
   },
+  "opening_thng": {},
   "scsbid": {
    "강원": [
     "scsbid/강원.json"
@@ -443,22 +446,14 @@
   "cursor": "202506"
  },
  "last_run": {
-  "at": "2026-09-27T14:54:32+09:00",
+  "at": "2026-09-27T18:05:56+09:00",
   "calls": {
-   "bid": 1518,
+   "bid": 1532,
    "date": "20260927",
-   "scsbid": 29896
+   "scsbid": 29907
   },
-  "errors": [
-   "상세: 한도 소진 (network)",
-   "물품최근: 한도 소진 (network)",
-   "A값보강: 한도 소진 (network)",
-   "과거낙찰: 한도 소진 (network)",
-   "상세: 한도 소진 (network)",
-   "과거낙찰: 한도 소진 (network)",
-   "업체정보: 한도 소진 (network)"
-  ],
-  "minutes": 17.2
+  "errors": [],
+  "minutes": 11.3
  },
  "lim_scan": true,
  "mf_scan": true,
@@ -466,7 +461,7 @@
   "rows": 118937,
   "updated_at": "2026-09-27T14:36:32+09:00"
  },
- "notice_last": "2026-09-27T09:48+09:00",
+ "notice_last": "2026-09-27T17:54+09:00",
  "refill": [],
  "rgn_fill": {
   "cursor": null,
@@ -477,6 +472,6 @@
   "done": true,
   "oldest": "20240901"
  },
- "updated_at": "2026-09-27T14:36:32+09:00",
+ "updated_at": "2026-09-27T18:05:56+09:00",
  "v": 1
 }
