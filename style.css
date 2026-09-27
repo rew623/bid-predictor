@@ -621,3 +621,6 @@ body.simple summary .meta-line,
 body.simple .cal-title .faint,
 body.simple #pGuide,
 body.simple .bcard > .b-note:not(.result){display:none !important;}
+
+/* 길게 펼친 '자세히' 맨 아래 접기 버튼 */
+.fold-btn{display:block; width:100%; margin:12px 0 0; padding:9px; border:1px solid var(--border, #E4E7EC); border-radius:10px; background:var(--bg); color:var(--text-sub); font:inherit; font-size:13px; cursor:pointer;}

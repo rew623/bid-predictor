@@ -198,7 +198,7 @@ scsbid 와 같은 형식(`ThngStore`) + `cm` 계약방법(예: 수의계약·제
 
 ## 앱 동작 메모
 - 앱은 meta.json → 사용자가 고른 시·도의 파일만 불러옴(메모리 + 서비스워커 `data-v1` 캐시, URL 에 `?v=updated_at`).
-- NEW: `localStorage bp.lastVisit` 이후 `seen` 인 공고. 탭 배지: `bp.bidsSeenAt` 이후 수.
+- NEW: `localStorage bp.lastVisit` 이후 `seen` 인 공고. 공고 검색 탭 NEW 배지는 없앰(2026-09-27). 내 투찰 탭 배지(`updateWatchBadge`) = ⭐ 관심에 넣고 아직 투찰 안 한 개찰 전 공고 수. 개찰 결과는 1순위·최종 낙찰을 맨 위에. 길게 펼친 `<details>` 는 맨 아래 '▲ 접기'(`.fold-btn`, 높이 420px↑).
 - 투찰금액 = (예정가격 − A값) × 낙찰하한율 + A값 (원 단위 올림). 낙찰하한율 기본 87.745.
 - 투찰 사정률 x = 투찰금액을 위 식으로 되돌린 값(`bidToSr`). x ≥ 실제 사정율 S ⟺ 투찰금액 ≥ 낙찰하한가.
 - **승리 구간**(`winWindow`): 과거 공고마다 [S, W), W = 실제 낙찰자 투찰 사정률(낙찰금액으로 계산). 개찰 상세가 있으면 정확한 예정가격과 "x ≥ S 인 투찰 중 최소"를 W 로(적격심사 탈락 보정). 유효: 0 ≤ W−S < 1.

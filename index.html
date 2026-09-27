@@ -26,7 +26,7 @@
   <div class="brand"><span class="dot"></span>낙찰가 예측 도우미</div>
   <button class="nav-item" data-tab="home" type="button"><span class="ico">🏢</span><span>우리 공고</span></button>
   <button class="nav-item" data-tab="bids" type="button"><span class="ico">🔎</span><span>공고 검색</span><span class="nav-badge" id="newBadge" hidden></span></button>
-  <button class="nav-item" data-tab="watch" type="button"><span class="ico">⭐</span><span>내 투찰</span></button>
+  <button class="nav-item" data-tab="watch" type="button"><span class="ico">⭐</span><span>내 투찰</span><span class="nav-badge" id="watchBadge" title="관심에 넣고 아직 투찰 안 한 공고" hidden></span></button>
   <button class="nav-item" data-tab="predict" type="button"><span class="ico">📊</span><span>분석</span></button>
   <button class="nav-item" data-tab="corp" type="button"><span class="ico">👥</span><span>업체</span></button>
   <button class="nav-item" data-tab="settings" type="button"><span class="ico">⚙️</span><span>설정</span></button>
@@ -394,7 +394,7 @@
       <div class="inline-inputs" style="margin-top:0;">
         <div><label for="vSido">시·도</label><select id="vSido"></select></div>
       </div>
-      <div class="btn-row" style="margin-top:12px;"><button class="btn ghost" id="vRun" type="button">점검 실행</button></div>
+      <div class="btn-row" style="margin-top:12px;"><button class="btn ghost" id="vRun" type="button">점검 실행</button><button class="btn line sm" id="vClose" type="button" hidden>결과 닫기</button></div>
       <div id="verifyResult" style="margin-top:12px;"></div>
     </div>
     <div class="card">

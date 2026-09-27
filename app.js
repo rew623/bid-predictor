@@ -284,11 +284,13 @@ const WatchStore = {
     const i = list.findIndex(x => x.id === item.id);
     if(i >= 0) list[i] = {...list[i], ...item}; else list.unshift(item);
     LS.set('watch', list);
+    updateWatchBadge();
     return list;
   },
   async remove(id){
     const list = (await this.list()).filter(x => x.id !== id);
     LS.set('watch', list);
+    updateWatchBadge();
     return list;
   },
 };
@@ -797,6 +799,7 @@ const applyMode = () => document.body.classList.toggle('simple', !LS.get('admin'
 function switchTab(tab, push=true){
   if(!TAB_TITLES[tab]) tab = 'home';
   applyMode();
+  updateWatchBadge();   // 다른 기기에서 동기화된 관심공고도 반영
   if(tab === 'home' && currentTab !== 'home'){ Mine.kind = '공사'; Mine.area = 'sido'; Mine.shown = 60; }   // 우리 공고에 들어오면 늘 '공사 · 우리 시·도'부터 (2026-09-26 요청)
   currentTab = tab;
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'view-' + tab);
@@ -812,11 +815,12 @@ let bidsShown = PAGE_SIZE;
 const isNew = (b) => prevVisit && b.seen && new Date(b.seen) > prevVisit;
 
 /** 탭 배지: 입찰공고 탭을 마지막으로 본 뒤 새로 수집된 공고 수 */
-function updateNewBadge(){
-  const el = $('newBadge');
-  const seenAt = LS.get('bidsSeenAt', 0);
-  if(!Data.bids || !seenAt){ el.hidden = true; return; }
-  const n = Data.bids.filter(b => b.seen && new Date(b.seen).getTime() > seenAt).length;
+/** 공고 검색 탭 NEW 배지는 없앴다(2026-09-27): 실시간 검색이 기본이 된 뒤 지워질 때가 없었고, 새 공고는 우리 공고 카드의 NEW 로 보인다 */
+function updateNewBadge(){ $('newBadge').hidden = true; }
+/** 내 투찰 탭 배지 = ⭐ 관심에 넣고 아직 투찰 안 한, 개찰 전 공고 수 (할 일) */
+async function updateWatchBadge(){
+  const el = $('watchBadge'); if(!el) return;
+  const n = (await WatchStore.list()).filter(w => !isJoined(w) && !isDone(w)).length;
   el.textContent = n > 99 ? '99+' : n;
   el.hidden = !n;
 }
@@ -2730,7 +2734,8 @@ async function renderResults(el, appItems, pseudo, head){
   const byKind = (k) => k === 'all' ? inPeriod : inPeriod.filter(x => x.kind === k);
   let list = byKind(Res.kind);
   if(Res.top) list = list.filter(x => x.rank === 1 || x.fin);
-  list.sort((a, b) => b.date.localeCompare(a.date));
+  const isTop = (x) => x.rank === 1 || x.fin;
+  list.sort((a, b) => (isTop(b) - isTop(a)) || b.date.localeCompare(a.date));   // 1순위·최종 낙찰을 맨 위로, 그다음 최근 개찰순
   // 요약
   const valid = list.filter(x => x.S && x.n);
   const nWin = list.filter(x => x.rank === 1 || x.fin).length, fair = valid.reduce((t, x) => t + 1 / x.n, 0);
@@ -2753,8 +2758,8 @@ async function renderResults(el, appItems, pseudo, head){
   // 카드 (개찰일별로 묶음)
   let html = '', last = null;
   for(const x of list.slice(0, Res.shown)){
-    const d = x.date.slice(0, 10);
-    if(d !== last){ last = d; html += `<div class="day-sep">${d ? dayLabel(d) : '개찰일 미상'}</div>`; }
+    const d = isTop(x) ? 'top' : x.date.slice(0, 10);
+    if(d !== last){ last = d; html += `<div class="day-sep">${d === 'top' ? '🏆 1순위·최종 낙찰' : d ? dayLabel(d) : '개찰일 미상'}</div>`; }
     const rk = x.rank == null ? '-' : x.rank < 0 ? '미달' : fmtNum(x.rank);
     const ratio = x.amt && x.base ? x.amt / x.base * 100 : null;
     const more = x.src === 'app' ? `<details class="rc-more"><summary>자세히 · 금액 고치기</summary>
@@ -3295,7 +3300,8 @@ async function runVerify(){
 
 function initSettings(){
   fillSelect($('vSido'), SIDOS, {all: '시·도 선택', value: Company.get().sido || Data.meta.detail?.regions?.[0] || ''});
-  $('vRun').addEventListener('click', runVerify);
+  $('vRun').addEventListener('click', async () => { await runVerify(); $('vClose').hidden = !$('verifyResult').innerHTML.trim(); });
+  $('vClose').addEventListener('click', () => { $('verifyResult').innerHTML = ''; $('vClose').hidden = true; });
 
   const keyMsg = (t) => { $('keyMsg').innerHTML = t; };
   keyMsg(LS.get('apiKey', '') ? '저장된 키 있음 (이 기기)' : '저장된 키 없음');
@@ -3534,6 +3540,15 @@ async function init(){
     if(g){ if(g.dataset.goto === 'watch' && currentTab === 'home'){ watchMode = 'joined'; LS.set('watchMode', watchMode); } switchTab(g.dataset.goto); }
   });
 
+  document.addEventListener('toggle', (e) => {
+    const d = e.target;
+    if(d.tagName !== 'DETAILS' || !d.open || d.querySelector(':scope > .fold-btn')) return;
+    if(d.scrollHeight < 420) return;   // 짧으면 필요 없음
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'fold-btn'; b.textContent = '▲ 접기';
+    b.addEventListener('click', () => { d.open = false; d.querySelector(':scope > summary')?.scrollIntoView({block: 'nearest'}); });
+    d.appendChild(b);
+  }, true);
   initBidsFilters();
   initLive();
   initMine();
@@ -3545,7 +3560,8 @@ async function init(){
   history.replaceState(null, '', location.pathname + '#home');
   switchTab('home', false);
   if(LS.get('cloud', false)) Cloud.init().catch(e => console.warn(e));
-  Data.loadBids().then(() => { if(currentTab !== 'bids') updateNewBadge(); });
+  updateNewBadge();
+  updateWatchBadge();
 }
 
 init();
