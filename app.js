@@ -1263,13 +1263,13 @@ async function enrichLive(b){
 }
 
 function initLive(){
-  // 기본 조건(2026-09-27 요청): 공사 · 공고일 1개월 · 우리 시·도·시·군 · 마감 전만 끔 · 참가 가능한 공고만 — 앱을 열면 이 조건으로 미리 조회해 둔다
+  // 기본 조건(2026-09-27 요청, 같은 날 다시 바꿈): 공사 · 공고일 1개월 · 우리 시·도 · 시·군 전체 · 마감 전 공고만 · 참가 가능한 공고만 — 앱을 열면 이 조건으로 미리 조회해 둔다
   const co = Company.get();
   fillSelect($('lRgn'), SIDOS, {all:'시·도 전체', value: co.sido || ''});
   const fillLSgg = (value) => { fillSelect($('lSgg'), sggsOf($('lRgn').value), {all:'시·군 전체', value: typeof value === 'string' ? value : ''}); $('lSgg').disabled = !$('lRgn').value; };
-  fillLSgg(co.sgg || '');
+  fillLSgg('');
   Data.loadBids().then(() => {
-    if(!Live.params) fillLSgg(co.sgg || '');
+    if(!Live.params) fillLSgg('');
     if(apiKey() && !Live.params) liveSearch();   // 미리 조회 — 공고 검색 탭을 열면 바로 보이게
   });
   $('lRgn').addEventListener('change', fillLSgg);
@@ -1292,7 +1292,7 @@ function initLive(){
   ['lQuery', 'lOrg', 'lDmd'].forEach(id => $(id).addEventListener('keydown', (e) => { if(e.key === 'Enter') liveSearch(); }));
   $('liveMore').addEventListener('click', () => liveSearch(true));
   $('lElig').checked = Company.isSet();
-  $('lOpen').checked = false;
+  $('lOpen').checked = true;
   $('lElig').addEventListener('change', async () => { if(!Live.params) return; await Data.loadLicMap(); renderLive(); if(liveRows().length < 30 && !liveDone()) await liveSearch(true); });
   $('bMode').addEventListener('click', (e) => {
     const v = e.target.dataset?.v; if(!v) return;
