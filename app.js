@@ -603,6 +603,10 @@ function rgnOf(n){
 /** 사실조사(사전단속) 공사인지 — 수집기가 공고문 첨부에서 찾은 표시(bids.json sd). 실시간 검색 공고는 같은 공고번호의 bids.json 값 */
 const SD_TIP = '사실조사(사전단속)가 실시되는 공사입니다. 개찰 최고 순위 업체는 개찰 다음 날부터 사실조사 — 준비 자료를 본사에 갖추고 요청 기한 안에 제출(공고문 참고).';
 let bidSd = null;
+const sdTag = (n) => (n.sd || sdOf(n)) ? `<span class="tag warn tip" data-tip="${esc(SD_TIP)}" title="${esc(SD_TIP)}">사전단속</span>` : '';
+/** 우리가 1순위인 사전단속 공사 — 개찰 다음 날부터 사실조사라 할 일이 된다(개찰 2주 안만) */
+const sdAlert = (n, first, date) => first && (n.sd || sdOf(n)) && date && (Date.now() - Date.parse(date.slice(0, 10))) < 14 * 86400000
+  ? '<div class="alert danger sd-alert">🔍 <b>사실조사(사전단속) 대상</b> — 개찰 다음 날부터 조사합니다. 준비 자료를 본사 사무실에 갖추고, 발주처가 요구하면 <b>기한 안에 제출</b>하세요(안 되면 낙찰에서 제외). 공고문 \'기타 참고사항\' 확인.</div>' : '';
 function sdOf(n){
   if(n.sd) return true;
   if(!Data.bids?.length) return false;
@@ -1057,7 +1061,7 @@ function bidCard(b, today, opts = {}){
     `<span class="tag loc">${esc([b.sido, b.sgg].filter(Boolean).join(' ') || (b.src === '국방' ? (b.rgn?.length ? b.rgn.join('·') + ' 제한' : '전국') : '지역 미상'))}</span>`,
     b.sui ? '<span class="tag warn" title="수의계약(견적) — 추천값은 경쟁입찰 과거 공고 기준">수의</span>' : '',
     b.corr ? '<span class="tag warn" title="정정공고 — 바뀐 내용을 원문에서 확인">정정</span>' : '',
-    sdOf(b) ? `<span class="tag warn tip" data-tip="${esc(SD_TIP)}" title="${esc(SD_TIP)}">사전단속</span>` : '',
+    sdTag(b),
     ...licShortTags(b),
     eligTag(b),
   ].join('');
@@ -2836,7 +2840,7 @@ async function renderResults(el, appItems, pseudo, head){
           ${x.w.auto ? '' : `<button class="btn sm line" data-unwatch="${esc(x.id)}" type="button">목록에서 지우기</button>`}</div>
       </details>` : '';
     html += `<div class="rc ${x.cls}">
-      <div class="rc-nm">${esc(x.nm)}</div>
+      <div class="rc-nm">${esc(x.nm)} ${x.src === 'app' ? sdTag(x.w) : ''}</div>
       <div class="rc-sub">${esc(x.date.slice(11, 16) ? x.date.slice(0, 16) + ' 개찰' : x.date.slice(0, 10))} · ${esc(x.org || '')}</div>
       <div class="rc-line"><span class="rc-tags">${x.rgn ? `<span class="tag">${esc(x.rgn)}</span>` : ''}${x.lic ? `<span class="tag">${esc(x.lic.split('|').join('·'))}</span>` : ''}<span class="tag">${esc(x.kind)}</span></span><b class="rc-base">${x.base ? won(x.base) : ''}</b></div>
       <div class="rc-grid">
@@ -2844,6 +2848,7 @@ async function renderResults(el, appItems, pseudo, head){
         <div><span>내 투찰률</span><b>${x.x != null ? x.x.toFixed(3) : '-'}</b></div>
         <div><span>기초대비</span><b>${ratio ? ratio.toFixed(3) : '-'}</b></div>
       </div>
+      ${x.src === 'app' ? sdAlert(x.w, x.rank === 1 || x.fin, x.date) : ''}
       <div class="rc-foot"><span class="rc-rank ${x.cls}"><b>${rk}</b> / ${x.n ? fmtNum(x.n) : '-'}</span><span class="rc-amt">${x.amt ? won(x.amt) : '금액 기록 없음'}</span><span class="rc-v ${x.cls}">${esc(x.label)}</span></div>
       ${x.app ? `<div class="rc-app ${x.app.cls}">📱 앱 추천가 ${won(x.app.amt)}이었다면 → <b>${x.app.cls === 'win' ? '🏆 1순위' : x.app.cls === 'below' ? '하한 미달' : x.app.rank ? fmtNum(x.app.rank) + '위' : '1위보다 높음'}</b>${x.app.now ? '<span class="ops"> (개찰 전 추천 기록이 없어 지금 모델로 계산 — 참고용)</span>' : ''}</div>` : ''}
       ${more}
@@ -3041,6 +3046,8 @@ async function addJoinedByNo(text){
 async function renderWatch(){
   const el = $('watchList');
   let items = await WatchStore.list();
+  const sdNew = items.filter(w => !w.sd && sdOf(w));   // 사전단속 표시는 개찰 뒤 bids.json 에서 빠지므로 항목에 남긴다
+  if(sdNew.length){ for(const w of sdNew) await WatchStore.save({...w, sd: 1}); items = await WatchStore.list(); }
   el.innerHTML = loadingHtml();
   const sidos = [...new Set(items.map(i => i.sido).filter(s => s && Data.hasScsbid(s)))];
   try{
@@ -3124,7 +3131,7 @@ async function renderWatch(){
     if(mine) judged.push(mine);
     let body;
     if(r && r.sr != null){
-      body = `<div class="stat-grid" style="margin-top:8px;">
+      body = sdAlert(w, rank === 1, r.date || w.open) + `<div class="stat-grid" style="margin-top:8px;">
           <div class="stat ${rank === 1 ? 'hl' : ''}"><div class="t">우리 순위</div><div class="v">${rank ? fmtNum(rank) + '위' + (r.cnt ? ` <small class="faint">/ ${fmtNum(r.cnt)}곳</small>` : '') : w.myBid ? '-' : '기록 없음'}</div></div>
           <div class="stat"><div class="t">1위</div><div class="v" style="font-size:14px;">${esc(r.win || '-')}<br>${won(r.amt)}</div></div>
           <div class="stat"><div class="t">실제 사정율</div><div class="v">${pct(r.sr)}</div></div>
@@ -3146,7 +3153,7 @@ async function renderWatch(){
       : `<button class="star on" data-unwatch="${esc(w.id)}" title="관심 해제" type="button">★</button>`;
     return `<div class="bid${w.id === flashId ? ' flash' : ''}">
       <div class="bid-top"><div>
-        <div class="bid-title">${isJoined(w) ? '<span class="badge blue" style="margin-right:4px;">참여</span>' : ''}${esc(w.nm)}</div>
+        <div class="bid-title">${isJoined(w) ? '<span class="badge blue" style="margin-right:4px;">참여</span>' : ''}${esc(w.nm)} ${sdTag(w)}</div>
         <div class="bid-sub">${esc(w.org || '')}${w.sido ? ' · ' + esc([w.sido, w.sgg].filter(Boolean).join(' ')) : ''} · ${esc(w.no ? `${w.no}-${w.ord}` : '')}${w.close ? ` · <span class="dday ${dd.urgent ? 'urgent' : ''}">${esc(dd.text)}</span>` : ''}</div>
       </div>${star}</div>
       ${body}

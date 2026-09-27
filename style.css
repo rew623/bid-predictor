@@ -180,6 +180,7 @@ tr.click:hover td{background:var(--bg);}
 .new{display:inline-block; background:var(--target); color:#fff; font-size:10px; font-weight:700; border-radius:4px; padding:1px 5px; margin-right:4px; vertical-align:1px;}
 
 .alert{border-radius:10px; padding:10px 12px; font-size:13px; margin-top:10px;}
+.sd-alert{font-weight:500 !important; line-height:1.55; margin:8px 0 !important;}
 .alert.danger{background:var(--target-soft); color:var(--target); font-weight:600;}
 .alert.info{background:var(--primary-soft); color:var(--primary-dark);}
 .alert.warn{background:var(--warn-soft); color:var(--warn);}
