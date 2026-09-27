@@ -2847,7 +2847,9 @@ function buildResultRows(appItems){
     const op = res ? {base: r.base, plan: r.plan, r: res.xs.map((amt, i) => [i + 1, 0, amt])} : r0 ? Data.opening[w.sido]?.bids.get(r0.id) : null;
     const mine = r && r.base && r.plan ? judgeBid(w.myBid, r, op) : null;
     if(mine) judged.push(mine);
-    const rank = w.res?.mine?.rank || mine?.rank || null;
+    // 조달청 공식 판정(비고 '낙찰하한선 미달')이 있으면 그걸 따른다 — 하한율·A값이 빠진 공고는 계산 판정이 틀려 '1순위'로 잘못 셌다(2026-09-27, 금석건설 3건)
+    const offBelow = /미달/.test(w.res?.mine?.note || '');
+    const rank = w.res?.mine?.rank || (offBelow ? null : mine?.rank) || null;
     // 앱 추천가였다면: 저장할 때 기록한 추천(개찰 전 값, w.pred.bid)이 있으면 그것, 없으면 지금 모델로 계산(참고). 내 실제 투찰은 빼고 다른 업체와 비교
     let app = null;
     if(r && r.base && r.plan){
@@ -2865,8 +2867,8 @@ function buildResultRows(appItems){
     const date = (w.open || r0?.date || w.close || '').slice(0, 16);
     return {src: 'app', w, r, id: w.id, nm: w.nm, org: w.org || w.dmd, rgn: [w.sido, w.sgg].filter(Boolean).join(' '), lic: (w.lic || []).map(l => LIC_SHORT[l] || l).join('·'),
       date, base: r?.base || w.base, amt: w.myBid, S: r?.base && r?.plan ? r.plan / r.base * 100 : null, x: mine?.x ?? null,
-      rank: mine?.cls === 'below' ? -1 : rank, n: r?.cnt || w.res?.n || null, kind: '공사', winner: r?.win, winAmt: r?.amt, app,
-      cls: fin || rank === 1 ? 'win' : mine?.cls || '', label: fin ? '🏆 최종 낙찰' : rank === 1 ? '🏆 1순위' : mine?.label?.replace(' (1순위)', '') || (r ? '금액 기록 없음' : '결과 대기'), fin};
+      rank: offBelow || mine?.cls === 'below' ? -1 : rank, n: r?.cnt || w.res?.n || null, kind: '공사', winner: r?.win, winAmt: r?.amt, app,
+      cls: fin || rank === 1 ? 'win' : offBelow ? 'below' : mine?.cls || '', label: fin ? '🏆 최종 낙찰' : rank === 1 ? '🏆 1순위' : offBelow ? '하한 미달' : mine?.label?.replace(' (1순위)', '') || (r ? '금액 기록 없음' : '결과 대기'), fin};
   });
   LS.set('myCal', calibrate(judged));
   // 가져온 엑셀 이력 (앱 기록과 같은 공고(이름·개찰일)는 앱 쪽만)
@@ -3105,7 +3107,7 @@ async function findMyBidsInOpening(skipIds){
         lic: rec.lic, base: b.base || rec.base, a: rec.a, floor: rec.floor, rng: rec.rng, open: b.date, close: b.date,
         joined: true, auto: true, myBid: row[2],
         res: {n: b.r.length, plan: b.plan || rec.plan, base: b.base || rec.base, win: top[0] || null,
-              mine: {rank: row[0], amt: row[2], biz, name: b.corps[ci][0]}, top, xs: b.r.map(x => x[2])}});
+              mine: {rank: row[0], amt: row[2], biz, name: b.corps[ci][0], note: row[4] || ''}, top, xs: b.r.map(x => x[2])}});
     }
   }
   return out.sort((x, y) => (y.open || '').localeCompare(x.open || '')).slice(0, 2000);   // 예전 200 제한 때문에 개찰 결과·진단이 업체 보기(전체)와 숫자가 달랐음
