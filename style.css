@@ -527,6 +527,9 @@ button.hk:hover{background:rgba(255,255,255,.24);}
 /* ---------- 투찰 등록 버튼 · 후보 선택 ---------- */
 .btn.reg{background:var(--ok); color:#fff;}
 .btn.reg:hover{background:#0E9F5B;}
+.probe-row{display:flex; gap:8px; align-items:center; margin-top:10px;}
+.probe-row label{font-size:13px; white-space:nowrap; color:var(--text-sub);}
+.probe-row input{flex:1; min-width:0;}
 .pick-box{margin-top:10px; padding:10px 12px; border-radius:10px; background:var(--ok-soft); font-size:13px;}
 tr.pick-row td{background:var(--ok-soft);}
 td.nowrap{white-space:nowrap;}

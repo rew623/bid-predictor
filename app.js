@@ -2210,9 +2210,11 @@ async function runPredict(){
               {pts: rec.pts(), color: 'var(--primary)', label: '과거 낙찰확률', fill: true}],
         {min: vMin, max: vMax, marks: [{x: rec.x, color: 'var(--target)', label: `추천 ${rec.x.toFixed(3)}`}, {x: meanX, color: 'var(--text-faint)', label: `평균 ${meanX.toFixed(2)}`},
           ...(sel != null && Math.abs(sel - rec.x) > 1e-9 ? [{x: sel, color: 'var(--ok)', label: `선택 ${sel.toFixed(3)}`}] : [])]});
-    pickInfo = (x) => {
-      const amt = base ? amtAt(x) : null;
-      return `<b>선택 ${pct(x, 3)}</b> · 과거 낙찰확률 ${(rec.at(x) * 100).toFixed(2)}%${rec.random ? ` (공정 기대 ×${(rec.at(x) / rec.random).toFixed(2)})` : ''}${amt ? ` · 투찰금액 <b>${won(amt)}</b>` : ''}
+    pickInfo = (x, given) => {
+      const amt = given || (base ? amtAt(x) : null);
+      const below = rows.length ? rows.filter(r => r.sr > x).length / rows.length : null;   // 실제 사정율이 이 값보다 높으면 하한 미달
+      const vsRec = Math.abs(x - rec.x) > 1e-9 && rec.at(rec.x) ? rec.at(x) / rec.at(rec.x) : null;
+      return `${given ? `입력 금액 <b>${won(given)}</b> → ` : ''}<b>${given ? '투찰 사정률' : '선택'} ${pct(x, 3)}</b> · 과거 낙찰확률 ${(rec.at(x) * 100).toFixed(2)}%${rec.random ? ` (공정 기대 ×${(rec.at(x) / rec.random).toFixed(2)})` : ''}${vsRec ? ` · 추천의 ${Math.round(vsRec * 100)}%` : ''}${!given && amt ? ` · 투찰금액 <b>${won(amt)}</b>` : ''}${below != null ? `<br><span class="faint">하한 미달 확률 ${(below * 100).toFixed(0)}% (실제 사정율이 이 값보다 높았던 비율, ${sampleText(rows.length)})</span>` : ''}
         <div class="btn-row" style="margin-top:8px;">${P.notice && amt ? `<button class="btn sm reg" data-reg-amt="${amt}" data-reg-sr="${x}" type="button">📝 이 금액으로 투찰 등록</button>` : ''}<button class="btn sm line" data-use-sr="${x}" type="button">계산기로</button></div>`;
     };
     curveCard = `<div class="card">
@@ -2226,6 +2228,7 @@ async function runPredict(){
           <div class="cand-btns"><button class="btn sm line" data-pick-sr="${c.x}" type="button">적용</button><button class="btn sm ghost" data-use-sr="${c.x}" type="button">계산기로</button></div>
         </div>`).join('')}</div>
       <div class="pick-box" id="pickBox">${pickInfo(rec.x)}</div>
+      ${base ? `<div class="probe-row"><label for="probeAmt">금액 넣어 보기</label><input type="text" class="money" id="probeAmt" inputmode="numeric" autocomplete="off" placeholder="예: 더비스 제시가 — 그래프에 위치 표시"></div>` : ''}
       <div class="meta-line ops">곡선 표본: ${esc(rec.note)} · 곡선 폭 ±${rec.src === 'model' && Model.m?.smooth ? Model.m.smooth : curveSmooth()}%p · 과거 낙찰확률은 과거에 맞춘 값이라 새 공고에선 더 낮음(위 예상 낙찰확률은 역검증 기준) · 공정 기대 = 1 ÷ (참가업체 수 + 1), 우리가 들어가면 한 곳 늘어나므로</div>
     </div>`;
 
@@ -2293,6 +2296,17 @@ async function runPredict(){
       </table></div>
       ${rows.length > 1000 ? `<div class="meta-line">화면에는 최근 1,000건만 표시합니다. 전체는 CSV로 받으세요.</div>` : ''}
     </details>`;
+  // 금액으로 위치 보기(더비스 제시가 등): 투찰 사정률로 되돌려 그래프에 초록 선 + 확률 (2026-09-27 요청)
+  P.markCurve = drawCurve ? (x, amt) => {
+    if(!$('curvePlot')) return;
+    $('curvePlot').innerHTML = drawCurve(x);
+    $('pickBox').innerHTML = pickInfo(x, amt);
+    out.querySelectorAll('.cand').forEach(el => el.classList.remove('pick-row'));
+  } : null;
+  $('probeAmt')?.addEventListener('input', () => {
+    const amt = numOf($('probeAmt')), x = bidToSr(amt, base, a, floor);
+    if(x != null) P.markCurve?.(x, amt);
+  });
   // 버튼은 위임(후보 '적용'으로 새로 그린 버튼도 동작): 계산기로 / 그래프에 표시 / 투찰 등록
   out.onclick = (e) => {
     const u = e.target.closest('[data-use-sr]'), pk = e.target.closest('[data-pick-sr]'), rg = e.target.closest('[data-reg-amt]');
@@ -2329,7 +2343,7 @@ function renderCalc(){
   const out = $('calcResult');
   if(!c.base || !c.sr){ out.innerHTML = '<div class="meta-line">기초금액과 적용 사정율을 입력하세요.</div>'; return; }
   const warns = [];
-  if(c.manual && c.manual < c.computed) warns.push(`투찰금액이 적용 사정율 기준 낙찰하한가(${won(c.computed)})보다 ${won(c.computed - c.manual)} 낮습니다 — 낙찰하한가 미만`);
+  const xm = c.manual ? bidToSr(c.manual, c.base, c.a, c.floor) : null;   // 직접 넣은 금액(더비스 제시가 등)의 투찰 사정률
   if(c.net && c.final < c.net * 0.98) warns.push(`투찰금액이 순공사원가 × 98% (${won(Math.ceil(c.net*0.98))}) 미만입니다 — 입찰 무효 위험`);
   const rng = $('pRng').value ? $('pRng').value.split(',').map(Number) : P.notice?.rng;
   const info = [];
@@ -2338,6 +2352,13 @@ function renderCalc(){
     const r = P.last.rec;
     info.push(`이 투찰 사정률(${c.sr}%)의 과거 낙찰확률 <b>${(r.at(c.sr)*100).toFixed(2)}%</b> · 추천 ${pct(r.x, 3)}에서 ${(r.p*100).toFixed(2)}%`);
   }
+  if(xm != null && P.last?.rec){
+    const r = P.last.rec, below = P.last.rows?.length ? P.last.rows.filter(q => q.sr > xm).length / P.last.rows.length : null;
+    info.unshift(`<b>직접 입력 ${won(c.manual)}</b> → 투찰 사정률 <b>${xm.toFixed(3)}%</b> · 과거 낙찰확률 <b>${(r.at(xm) * 100).toFixed(2)}%</b>${r.at(r.x) ? ` (추천 ${pct(r.x, 3)}의 ${Math.round(r.at(xm) / r.at(r.x) * 100)}%)` : ''}${below != null ? ` · 하한 미달 확률 ${(below * 100).toFixed(0)}%` : ''} — 위 그래프에 초록 선`);
+    P.markCurve?.(xm, c.manual);
+  }else if(xm != null){
+    info.unshift(`<b>직접 입력 ${won(c.manual)}</b> → 투찰 사정률 <b>${xm.toFixed(3)}%</b>`);
+  }
   if(P.last?.rows?.length){
     const above = P.last.rows.filter(r => r.sr > c.sr).length / P.last.rows.length;
     info.push(`과거 분포상 실제 사정율이 적용값보다 높을 확률 ${(above*100).toFixed(1)}% — 이 경우 이 금액은 실제 낙찰하한가에 못 미칩니다. (${sampleText(P.last.rows.length)})`);
@@ -2345,7 +2366,7 @@ function renderCalc(){
   out.innerHTML = `<div class="stat-grid">
       <div class="stat"><div class="t">예정가격</div><div class="v">${won(c.plan)}</div></div>
       <div class="stat"><div class="t">투찰금액 (낙찰하한가)</div><div class="v" style="color:var(--primary-dark);">${won(c.computed)}</div></div>
-      ${c.manual ? `<div class="stat"><div class="t">직접 입력 투찰금액</div><div class="v">${won(c.manual)}</div></div>` : ''}
+      ${c.manual ? `<div class="stat"><div class="t">직접 입력 금액의 투찰 사정률</div><div class="v">${xm != null ? xm.toFixed(3) + '%' : '-'}</div></div>` : ''}
       ${c.net ? `<div class="stat"><div class="t">순공사원가 × 98%</div><div class="v">${won(Math.ceil(c.net*0.98))}</div></div>` : ''}
     </div>
     ${warns.map(w => `<div class="alert danger">⚠️ ${esc(w)}</div>`).join('')}
