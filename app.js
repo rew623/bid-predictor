@@ -220,7 +220,7 @@ const Cloud = {
     watchMode = LS.get('watchMode', watchMode);
     Mine.area = LS.get('mineArea', Mine.area);
     applyTheme();
-    if(currentTab && currentTab !== 'settings') switchTab(currentTab, false);
+    if(currentTab && currentTab !== 'settings') switchTab(currentTab, false, {refresh: true});
   },
   /** 설정 카드·첫 화면 표시 */
   paint(){
@@ -796,18 +796,36 @@ let prevVisit = null;       // 이번 세션 시작 전 마지막 방문 시각 
 
 /** 간단 모드(기본) / 운영자 모드(bp.admin, 동기화, 누구나 설정에서 켬): 기능은 같고, 간단 모드는 설명 문구만 CSS 로 숨긴다(body.simple — style.css '간단 모드') */
 const applyMode = () => document.body.classList.toggle('simple', !LS.get('admin', false));
-function switchTab(tab, push=true){
+/** 탭을 옮겨 다녀도 하던 화면 그대로(2026-09-27 요청): 조건·펼침·결과는 DOM·변수에 남기고, 하단 탭·뒤로 버튼으로 돌아오면 스크롤도 되돌린다.
+ *  분석 탭은 마지막으로 보던 화면(금액 분석·모의 투찰·통계), 내 투찰 탭은 늘 ⭐ 관심부터(요청). */
+const ANA_TABS = ['predict', 'paper', 'stats'];
+let lastAna = 'predict';
+const tabY = {}, tabSeen = {};   // 탭별 스크롤 위치, 마지막으로 그렸을 때의 데이터 갱신 시각
+function switchTab(tab, push=true, opt={}){
   if(!TAB_TITLES[tab]) tab = 'home';
+  if(opt.nav && tab === 'predict') tab = lastAna;
+  if(opt.nav && tab === 'watch'){ watchMode = 'watch'; LS.set('watchMode', watchMode); }
+  if(ANA_TABS.includes(tab)) lastAna = tab;
   applyMode();
   updateWatchBadge();   // 다른 기기에서 동기화된 관심공고도 반영
-  if(tab === 'home' && currentTab !== 'home'){ Mine.kind = '공사'; Mine.area = 'sido'; Mine.shown = 60; }   // 우리 공고에 들어오면 늘 '공사 · 우리 시·도'부터 (2026-09-26 요청)
+  if(currentTab) tabY[currentTab] = window.scrollY;
+  const first = !tabSeen[tab];
+  if(tab === 'home' && first){ Mine.kind = '공사'; Mine.area = 'sido'; Mine.shown = 60; }   // 앱을 열면 '공사 · 우리 시·도'부터 (2026-09-26 요청) — 다른 탭 다녀올 땐 보던 그대로
+  const keep = opt.refresh || ((opt.nav || opt.back) && !first && tab !== 'watch');
   currentTab = tab;
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'view-' + tab);
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === (tab === 'stats' || tab === 'paper' ? 'predict' : tab)));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === (ANA_TABS.includes(tab) ? 'predict' : tab)));
   $('pageTitle').textContent = TAB_TITLES[tab];
   if(push && location.hash !== '#' + tab) history.pushState(null, '', '#' + tab);
-  window.scrollTo(0, 0);
-  ({home: renderMine, bids: renderBidsTab, predict: renderPredictTab, watch: renderWatch, paper: renderPaper, corp: renderCorpSearch, stats: renderStats, settings: renderSettings})[tab]();
+  const y = keep ? tabY[tab] || 0 : 0;
+  window.scrollTo(0, y);
+  const ver = Data.meta?.updated_at || 1;
+  // 통계·모의 투찰은 개인 데이터와 무관하고 다시 그리면 불러오기부터 다시 하므로, 데이터가 그대로면 그리지 않는다
+  const skip = keep && (tab === 'stats' || tab === 'paper') && tabSeen[tab] === ver;
+  tabSeen[tab] = ver;
+  if(skip) return;
+  const r = ({home: renderMine, bids: renderBidsTab, predict: renderPredictTab, watch: renderWatch, paper: renderPaper, corp: renderCorpSearch, stats: renderStats, settings: renderSettings})[tab]();
+  if(y) Promise.resolve(r).then(() => requestAnimationFrame(() => { if(currentTab === tab) window.scrollTo(0, y); }));
 }
 
 // ============================================================ 입찰공고
@@ -3669,11 +3687,11 @@ async function init(){
   await Data.loadMeta();
   await Data.loadModel();
 
-  document.querySelectorAll('.nav-item').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+  document.querySelectorAll('.nav-item').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab, true, {nav: true})));
   window.addEventListener('popstate', () => {
     const h = location.hash.slice(1);
-    if(h.startsWith('corp')){ Corp.sel = h.split('/')[1] || null; if(currentTab !== 'corp') switchTab('corp', false); else renderCorpSearch(); return; }   // 업체 보기 → 뒤로 = 업체 목록
-    switchTab(h, false);
+    if(h.startsWith('corp')){ Corp.sel = h.split('/')[1] || null; if(currentTab !== 'corp') switchTab('corp', false, {back: true}); else renderCorpSearch(); return; }   // 업체 보기 → 뒤로 = 업체 목록
+    switchTab(h, false, {back: true});
   });
   document.addEventListener('click', (e) => {
     const w = e.target.closest('[data-watch]');
