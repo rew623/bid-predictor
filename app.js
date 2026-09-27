@@ -2855,10 +2855,11 @@ function buildResultRows(appItems){
     if(mine) judged.push(mine);
     // 조달청 공식 판정(비고 '낙찰하한선 미달')이 있으면 그걸 따른다 — 하한율·A값이 빠진 공고는 계산 판정이 틀려 '1순위'로 잘못 셌다(2026-09-27, 금석건설 3건)
     const offBelow = /미달/.test(w.res?.mine?.note || '');
-    const rank = w.res?.mine?.rank || (offBelow ? null : mine?.rank) || null;
+    const other = (w.kind && w.kind !== '공사') || w.src === '국방';   // 물품·국방은 적격·규격 탈락이 많아 계산 순위 대신 조달청 순위만
+    const rank = w.res?.mine?.rank || (offBelow || other ? null : mine?.rank) || null;
     // 앱 추천가였다면: 저장할 때 기록한 추천(개찰 전 값, w.pred.bid)이 있으면 그것, 없으면 지금 모델로 계산(참고). 내 실제 투찰은 빼고 다른 업체와 비교
     let app = null;
-    if(r && r.base && r.plan){
+    if(r && r.base && r.plan && (w.kind || '공사') === '공사' && w.src !== '국방'){   // 추천은 나라장터 공사만(물품·국방은 역검증 전)
       const frozen = ['자동', '추천'].includes(w.pred?.by) ? w.pred.bid : null;   // 직접 고른 금액으로 등록했으면 pred.bid 는 추천값이 아님
       const qp = frozen ? null : quickPredict({...w, base: r.base, a: w.a ?? r.a, floor: w.floor || r.floor, rng: w.rng || r.rng, lic: w.lic || r.lic});
       const amt = frozen || qp?.bid;
@@ -2873,7 +2874,7 @@ function buildResultRows(appItems){
     const date = (w.open || r0?.date || w.close || '').slice(0, 16);
     return {src: 'app', w, r, id: w.id, nm: w.nm, org: w.org || w.dmd, rgn: [w.sido, w.sgg].filter(Boolean).join(' '), lic: (w.lic || []).map(l => LIC_SHORT[l] || l).join('·'),
       date, base: r?.base || w.base, amt: w.myBid, S: r?.base && r?.plan ? r.plan / r.base * 100 : null, x: mine?.x ?? null,
-      rank: offBelow || mine?.cls === 'below' ? -1 : rank, n: r?.cnt || w.res?.n || null, kind: '공사', winner: r?.win, winAmt: r?.amt, app,
+      rank: offBelow || mine?.cls === 'below' ? -1 : rank, n: r?.cnt || w.res?.n || null, kind: w.kind || '공사', src2: w.src, winner: r?.win, winAmt: r?.amt, app,
       cls: fin || rank === 1 ? 'win' : offBelow ? 'below' : mine?.cls || '', label: fin ? '🏆 최종 낙찰' : rank === 1 ? '🏆 1순위' : offBelow ? '하한 미달' : mine?.label?.replace(' (1순위)', '') || (r ? '금액 기록 없음' : '결과 대기'), fin};
   });
   LS.set('myCal', calibrate(judged));
@@ -2941,7 +2942,7 @@ async function renderResults(el, appItems, pseudo, head){
         <div class="mybid-row"><label>내가 넣은 투찰금액</label>
           <input type="text" class="money" inputmode="numeric" autocomplete="off" data-mybid-in="${esc(x.id)}" value="${moneyText(x.amt)}" placeholder="원 단위">
           <button class="btn sm ghost" data-mybid-save="${esc(x.id)}" type="button">기록</button>
-          ${apiKey() ? `<button class="btn sm line" data-res-fetch="${esc(x.id)}" type="button">다시 조회</button>` : ''}
+          ${apiKey() && x.w.src !== '국방' ? `<button class="btn sm line" data-res-fetch="${esc(x.id)}" type="button">다시 조회</button>` : ''}
           <button class="btn sm line" data-res-hide="${esc(x.key)}" type="button">목록에서 빼기</button></div>
         ${x.w.res?.mine?.amt && x.w.res.mine.amt !== x.amt ? `<div class="meta-line">조달청 기록 투찰금액 <b>${won(x.w.res.mine.amt)}</b> <button class="btn sm line" data-mybid-reset="${esc(x.id)}" type="button">이 값으로 되돌리기</button></div>` : ''}
         <div class="meta-line ops">기록 = 내가 넣은 금액을 고쳐 저장 · 다시 조회 = 조달청 개찰 결과를 새로 받아 순위·금액을 조달청 값으로 · 목록에서 빼기 = 맨 아래 '뺀 목록'으로 옮김(진단·요약에서도 빠짐, 언제든 되돌리기)</div>
@@ -2949,14 +2950,14 @@ async function renderResults(el, appItems, pseudo, head){
     html += `<div class="rc ${x.cls}">
       <div class="rc-nm">${esc(x.nm)} ${x.src === 'app' ? sdTag(x.w) : ''}</div>
       <div class="rc-sub">${esc(x.date.slice(11, 16) ? x.date.slice(0, 16) + ' 개찰' : x.date.slice(0, 10))} · ${esc(x.org || '')}</div>
-      <div class="rc-line"><span class="rc-tags">${x.rgn ? `<span class="tag">${esc(x.rgn)}</span>` : ''}${x.lic ? `<span class="tag">${esc(x.lic.split('|').join('·'))}</span>` : ''}<span class="tag">${esc(x.kind)}</span></span><b class="rc-base">${x.base ? won(x.base) : ''}</b></div>
+      <div class="rc-line"><span class="rc-tags">${x.rgn ? `<span class="tag">${esc(x.rgn)}</span>` : ''}${x.lic ? `<span class="tag">${esc(x.lic.split('|').join('·'))}</span>` : ''}<span class="tag">${esc(x.kind)}</span>${x.w?.src === '국방' ? '<span class="tag">🎖 국방</span>' : ''}</span><b class="rc-base">${x.base ? won(x.base) : ''}</b></div>
       <div class="rc-grid">
         <div><span>사정율</span><b>${x.S ? x.S.toFixed(3) : '비공개'}</b></div>
         <div><span>내 투찰률</span><b>${x.x != null ? x.x.toFixed(3) : '-'}</b></div>
         <div><span>기초대비</span><b>${ratio ? ratio.toFixed(3) : '-'}</b></div>
       </div>
       ${x.src === 'app' ? sdAlert(x.w, x.rank === 1 || x.fin, x.date) : ''}
-      <div class="rc-foot"><span class="rc-rank ${x.cls}"><b>${rk}</b> / ${x.n ? fmtNum(x.n) : '-'}</span><span class="rc-amt">${x.amt ? won(x.amt) : '금액 기록 없음'}</span><span class="rc-v ${x.cls}">${esc(x.label)}</span></div>
+      <div class="rc-foot"><span class="rc-rank ${x.cls}"><b>${rk}</b> / ${x.n ? fmtNum(x.n) : '-'}</span><span class="rc-amt">${x.amt ? won(x.amt) + (x.w?.res?.mine?.est && x.amt === x.w.res.mine.amt ? '<small class="faint" title="투찰률 × 예정가격으로 계산한 금액"> (추정)</small>' : '') : '금액 기록 없음'}</span><span class="rc-v ${x.cls}">${esc(x.label)}</span></div>
       ${x.app ? `<div class="rc-app ${x.app.cls}">📱 앱 추천가 ${won(x.app.amt)}이었다면 → <b>${x.app.cls === 'win' ? '🏆 1순위' : x.app.cls === 'below' ? '하한 미달' : x.app.rank ? fmtNum(x.app.rank) + '위' : '1위보다 높음'}</b>${x.app.now ? '<span class="ops"> (개찰 전 추천 기록이 없어 지금 모델로 계산 — 참고용)</span>' : ''}</div>` : ''}
       ${more}
     </div>`;
@@ -3131,6 +3132,23 @@ async function findMyBidsInOpening(skipIds){
               mine: {rank: row[0], amt: row[2], biz, name: b.corps[ci][0], note: row[4] || ''}, top, xs: b.r.map(x => x[2])}});
     }
   }
+  // 국방·물품·다른 시·도: 수집기가 우리 행만 뽑아 둔 작은 파일(scripts/my_bids.py — 사업자번호는 안 들어 있음, 2026-09-27)
+  const have = new Set(out.map(w => w.id));
+  for(const f of ['mine.json', 'd2b/mine.json']){
+    let j; try{ j = await Data.once('mine:' + f, () => Data.fetchJson(f)); }catch(e){ continue; }
+    for(const m of j.items || []){
+      if(skipIds.has(m.id) || have.has(m.id)) continue;
+      have.add(m.id);
+      const [rank, amt, rate, note, est] = m.mine;
+      const top = (m.top || []).map(x => ({rank: x[0], name: x[1], biz: '', amt: x[2], rate: x[3], note: x[4] || ''}));
+      const cut = m.src === '국방' ? -1 : m.id.lastIndexOf('-');
+      out.push({id: m.id, no: cut > 0 ? m.id.slice(0, cut) : m.id, ord: cut > 0 ? m.id.slice(cut + 1) : '', nm: m.nm, org: m.org, dmd: m.dmd, sido: m.sido, sgg: m.sgg,
+        lic: m.lic, base: m.base, a: m.a ?? (m.kind === '공사' && m.src !== '국방' ? undefined : 0), floor: m.floor, rng: m.rng, open: m.date, close: m.date,
+        kind: m.kind, src: m.src, joined: true, auto: true, myBid: amt || null,
+        res: {n: m.n, plan: m.plan, base: m.base, win: top[0] || null, mine: {rank, amt, biz, name: Company.get().name || '우리', note: note || '', est: !!est}, top,
+              xs: [...top.map(x => x.amt), ...(amt && !top.some(x => x.amt === amt) ? [amt] : [])].filter(Boolean)}});
+    }
+  }
   return out.sort((x, y) => (y.open || '').localeCompare(x.open || '')).slice(0, 2000);   // 예전 200 제한 때문에 개찰 결과·진단이 업체 보기(전체)와 숫자가 달랐음
 }
 
@@ -3206,7 +3224,7 @@ async function renderWatch(){
       <span class="meta-line" id="joinMsg" style="margin:0;"></span>
     </div>
     <div class="meta-line" style="margin:0 0 12px;">${joinedMode ? '넣은 공고를 공고번호로 추가하거나, 관심에서 "참여 표시"를 누르세요. 개찰 시각이 지나면 <b>🏁 개찰 결과</b>로 옮겨지고 조달청에서 순위·금액을 바로 가져옵니다.'
-      : hasBiz ? `강원 공고는 수집된 개찰 상세에서 우리 투찰을 자동으로 찾습니다(${fmtNum(auto.length)}건). 다른 지역은 공고번호로 추가하거나 맨 아래에서 더비스 투찰 이력 엑셀을 가져오세요.`
+      : hasBiz ? `수집된 개찰 결과(강원 공사 전부 · 다른 시·도는 관심 면허 공사 · 강원 물품 · 국방)에서 우리 투찰을 자동으로 찾습니다(${fmtNum(auto.length)}건, 하루 몇 번 수집 때 갱신). 방금 개찰한 공고는 관심·투찰 등록해 두면 개찰 직후 조달청에서 바로 조회합니다. 그 밖은 공고번호로 추가하거나 맨 아래에서 더비스 투찰 이력 엑셀을 가져오세요.`
       : '설정 → 우리 업체에 <b>사업자번호</b>를 넣으면 수집된 개찰 상세에서 우리 순위·금액을 자동으로 찾습니다.'}</div>` : '';
   if(resultMode) return renderResults(el, list, pseudo, modeSeg + joinForm);
   if(watchMode === 'diag') return renderDiag(el, lists.result, pseudo, modeSeg);

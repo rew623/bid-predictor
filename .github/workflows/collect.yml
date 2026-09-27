@@ -103,6 +103,13 @@ jobs:
         continue-on-error: true
         run: python scripts/corp_index.py
 
+      - name: 우리 투찰 뽑기 (다른 시·도 개찰 상세·물품 개찰 순위 → data/mine.json, 앱 개찰 결과)
+        if: always()
+        continue-on-error: true
+        env:
+          WATCH_BIZ: ${{ secrets.WATCH_BIZ || vars.WATCH_BIZ }}
+        run: python scripts/my_bids.py g2b
+
       - name: 전체 수집 커밋
         if: always()
         run: bash scripts/commit_data.sh "수집"
@@ -136,6 +143,13 @@ jobs:
           MAX_MINUTES: ${{ (github.event.schedule == '0 0,4,8 * * *' || inputs.quick_only) && '55' || '220' }}
           WATCH_BIZ: ${{ secrets.WATCH_BIZ || vars.WATCH_BIZ }}
         run: python scripts/collect_d2b.py
+
+      - name: 우리 투찰 뽑기 (국방 → data/d2b/mine.json, 앱 개찰 결과)
+        if: always()
+        continue-on-error: true
+        env:
+          WATCH_BIZ: ${{ secrets.WATCH_BIZ || vars.WATCH_BIZ }}
+        run: python scripts/my_bids.py d2b
 
       - name: 국방 수집 커밋
         if: always()
