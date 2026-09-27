@@ -624,3 +624,15 @@ body.simple .bcard > .b-note:not(.result){display:none !important;}
 
 /* 길게 펼친 '자세히' 맨 아래 접기 버튼 */
 .fold-btn{display:block; width:100%; margin:12px 0 0; padding:9px; border:1px solid var(--border, #E4E7EC); border-radius:10px; background:var(--bg); color:var(--text-sub); font:inherit; font-size:13px; cursor:pointer;}
+
+/* 금액 복사 · 투찰 등록 표시 · 앱 추천가였다면 · 알림 */
+.copy-btn{margin-left:6px; padding:2px 8px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--primary); font:inherit; font-size:11.5px; font-weight:600; cursor:pointer; vertical-align:middle;}
+.b-mine{grid-column:1 / -1; margin-top:6px; padding:8px 12px; border-radius:10px; background:var(--ok-soft); color:var(--ok); font-size:13px;}
+.b-mine b{color:var(--text);}
+.bcard.done{opacity:.85;}
+.rc-app{margin-top:6px; padding:6px 10px; border-radius:8px; background:var(--bg); font-size:12.5px; color:var(--text-sub);}
+.rc-app b{color:var(--text);}
+.rc-app.win b{color:var(--ok);}
+.rc-app.below b{color:var(--target);}
+.toast{position:fixed; left:50%; bottom:calc(var(--nav-h) + 20px); transform:translateX(-50%) translateY(10px); background:#1F2937; color:#fff; padding:9px 16px; border-radius:20px; font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:100;}
+.toast.on{opacity:1; transform:translateX(-50%) translateY(0);}

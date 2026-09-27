@@ -876,6 +876,19 @@ function fillBidsSgg(value){
 }
 
 let watchIds = new Set();
+let bidMap = new Map();   // 공고ID → 내가 등록한 투찰금액 (카드에 '✓ 투찰 등록함' 표시)
+/** 화면 아래 잠깐 뜨는 알림 */
+function toast(msg){
+  let el = document.getElementById('toast');
+  if(!el){ el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
+  el.textContent = msg; el.classList.add('on');
+  clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 1800);
+}
+async function refreshWatchIds(){
+  const list = await WatchStore.list();
+  watchIds = new Set(list.map(w => w.id));
+  bidMap = new Map(list.filter(w => w.myBid).map(w => [w.id, w.myBid]));
+}
 async function renderBids(){
   const list = $('bidsList');
   if(!Data.bids){ list.innerHTML = loadingHtml(); await Data.loadBids(); fillBidsSgg(LS.get('bidsFilter', {}).sgg || ''); }
@@ -885,7 +898,7 @@ async function renderBids(){
   const [aLo, aHi] = ($('bAmt').value || '-').split('-').map(v => v === '' ? null : +v * 1e8);
   const q = $('bQuery').value.trim().toLowerCase();
   const now = new Date(), today = kstDay(now);
-  watchIds = new Set((await WatchStore.list()).map(w => w.id));
+  await refreshWatchIds();
   const base = Data.bids.filter(b => {
     const amt = b.base || b.est;
     return (!sido || b.sido === sido) && (!sgg || b.sgg === sgg) &&
@@ -1024,7 +1037,7 @@ function bidCard(b, today, opts = {}){
   let pred = '', more = '';
   if(qp){
     pred = `<div class="b-pred">
-        <div class="pv hl big"><span>추천 투찰가</span><b>${qp.bid ? won(qp.bid) : b.live && b.kind === '공사' && !b.bsisTried && apiKey() ? '<span class="faint">불러오는 중…</span>' : opened(b) ? '기초금액 없음' : '기초금액 공개 후'}</b></div>
+        <div class="pv hl big"><span>추천 투찰가${qp.bid ? ` <button type="button" class="copy-btn" data-copy="${qp.bid}" title="나라장터에 붙여넣기">📋 복사</button>` : ''}</span><b>${qp.bid ? won(qp.bid) : b.live && b.kind === '공사' && !b.bsisTried && apiKey() ? '<span class="faint">불러오는 중…</span>' : opened(b) ? '기초금액 없음' : '기초금액 공개 후'}</b></div>
         ${qp.bestSr != null ? `<div class="pv"><span>낙찰확률</span><b>${(qp.winP * 100).toFixed(2)}%${qp.lift ? ` <small class="lift">×${qp.lift.toFixed(1)}</small>` : ''}</b></div>` : ''}
         ${qp.cnt ? `<div class="pv"><span>예상 참가</span><b>~${fmtNum(qp.cnt)}곳</b></div>` : ''}
         ${done.amt ? `<div class="pv"><span>낙찰가</span><b>${won(done.amt)}</b></div>` : ''}
@@ -1041,7 +1054,9 @@ function bidCard(b, today, opts = {}){
   }
   if(res?.amt) more += `<div class="b-note result">개찰 결과 · ${res.sr != null ? `사정율 <b>${pct(res.sr, 3)}</b> · ` : ''}1위 ${esc(res.win || '-')} ${won(res.amt)}${res.rate ? ` (${pct(res.rate)})` : ''}${res.cnt ? ` · ${fmtNum(res.cnt)}개사 참가` : ''}</div>`;
   const open = b.open ? `개찰 ${b.open.slice(5, 16).replace('-', '/')}` : '';
-  return `<article class="bcard ${dd.cls}">
+  const myAmt = bidMap.get(b.id);
+  if(myAmt) pred = `<div class="b-mine">✓ 투찰 등록함 · <b>${won(myAmt)}</b> <button type="button" class="copy-btn" data-copy="${myAmt}">📋 복사</button></div>` + pred;
+  return `<article class="bcard ${dd.cls}${myAmt ? ' done' : ''}">
     <div class="b-dday"><b>${dd.big}</b><span>${esc(dd.small)}</span></div>
     <div class="b-main">
       <div class="b-title">${isNew(b) ? '<span class="new">NEW</span>' : ''}${esc(b.nm)}</div>
@@ -1056,7 +1071,7 @@ function bidCard(b, today, opts = {}){
     <details class="b-more"><summary>자세히</summary><div class="b-tags">${moreTags}</div>${more}</details>
     <div class="b-actions">
       ${b.kind === '물품' || b.src === '국방' ? '' : `<button class="btn sm" data-predict="${esc(b.id)}" type="button">💰 투찰금액 분석</button>`}
-      ${qp?.bid ? `<button class="btn sm reg" data-quickbid="${esc(b.id)}" type="button" title="추천 투찰가 ${won(qp.bid)}을 내 투찰에 기록">📝 추천가로 투찰 등록</button>` : ''}
+      ${qp?.bid && !myAmt ? `<button class="btn sm reg" data-quickbid="${esc(b.id)}" type="button" title="추천 투찰가 ${won(qp.bid)}을 내 투찰에 기록">📝 추천가로 투찰 등록</button>` : ''}
       ${b.url ? `<a class="btn line sm" href="${esc(b.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}
       ${opts.hide ? `<button class="btn line sm" data-hide="${esc(b.id)}" type="button" title="우리가 못 하는 공고면 빼 두세요. 이 기기에만 저장">목록에서 빼기</button>` : ''}
       ${opts.unhide ? `<button class="btn line sm" data-unhide="${esc(b.id)}" type="button">되돌리기</button>` : ''}
@@ -1351,7 +1366,7 @@ async function renderMine(){
   list = [...list].sort(sort === 'win' ? (a, b) => (qp.get(b)?.winP ?? -1) - (qp.get(a)?.winP ?? -1)
     : sort === 'value' ? (a, b) => (qp.get(b)?.value ?? -1) - (qp.get(a)?.value ?? -1)
     : (a, b) => (a.close || '9').localeCompare(b.close || '9'));
-  watchIds = new Set(watch.map(w => w.id));
+  await refreshWatchIds();
   let html = '', last = null;
   $('mineMore').hidden = list.length <= Mine.shown;
   $('mineMore').textContent = `더 보기 (${fmtNum(list.length - Mine.shown)}건 남음)`;
@@ -1404,7 +1419,7 @@ function initMine(){
 }
 
 function renderBidsTab(){
-  const mode = ['live', 'saved'].includes(bidsMode) ? bidsMode : (apiKey() ? 'live' : 'saved');
+  const mode = apiKey() ? 'live' : 'saved';   // 전환 버튼은 없앰(2026-09-27) — 키가 없을 때만 자동 수집 목록
   $('bMode').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
   $('bidsSaved').hidden = mode !== 'saved';
   $('bidsLive').hidden = mode !== 'live';
@@ -1568,7 +1583,7 @@ async function renderLive(){
     Live.items.forEach(b => { if(!b.sido) b.sido = sido; });
     if(Data.hasScsbid(sido) && !Data.scsbid[sido]){ try{ await Data.loadScsbid(sido); }catch(e){ console.warn(e); } }
   }
-  watchIds = new Set((await WatchStore.list()).map(w => w.id));
+  await refreshWatchIds();
   const rows = liveRows(), sgg = $('lSgg').value;
   // 이미 가진 값은 조회를 기다리지 않고 바로: 진행중 공고(bids.json) → 마감 공고는 수집된 낙찰 기록의 기초금액·A값·예가범위
   rows.forEach(b => {
@@ -2711,11 +2726,24 @@ async function renderResults(el, appItems, pseudo, head){
     const mine = r && r.base && r.plan ? judgeBid(w.myBid, r, op) : null;
     if(mine) judged.push(mine);
     const rank = w.res?.mine?.rank || mine?.rank || null;
+    // 앱 추천가였다면: 저장할 때 기록한 추천(개찰 전 값, w.pred.bid)이 있으면 그것, 없으면 지금 모델로 계산(참고). 내 실제 투찰은 빼고 다른 업체와 비교
+    let app = null;
+    if(r && r.base && r.plan){
+      const frozen = ['자동', '추천'].includes(w.pred?.by) ? w.pred.bid : null;   // 직접 고른 금액으로 등록했으면 pred.bid 는 추천값이 아님
+      const qp = frozen ? null : quickPredict({...w, base: r.base, a: w.a ?? r.a, floor: w.floor || r.floor, rng: w.rng || r.rng, lic: w.lic || r.lic});
+      const amt = frozen || qp?.bid;
+      if(amt){
+        let rows2 = op?.r || null;
+        if(rows2 && w.myBid){ const i = rows2.findIndex(row => row[2] === w.myBid); if(i >= 0) rows2 = rows2.filter((_, k) => k !== i); }
+        const j = judgeBid(amt, r, rows2 ? {...op, r: rows2} : op);
+        if(j) app = {amt, cls: j.cls, rank: j.cls === 'below' ? -1 : j.rank || (j.cls === 'win' ? 1 : null), now: !frozen};
+      }
+    }
     const fin = !!(r0?.winBiz && r0.winBiz === String(Company.get().biz || ''));   // 최종 낙찰(1순위 포기로 올라온 경우 포함)
     const date = (w.open || r0?.date || w.close || '').slice(0, 16);
     return {src: 'app', w, r, id: w.id, nm: w.nm, org: w.org || w.dmd, rgn: [w.sido, w.sgg].filter(Boolean).join(' '), lic: (w.lic || []).map(l => LIC_SHORT[l] || l).join('·'),
       date, base: r?.base || w.base, amt: w.myBid, S: r?.base && r?.plan ? r.plan / r.base * 100 : null, x: mine?.x ?? null,
-      rank: mine?.cls === 'below' ? -1 : rank, n: r?.cnt || w.res?.n || null, kind: '공사', winner: r?.win, winAmt: r?.amt,
+      rank: mine?.cls === 'below' ? -1 : rank, n: r?.cnt || w.res?.n || null, kind: '공사', winner: r?.win, winAmt: r?.amt, app,
       cls: fin || rank === 1 ? 'win' : mine?.cls || '', label: fin ? '🏆 최종 낙찰' : rank === 1 ? '🏆 1순위' : mine?.label?.replace(' (1순위)', '') || (r ? '금액 기록 없음' : '결과 대기'), fin};
   });
   LS.set('myCal', calibrate(judged));
@@ -2754,6 +2782,7 @@ async function renderResults(el, appItems, pseudo, head){
       <div><span>평균 업체였다면</span><b>${fmtNum(fair, 1)}</b></div>
       <div><span>하한 미달</span><b class="below">${pctOf(below)}%</b></div>
       <div><span>1위보다 높음</span><b>${pctOf(high)}%</b></div>
+      ${list.some(x => x.app) ? `<div class="${list.some(x => x.app?.cls === 'win') ? 'win' : ''}"><span>📱 앱 추천가였다면 1순위</span><b>${fmtNum(list.filter(x => x.app?.cls === 'win').length)} <small>/ ${fmtNum(list.filter(x => x.app).length)}</small></b></div>` : ''}
     </div>`;
   // 카드 (개찰일별로 묶음)
   let html = '', last = null;
@@ -2782,6 +2811,7 @@ async function renderResults(el, appItems, pseudo, head){
         <div><span>기초대비</span><b>${ratio ? ratio.toFixed(3) : '-'}</b></div>
       </div>
       <div class="rc-foot"><span class="rc-rank ${x.cls}"><b>${rk}</b> / ${x.n ? fmtNum(x.n) : '-'}</span><span class="rc-amt">${x.amt ? won(x.amt) : '금액 기록 없음'}</span><span class="rc-v ${x.cls}">${esc(x.label)}</span></div>
+      ${x.app ? `<div class="rc-app ${x.app.cls}">📱 앱 추천가 ${won(x.app.amt)}이었다면 → <b>${x.app.cls === 'win' ? '🏆 1순위' : x.app.cls === 'below' ? '하한 미달' : x.app.rank ? fmtNum(x.app.rank) + '위' : '1위보다 높음'}</b>${x.app.now ? '<span class="ops"> (개찰 전 추천 기록이 없어 지금 모델로 계산 — 참고용)</span>' : ''}</div>` : ''}
       ${more}
     </div>`;
   }
@@ -2965,7 +2995,8 @@ async function renderWatch(){
           <tbody>${res.top.map(x => `<tr${res.mine && x.biz === res.mine.biz ? ' class="hl-row"' : ''}><td>${x.rank || '-'}</td><td>${esc(x.name)}</td><td class="num">${won(x.amt)}</td><td class="num">${x.rate != null ? pct(x.rate) : '-'}</td><td>${esc(x.note)}</td></tr>`).join('')}</tbody></table></div></details>` : ''}`;
     }else{
       const st = opened(w) ? (apiKey() ? '개찰 시각이 지났지만 아직 결과가 올라오지 않았습니다' : '개찰됨 · 설정에서 서비스키를 넣으면 결과를 바로 조회합니다') : `개찰 전${w.open ? ' · 개찰 ' + esc(w.open.slice(5, 16).replace('-', '/')) : ''}`;
-      body = `<div class="meta-line">${st} · 앱 추천 ${w.pred?.bid ? won(w.pred.bid) : '없음'}</div>`;
+      const cp = w.myBid || w.pred?.bid;
+      body = `<div class="meta-line">${st} · 앱 추천 ${w.pred?.bid ? won(w.pred.bid) : '없음'}${cp ? ` <button type="button" class="copy-btn" data-copy="${cp}">📋 ${w.myBid ? '내 투찰금액' : '추천가'} 복사</button>` : ''}</div>`;
     }
     const star = w.auto
       ? `<button class="btn sm ghost" data-join-save="${esc(w.id)}" type="button">＋ 저장</button>`
@@ -3540,6 +3571,14 @@ async function init(){
     if(g){ if(g.dataset.goto === 'watch' && currentTab === 'home'){ watchMode = 'joined'; LS.set('watchMode', watchMode); } switchTab(g.dataset.goto); }
   });
 
+  // 금액 복사(나라장터 투찰 화면에 붙여넣기 — 쉼표 없는 숫자)
+  document.addEventListener('click', async (e) => {
+    const c = e.target.closest('[data-copy]'); if(!c) return;
+    e.preventDefault(); e.stopPropagation();
+    const v = String(c.dataset.copy).replace(/\D/g, '');
+    try{ await navigator.clipboard.writeText(v); toast(`${Number(v).toLocaleString()}원 복사됨`); }
+    catch(err){ prompt('길게 눌러 복사하세요', v); }
+  }, true);
   document.addEventListener('toggle', (e) => {
     const d = e.target;
     if(d.tagName !== 'DETAILS' || !d.open || d.querySelector(':scope > .fold-btn')) return;
