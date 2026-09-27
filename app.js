@@ -1305,11 +1305,11 @@ async function renderMine(){
   const okRows = gev.filter(([g, e]) => e.ok).map(([g]) => g);
   const gRows = okRows.filter(g => g.kind === '물품'), dcRows = okRows.filter(g => g.kind === '공사');   // 국방 시설공사는 공사로
   const gNo = {}; gev.forEach(([g, e]) => { if(!e.ok) gNo[e.why] = (gNo[e.why] || 0) + 1; });
-  const dRows = okRows.filter(g => g.src === '국방'), ddcRows = dRows.filter(g => g.kind === '공사'), ddgRows = dRows.filter(g => g.kind === '물품');
-  const kinds = [['all', '전체', cRows.length + dcRows.length + gRows.length], ['공사', '🏗 공사', cRows.length + dcRows.length], ['물품', '📦 물품', gRows.length], ['국방공사', '🎖 국방 공사', ddcRows.length], ['국방물품', '🎖 국방 물품', ddgRows.length]];
-  if(!kinds.some(k => k[0] === Mine.kind)) Mine.kind = 'all';
+  // 업무는 공사·물품 둘만(2026-09-27): 국방은 업무 버튼이 아니라 지역 줄의 '🎖 국방'으로 — 국방 공고는 현장 시·도가 없어 지역 버튼과 같은 줄에서 고르는 게 맞다
+  const kinds = [['공사', '🏗 공사', cRows.length + dcRows.length], ['물품', '📦 물품', gRows.length]];
+  if(!kinds.some(k => k[0] === Mine.kind)) Mine.kind = '공사';
   $('mineKind').innerHTML = kinds.map(([k, t, n]) => `<button type="button" class="chip ${Mine.kind === k ? 'selected' : ''}" data-kind="${k}">${t}<span class="cnt">${fmtNum(n)}</span></button>`).join('');
-  const rows = Mine.kind === '공사' ? [...cRows, ...dcRows] : Mine.kind === '물품' ? gRows : Mine.kind === '국방공사' ? ddcRows : Mine.kind === '국방물품' ? ddgRows : [...cRows, ...dcRows, ...gRows];
+  const rows = Mine.kind === '물품' ? gRows : [...cRows, ...dcRows];
   const unknown = ev.filter(([b, e]) => e.ok && e.lic === 'unknown').length;
   const mfCheck = ev.filter(([b, e]) => e.ok && e.lic === 'mf-check').length;
   const noCap = ev.filter(([b, e]) => e.cap === 'no').length, noMf = ev.filter(([b, e]) => e.lic === 'mf').length;
@@ -1321,17 +1321,18 @@ async function renderMine(){
   const areas = [['all', '전체 지역', () => true]];
   if(c.sido) areas.push(['sido', c.sido, (b) => b.sido === c.sido]);
   if(c.sido && c.sgg) areas.push(['sgg', `${c.sido} ${c.sgg}`, (b) => b.sido === c.sido && b.sgg === c.sgg]);
+  areas.push(['d2b', '🎖 국방', (b) => b.src === '국방']);   // 국방(방위사업청) 공고만 — 현장 시·도가 없어 위 지역 버튼에는 안 잡힘
   if(!areas.some(a => a[0] === Mine.area)) Mine.area = 'all';
   const areaF = areas.find(a => a[0] === Mine.area)[2];
   const inArea = rows.filter(b => !hidden.has(b.id));
-  $('mineArea').innerHTML = areas.length > 1 ? areas.map(([k, label, f]) => `<button type="button" class="chip ${Mine.area === k ? 'selected' : ''}" data-area="${k}">📍 ${esc(label)}<span class="cnt">${inArea.filter(f).length}</span></button>`).join('') : '';
+  $('mineArea').innerHTML = areas.length > 1 ? areas.map(([k, label, f]) => `<button type="button" class="chip ${Mine.area === k ? 'selected' : ''}" data-area="${k}">${k === 'd2b' ? '' : '📍 '}${esc(label)}<span class="cnt">${inArea.filter(f).length}</span></button>`).join('') : '';
   const visible = inArea.filter(areaF);
   const defs = mineChipDefs(c);
   if(!defs.some(d => d.k === Mine.chip)) Mine.chip = 'all';
   const chipF0 = defs.find(d => d.k === Mine.chip).f;
   const chipF = (b) => b.kind === '물품' || b.src === '국방' ? Mine.chip === 'all' : chipF0(b);
   const nHidden = rows.filter(b => hidden.has(b.id)).length;
-  $('mineChips').hidden = Mine.kind === '물품' || Mine.kind.startsWith('국방');
+  $('mineChips').hidden = Mine.kind === '물품' || Mine.area === 'd2b';
   $('mineChips').innerHTML = defs.map(d => `<button type="button" class="chip ${Mine.chip === d.k && !Mine.showHidden ? 'selected' : ''}" data-chip="${esc(d.k)}">${esc(d.label)}<span class="cnt">${visible.filter(d.f).length}</span></button>`).join('')
     + (nHidden ? `<button type="button" class="chip ${Mine.showHidden ? 'selected' : ''}" data-showhidden="1">뺀 공고<span class="cnt">${nHidden}</span></button>` : '');
   const shown = Mine.showHidden ? rows.filter(b => hidden.has(b.id)) : visible.filter(chipF);
