@@ -297,6 +297,7 @@ tr.click:hover td{background:var(--bg);}
 .faint{color:var(--text-faint);}
 .b-tags{display:flex; flex-wrap:wrap; gap:4px; margin-top:7px;}
 .tag{display:inline-block; font-size:11.5px; padding:2px 8px; border-radius:6px; background:var(--bg); color:var(--text-sub); border:1px solid var(--border); white-space:nowrap;}
+.tag.tip{cursor:pointer;}
 .tag.loc{background:var(--primary-soft); color:var(--primary-dark); border-color:transparent;}
 .tag.lic{background:var(--ok-soft); color:var(--ok); border-color:transparent;}
 .tag.lic.mine{font-weight:700;}
@@ -635,7 +636,7 @@ body.simple .bcard > .b-note:not(.result){display:none !important;}
 .rc-app b{color:var(--text);}
 .rc-app.win b{color:var(--ok);}
 .rc-app.below b{color:var(--target);}
-.toast{position:fixed; left:50%; bottom:calc(var(--nav-h) + 20px); transform:translateX(-50%) translateY(10px); background:#1F2937; color:#fff; padding:9px 16px; border-radius:20px; font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:100;}
+.toast{position:fixed; left:50%; width:max-content; max-width:min(90vw, 440px); line-height:1.5; bottom:calc(var(--nav-h) + 20px); transform:translateX(-50%) translateY(10px); background:#1F2937; color:#fff; padding:9px 16px; border-radius:20px; font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:100;}
 .toast.on{opacity:1; transform:translateX(-50%) translateY(0);}
 
 /* 🩺 내 투찰 진단 */

@@ -601,6 +601,9 @@ class NoticeCache:
             "site": site,
             "lic_raw": pick(it, F_MAIN_LIC),
         }))
+        docs = notice_docs(it)
+        if docs:
+            e["docs"] = docs
         base = to_int(pick(it, F_BASE))
         if base:
             e["base"] = base
@@ -683,7 +686,7 @@ class NoticeCache:
                 continue
             out.append(clean({k: e.get(k) for k in (
                 "id", "no", "ord", "nm", "org", "dmd", "sido", "sgg", "lic", "rgn", "base", "est",
-                "floor", "a", "net", "rng", "ntce", "close", "open", "url", "seen")}))
+                "floor", "a", "net", "rng", "ntce", "close", "open", "url", "seen", "sd")}))
         out.sort(key=lambda x: (x.get("close") or "9999", x["id"]))
         return out
 
@@ -1076,8 +1079,10 @@ def step_notices(api, meta, cache, now):
     bgn = now - dt.timedelta(days=days)
     seen = now.isoformat(timespec="minutes")
     log(f"[공고] 최근 {days}일")
-    for it in api.fetch_range("notice_list", bgn, now):
+    list_bgn = bgn if meta.get("doc_scan") else now - dt.timedelta(days=30)   # 공고문 첨부(docs)를 처음 받을 때 한 번은 30일치 목록을 다시
+    for it in api.fetch_range("notice_list", list_bgn, now):
         cache.add_notice(it, seen)
+    meta["doc_scan"] = True
     for it in api.fetch_range("notice_bsis", now - dt.timedelta(days=max(days, 14)), now):
         cache.add_bsis(it)
     for it in api.fetch_range("notice_license", now - dt.timedelta(days=lic_days), now):
@@ -1087,6 +1092,56 @@ def step_notices(api, meta, cache, now):
         cache.add_region(it)
     cache.finalize(now)
     meta["notice_last"] = seen
+
+
+def notice_docs(it):
+    """공고문 첨부 후보 최대 2개 [[파일명, URL]] — 이름에 '공고'가 든 것, hwp·hwpx 먼저(글자 뽑기가 확실), 없으면 첫 파일"""
+    files = [((it.get(f"ntceSpecFileNm{i}") or "").strip(), (it.get(f"ntceSpecDocUrl{i}") or "").strip()) for i in range(1, 11)]
+    files = [f for f in files if f[0] and f[1]]
+    cand = [f for f in files if "공고" in f[0]] or files[:1]
+    cand.sort(key=lambda f: 0 if f[0].lower().endswith((".hwp", ".hwpx")) else 1)
+    return [list(f) for f in cand[:2]]
+
+
+DOC_TRIES = 3
+
+
+def step_doc_flags(api, cache, now, minutes):
+    """진행중 공사 공고의 공고문 첨부를 받아 API 에 없는 표시를 찾는다 — 지금은 사실조사(사전단속) sd (notice_doc.FLAGS).
+    공고마다 한 번(sdc=1), 실패는 DOC_TRIES 번까지. 새 공고만 보므로 평소엔 몇 분."""
+    import notice_doc
+    t_end = time.time() + 60 * max(0, min(minutes, api.time_left() - 5))
+    cur = now.strftime("%Y-%m-%d %H:%M")
+    todo = [e for e in cache.items.values() if e.get("docs") and not e.get("sdc") and e.get("sdt", 0) < DOC_TRIES
+            and not e.get("cancel") and not e.get("old") and (e.get("close") or "9999") >= cur]
+    todo.sort(key=lambda e: e.get("close") or "9999")
+    done = hit = fail = 0
+    for e in todo:
+        if time.time() > t_end:
+            break
+        text = ""
+        for nm, url in e["docs"]:   # hwp 가 안 읽히면 pdf 변환본으로
+            try:
+                r = requests.get(url, timeout=40, headers={"User-Agent": "Mozilla/5.0 (bid-predictor collector)"})
+                r.raise_for_status()
+                time.sleep(0.3)
+                if len(r.content) > 30_000_000:
+                    continue
+                text = notice_doc.text_of(r.content, nm)
+            except Exception as ex:  # noqa: BLE001 — 한 건 실패는 다음 실행에
+                log("  공고문 실패", e.get("id"), nm, str(ex)[:120])
+            if text.strip():
+                break
+        if text.strip():
+            e.update(notice_doc.flags_of(text))
+            e["sdc"] = 1
+            e.pop("sdt", None)
+            done += 1
+            hit += bool(e.get("sd"))
+        else:
+            e["sdt"] = e.get("sdt", 0) + 1
+            fail += 1
+    log(f"[공고문] 확인 {done}건(사전단속 {hit}) · 실패 {fail} · 남음 {max(0, len(todo) - done - fail)}")
 
 
 def step_recent_scsbid(api, meta, store, cache, now):
@@ -1342,6 +1397,65 @@ def step_region_fill(api, meta, store, now, checkpoint):
         checkpoint()
 
 
+def step_bsis_fill(api, meta, store, now, checkpoint):
+    """과거 낙찰 중 기초금액 조회를 못 한 레코드(rng 없음 → A값을 모름)와 하한율 없는 레코드를 채운다.
+    2026-09-27 확인: rng 없는 레코드는 A값을 몰라 1위 위치 계산이 공식 하한 미달 판정과 74%만 맞아 곡선·역검증에서 빠진다
+    (2026-06 빈달 재수집분의 74% 등). 공고 게시·기초금액 등록일 7일 단위로 최신 → 가장 오래된 낙찰 달 앞까지 훑으며 빈 값만 채운다.
+    진행: meta.bsis_fill {cursor: YYYYMMDD, filled} — 과거낙찰이 더 옛 달을 받으면 이어서 그 앞까지 간다."""
+    bf = meta.setdefault("bsis_fill", {})
+    dates = [r["date"] for r in store.recs.values() if r.get("date")]
+    if not dates:
+        return
+    d0 = dt.date.fromisoformat(sorted(dates)[len(dates) // 500])
+    oldest = (d0.replace(day=1) - dt.timedelta(days=62)).strftime("%Y%m%d")   # 개찰 두 달 전 게시 공고까지
+    cursor = bf.get("cursor") or now.strftime("%Y%m%d")
+    need = lambda r: not r.get("rng") or not r.get("floor")
+    while cursor >= oldest:
+        if api.remaining("bid") < REGION_RESERVE or api.time_left() < 20:
+            log(f"[A값보강] 오늘 몫 끝, 커서 {cursor}")
+            return
+        end = min(dt.datetime.strptime(cursor, "%Y%m%d").replace(hour=23, minute=59, tzinfo=KST), now)
+        bgn = (end - dt.timedelta(days=6)).replace(hour=0, minute=0)
+        n = 0
+        for op in ("notice_bsis", "notice_list"):
+            for it in api.fetch_range(op, bgn, end):
+                _, no, ord_ = notice_id(it)
+                ids = [i for i in store.by_no.get(no, []) if need(store.recs[i])]
+                if not ids:
+                    continue
+                if op == "notice_bsis":
+                    v = clean({"base": to_int(pick(it, F_BASE)), "a": a_value(it), "net": net_cost(it), "rng": price_range(it)})
+                    if not v.get("rng"):
+                        continue
+                else:
+                    v = clean({"floor": to_rate(pick(it, F_FLOOR), 3)})
+                for i in ids:
+                    r = store.recs[i]
+                    if r.get("ord") != ord_ and len(store.by_no.get(no, [])) > 1:
+                        continue
+                    before = dumps(r)
+                    if op == "notice_bsis" and not r.get("rng"):   # 기초금액 조회를 못 했던 레코드 → 조회 결과로 (A값이 없으면 진짜 0)
+                        r["rng"] = v["rng"]
+                        for k in ("a", "net"):
+                            if v.get(k):
+                                r[k] = v[k]
+                            else:
+                                r.pop(k, None)
+                        if not r.get("base") and v.get("base"):
+                            r["base"] = v["base"]
+                    elif op == "notice_list" and not r.get("floor") and v.get("floor"):
+                        r["floor"] = v["floor"]
+                    compute_sr(r)
+                    if dumps(r) != before:
+                        store.dirty = True
+                        n += 1
+        bf["filled"] = bf.get("filled", 0) + n
+        cursor = bf["cursor"] = (bgn - dt.timedelta(days=1)).strftime("%Y%m%d")
+        log(f"[A값보강] {bgn:%Y-%m-%d} ~ {end:%Y-%m-%d} 채움 {n}건")
+        checkpoint()
+    log(f"[A값보강] 끝까지 훑음 (누적 {bf.get('filled', 0)}건)")
+
+
 def step_details(api, meta, store, ostore, regions, now, checkpoint, reserve=3, time_reserve=10):
     """reserve: 낙찰정보 서비스 호출을 이만큼 남기고 멈춘다 (뒤에 과거 수집이 쓸 몫)
     time_reserve: 남은 실행 시간(분)이 이만큼이면 멈춘다 — 운영계정(하루 10만)에선 한도보다 시간이 먼저 찬다"""
@@ -1467,11 +1581,13 @@ def main():
     steps = [
         ("공고", lambda: step_notices(api, meta, cache, now)),
         ("최근낙찰", lambda: step_recent_scsbid(api, meta, store, cache, now)),
+        ("공고문", lambda: step_doc_flags(api, cache, now, float(os.environ.get("DOC_MINUTES") or 8))),   # 사실조사(사전단속) 표시 — 공고문 첨부에서 (2026-09-27)
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all, reserve=DETAIL_RESERVE, time_reserve=MAX_MINUTES * 0.55)),   # 첫 상세는 실행 시간의 45%까지만
         ("물품최근", lambda: step_thng_recent(api, meta, tstore, now, cache)),   # 앱 '물품' 공고(goods.json) — 가볍고 매일 필요해서 앞에
         ("빈달", lambda: step_refill(api, meta, store, now, save_all)),
         ("물품과거", lambda: step_thng_backfill(api, meta, tstore, now, save_all)),
         ("지역보강", lambda: step_region_fill(api, meta, store, now, save_all)),
+        ("A값보강", lambda: step_bsis_fill(api, meta, store, now, save_all)),   # 2026-09-27: 기초금액 조회가 빠진 과거 낙찰(A값 모름)을 다시 채워 곡선·역검증 표본을 늘림
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all, horizon)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all)),
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all)),

@@ -44,13 +44,13 @@ jobs:
           python-version: "3.12"
 
       - name: 의존성 설치
-        run: pip install requests numpy
+        run: pip install requests numpy olefile pypdf
 
       # 1차: 진행중 공고 + 최근 낙찰 → 바로 커밋해서 앱에 먼저 뜨게 한다
       - name: 빠른 수집 (공고·최근 낙찰)
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
-          STEPS: "공고,최근낙찰"
+          STEPS: "공고,최근낙찰,공고문"
           MAX_MINUTES: "40"
           API_DAILY_LIMIT: ${{ vars.API_DAILY_LIMIT || '95000' }}   # 운영계정: 오퍼레이션마다 하루 10만(2026-09-27 확인). 서비스 합계로 세므로 95000이면 어느 오퍼레이션도 안 넘음. 실제 한도가 더 낮으면 조달청 '요청 제한' 응답에서 그날은 멈춤
         run: python scripts/collect.py
@@ -76,7 +76,8 @@ jobs:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
           START_DATE: ${{ inputs.start_date }}
           RESET_BACKFILL: ${{ inputs.reset_backfill }}
-          STEPS: "빈달,업체정보,물품최근,물품과거,지역보강,과거낙찰,상세"
+          STEPS: "공고문,빈달,업체정보,물품최근,물품과거,지역보강,A값보강,과거낙찰,상세"
+          DOC_MINUTES: "25"
           WATCH_BIZ: ${{ secrets.WATCH_BIZ || vars.WATCH_BIZ }}   # 시크릿이면 로그에 *** 로 가려짐(변수는 공개 로그에 그대로 찍힘)
           MAX_MINUTES: "260"
           API_DAILY_LIMIT: ${{ vars.API_DAILY_LIMIT || '95000' }}

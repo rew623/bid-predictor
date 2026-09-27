@@ -56,6 +56,8 @@ data/                 수집 결과 (아래)
   엔드포인트 후보는 `SERVICES`, 오퍼레이션은 `OPS`, 필드 이름 후보는 `F_*` 목록. 첫 성공 응답 1건을 `data/_sample_{op}.json` 에 저장하므로 필드명이 다르면 그걸 보고 `F_*` 를 고친다.
 - 단계(이름): ① `공고` 진행중 공고(최근 공고·기초금액·면허제한·참가가능지역) ② `최근낙찰` 최근 40일 낙찰 목록 ③ `과거낙찰` 과거 낙찰 목록을 한 달씩 과거로, 최근 24개월(`RECENT_FIRST_MONTHS`)까지 먼저 ④ `상세` regions.json 지역의 개찰 전체 순위·복수예가(공고 1건당 2회 이상 호출, 최신 개찰부터; 첫 상세는 `DETAIL_RESERVE` 250회를 과거 수집 몫으로 남김) ⑤ `과거낙찰` 24개월까지 ⑥ `상세` 남은 한도 ⑦ `과거낙찰` 나머지(기본 3년, `meta.backfill.cursor`). 실제 순서는 ①②④⑤ `지역보강` ⑥⑦ (상세를 과거 수집 앞으로).
 - 물품(2026-09 추가, 앱·모델은 데이터가 쌓인 뒤): `물품최근` = `getScsbidListSttusThng` 최근 40일 + `getBidPblancListInfoThngBsisAmount` 최근 60일로 기초금액·예가범위 보강, `물품과거` = 한 달씩 24개월까지(`meta.thng_backfill`) → `data/thng/{시도}.json`. 낙찰정보 `THNG_RESERVE`(250)·입찰공고 `THNG_BID_RESERVE`(400) 남김. 실제 순서(2026-09-27): 공고 → 최근낙찰 → 상세(낙찰정보 한도의 40% `DETAIL_RESERVE` 남김) → 물품최근 → 빈달 → 물품과거 → 지역보강 → 과거낙찰(24개월) → 상세 → 과거낙찰(나머지) → 업체정보(남는 한도). 업체정보를 앞에 뒀을 때 36개월 재조회가 한도를 다 써 goods.json 이 한 번도 안 만들어졌다.
+- `A값보강`(2026-09-27): rng 없는(=기초금액 조회를 못 해 A값을 모르는) 과거 낙찰과 하한율 없는 낙찰을 채운다 — 공고 게시·기초금액 등록일 7일 단위로 최신→가장 오래된 낙찰 두 달 전까지 `notice_bsis`·`notice_list` 를 훑어 빈 값만(rng 가 생기면 A값·순공사원가는 조회 결과로, 없으면 진짜 0). 진행 `meta.bsis_fill` {cursor, filled}. 과거낙찰이 더 옛 달을 받으면 이어서. 그 전엔 2026-06 의 74% 등이 곡선·역검증에서 빠져 있었다.
+- `공고문`(2026-09-27, 1차·2차 모두, `DOC_MINUTES` 1차 8분·2차 25분): 진행중 공사 공고의 공고문 첨부(`notice_docs` — 이름에 '공고', hwp·hwpx 먼저, 최대 2개, notice_cache `docs`)를 받아 `scripts/notice_doc.py` 로 글자를 뽑아(hwp = olefile + BodyText zlib, hwpx = zip xml, pdf = pypdf) '사전단속'·'상시 단속' 문구가 있으면 `sd=1` → bids.json. 공고마다 한 번(`sdc`), 실패 3번까지(`sdt`). 처음 한 번은 30일치 목록을 다시 받아 docs 를 채움(`meta.doc_scan`). 앱: 카드 태그 '사전단속'(`sdOf`, 실시간 검색 공고는 같은 공고번호의 bids.json 값), 누르면 안내(`data-tip` → toast). **Actions 에서 g2b.go.kr 첨부 다운로드가 되는지는 첫 실행 로그 '[공고문] 확인 n건'으로 확인할 것.**
 - `빈달`: 이미 지난 달 중 수집이 비었던 달을 다시 받는다(`meta.refill` [YYYYMM…], 기본 2026-03~06 — 이 달들만 낙찰 수가 평소의 1/10 이하였다). 한 달 = `backfill_month`(과거낙찰과 같은 처리).
 - `private/` (gitignore): 회사 투찰 이력(더비스 엑셀 등) 같은 개인 자료. 분석은 로컬에서만.
   `scripts/company_report.py` → `private/report.html`: ① 우리 시·도 × 우리 면허 공사 전부를 월별 표본외 추천값으로(평균 사정율·회사 실제 투찰률 분포·공정 기대와 비교) ② 더비스 엑셀의 공사 투찰을 개찰일±1+기초금액으로 수집 낙찰과 맞춰 재채점. 설정 `private/company.json` {sido, sgg, lics}. 사용자 PC 작업 스케줄러 "bid-predictor 우리업체 역검증"은 2026-09-27 **사용 안 함**으로 바꿈(클라우드 전환 — ①은 company_val.py, ②는 앱 🩺 진단의 더비스 엑셀 가져오기).
@@ -113,6 +115,7 @@ data/                 수집 결과 (아래)
 | ntce, close, open | 공고일시, 입찰마감일시, 개찰일시 (`YYYY-MM-DD HH:MM`, KST) |
 | url | 나라장터 상세 링크 |
 | seen | 수집기가 처음 본 시각(ISO) — 앱의 NEW 표시 기준 |
+| sd | 1 = 사실조사(사전단속) 공사 (공고문 첨부에서 찾음, 없으면 키 생략) |
 
 ### data/model.json — 전국 추천 모델 + 매일 역검증 (scripts/model.py)
 ```jsonc

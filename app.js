@@ -600,6 +600,15 @@ function rgnOf(n){
   if(!bidRgn || bidRgn.src !== Data.bids) bidRgn = {src: Data.bids, map: new Map(Data.bids.map(b => [b.id, b.rgn]))};
   return bidRgn.map.get(n.id) || null;
 }
+/** 사실조사(사전단속) 공사인지 — 수집기가 공고문 첨부에서 찾은 표시(bids.json sd). 실시간 검색 공고는 같은 공고번호의 bids.json 값 */
+const SD_TIP = '사실조사(사전단속)가 실시되는 공사입니다. 개찰 최고 순위 업체는 개찰 다음 날부터 사실조사 — 준비 자료를 본사에 갖추고 요청 기한 안에 제출(공고문 참고).';
+let bidSd = null;
+function sdOf(n){
+  if(n.sd) return true;
+  if(!Data.bids?.length) return false;
+  if(!bidSd || bidSd.src !== Data.bids) bidSd = {src: Data.bids, set: new Set(Data.bids.filter(b => b.sd).map(b => b.id))};
+  return bidSd.set.has(n.id);
+}
 /** 공고 → 모델 추천. cnt 를 주면 예상 참가수 대신 그 값을 쓴다 */
 function modelPredict(n, cnt){
   if(!Model.m || (n.kind && n.kind !== '공사')) return null;
@@ -896,11 +905,11 @@ function fillBidsSgg(value){
 let watchIds = new Set();
 let bidMap = new Map();   // 공고ID → 내가 등록한 투찰금액 (카드에 '✓ 투찰 등록함' 표시)
 /** 화면 아래 잠깐 뜨는 알림 */
-function toast(msg){
+function toast(msg, ms=1800){
   let el = document.getElementById('toast');
   if(!el){ el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; document.body.appendChild(el); }
   el.textContent = msg; el.classList.add('on');
-  clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 1800);
+  clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), ms);
 }
 async function refreshWatchIds(){
   const list = await WatchStore.list();
@@ -1048,6 +1057,7 @@ function bidCard(b, today, opts = {}){
     `<span class="tag loc">${esc([b.sido, b.sgg].filter(Boolean).join(' ') || (b.src === '국방' ? (b.rgn?.length ? b.rgn.join('·') + ' 제한' : '전국') : '지역 미상'))}</span>`,
     b.sui ? '<span class="tag warn" title="수의계약(견적) — 추천값은 경쟁입찰 과거 공고 기준">수의</span>' : '',
     b.corr ? '<span class="tag warn" title="정정공고 — 바뀐 내용을 원문에서 확인">정정</span>' : '',
+    sdOf(b) ? `<span class="tag warn tip" data-tip="${esc(SD_TIP)}" title="${esc(SD_TIP)}">사전단속</span>` : '',
     ...licShortTags(b),
     eligTag(b),
   ].join('');
@@ -3700,6 +3710,8 @@ async function init(){
     switchTab(h, false, {back: true});
   });
   document.addEventListener('click', (e) => {
+    const tip = e.target.closest('[data-tip]');
+    if(tip){ e.preventDefault(); e.stopPropagation(); toast(tip.dataset.tip, 4500); return; }
     const w = e.target.closest('[data-watch]');
     if(w){ toggleWatch(w.dataset.watch, w); return; }
     const u = e.target.closest('[data-unwatch]');
