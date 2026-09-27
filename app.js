@@ -3059,10 +3059,16 @@ async function renderWatch(){
   lists.result.sort((a, b) => (b.open || b.close || '').localeCompare(a.open || a.close || ''));
   const list = lists[watchMode] || [];
   const nHist = History.rows().length;
+  // 새 개찰 결과 숫자(2026-09-27 요청): 결과가 들어온 공고(조달청 조회 res·수집된 개찰 상세) 중 이 기기에서 개찰 결과 칸을 아직 안 본 것
+  const resIds = lists.result.filter(w => w.res?.n || pseudo.has(w.id)).map(w => w.id);
+  let seen = LS.get('resSeen', null);
+  if(!seen){ seen = resIds; LS.set('resSeen', seen); }   // 처음엔 지금 있는 결과를 다 본 것으로
+  const seenSet = new Set(seen), nNewRes = resIds.filter(id => !seenSet.has(id)).length;
+  if(resultMode && nNewRes) LS.set('resSeen', [...new Set([...seen, ...resIds])].slice(-3000));
   const modeSeg = `<div class="seg mode-seg three" id="wMode">
       <button data-v="watch" class="${watchMode === 'watch' ? 'on' : ''}" type="button">⭐ 관심 <span class="cnt">${fmtNum(lists.watch.length)}</span></button>
       <button data-v="joined" class="${joinedMode ? 'on' : ''}" type="button">📝 투찰 중 <span class="cnt">${fmtNum(lists.joined.length)}</span></button>
-      <button data-v="result" class="${resultMode ? 'on' : ''}" type="button">🏁 개찰 결과 <span class="cnt">${fmtNum(lists.result.length + nHist)}</span></button>
+      <button data-v="result" class="${resultMode ? 'on' : ''}" type="button">🏁 개찰 결과 <span class="cnt">${fmtNum(lists.result.length + nHist)}</span>${nNewRes && !resultMode ? `<span class="new-res" title="새로 들어온 개찰 결과">${nNewRes > 99 ? '99+' : nNewRes}</span>` : ''}</button>
       <button data-v="diag" class="${watchMode === 'diag' ? 'on' : ''}" type="button">🩺 진단</button>
     </div>`;
   const hasBiz = !!Company.get().biz;
