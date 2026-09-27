@@ -129,6 +129,8 @@ class Api:
             raise Stop("시간 끝")
         p = {k: v for k, v in params.items() if v not in (None, "")}
         if self.base == 1:
+            # 게이트웨이는 값에 '*' 가 든 요청(가려진 품목번호 iemNo='***')을 403 으로 막는 듯(2026-09-27 공개수의 5건 연속 403) → 그런 조건은 빼고 보냄
+            p = {k: v for k, v in p.items() if "*" not in str(v)}
             p["serviceKey"] = self.key
         url = BASES[self.base] + svc + "/" + op + "?" + urllib.parse.urlencode(p)
         last = None
@@ -153,6 +155,13 @@ class Api:
                                                                        "raw": None if items else t[:1500]}))
                 self.fails = 0
                 return items, int(tc.group(1)) if tc else len(items)
+            except urllib.error.HTTPError as e:   # 게이트웨이 거부(403 등)는 본문에 이유가 있음 — 원인 확인용으로 남김
+                try:
+                    body = re.sub(r"\s+", " ", e.read().decode("utf-8", "replace"))[:200]
+                except Exception:  # noqa: BLE001
+                    body = ""
+                last = RuntimeError(f"HTTP {e.code} {body}")
+                time.sleep(5 * (attempt + 1))
             except (urllib.error.URLError, TimeoutError, ConnectionError, RuntimeError) as e:
                 last = e
                 time.sleep(5 * (attempt + 1))
