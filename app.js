@@ -2924,13 +2924,23 @@ async function renderPaper(){
         <div><span>실제 사정율</span><b>${r?.S ? r.S.toFixed(3) : '-'}</b></div>
         <div><span>평균 방식</span><b>${it.xm ? it.xm.toFixed(3) : '-'}${r && r.mwin != null ? (r.mwin ? ' 🏆' : '') : ''}</b></div>
       </div>
+      ${r ? `<div class="rc-grid paper-cmp">
+        <div><span>추천 투찰가</span><b>${won(it.bid)}</b></div>
+        <div><span>실제 낙찰금액</span><b>${r.amt ? won(r.amt) : '-'}</b></div>
+        <div><span>차이 (추천 − 낙찰)</span><b class="${r.amt ? (it.bid < r.amt ? (r.below ? 'below' : 'win-t') : 'high-t') : ''}">${r.amt ? (it.bid >= r.amt ? '+' : '−') + won(Math.abs(it.bid - r.amt)) : '-'}</b></div>
+        <div><span>예상 참가</span><b>~${fmtNum(it.n)}곳</b></div>
+        <div><span>실제 참가</span><b>${r.cnt ? fmtNum(r.cnt) + '곳' : '-'}</b></div>
+        <div><span>예상 대비</span><b>${r.cnt && it.n ? (r.cnt >= it.n ? '+' : '') + fmtNum(r.cnt - it.n) + '곳' : '-'}</b></div>
+      </div>` : ''}
       <div class="rc-foot"><span class="rc-rank ${st.cls}">${r ? `<b>${r.win ? 1 : r.rank ? fmtNum(r.rank) : r.below ? '미달' : '-'}</b> / ${r.cnt ? fmtNum(r.cnt) : '-'}` : '<b>대기</b>'}</span><span class="rc-amt">${won(it.bid)}</span><span class="rc-v ${st.cls}">${st.t}</span></div>
       ${r?.winner ? `<div class="rc-sub" style="margin-top:4px;">1위 ${esc(r.winner)}${r.src === 'list' ? ' · 순위는 개찰 상세 수집 뒤' : ''}</div>` : ''}
     </div>`;
   };
   let html = '', last = null;
   const list = [...wait.filter(it => !(parseKst(it.close) && parseKst(it.close) < now)).sort((a, b) => (a.close || '').localeCompare(b.close || '')), ...done, ...wait.filter(it => parseKst(it.close) && parseKst(it.close) < now)];
-  const ord = [...list.filter(it => !it.res), ...done].slice(0, Paper.shown);
+  // 결과 나온 것(최근 개찰부터) → 개찰 기다리는 것 → 마감 전 (2026-09-28 요청: 결과부터 위에)
+  const doneSorted = [...done].sort((a, b) => String(b.open || '').localeCompare(String(a.open || '')));
+  const ord = [...doneSorted, ...wait.filter(it => parseKst(it.close) && parseKst(it.close) < now), ...wait.filter(it => !(parseKst(it.close) && parseKst(it.close) < now)).sort((a, b) => (a.close || '').localeCompare(b.close || ''))].slice(0, Paper.shown);
   for(const it of ord){
     const g = it.res ? `개찰 ${dayLabel(String(it.open || '').slice(0, 10))}` : (parseKst(it.close) && parseKst(it.close) < now ? '개찰 기다리는 중' : '마감 전 (추천 투찰가 기록 중)');
     if(g !== last){ last = g; html += `<div class="day-sep">${esc(g)}</div>`; }

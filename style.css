@@ -701,3 +701,8 @@ main{overflow-x:hidden;}
 /* 업체 탭 관심 업체 새 낙찰 (2026-09-28) */
 .corp-new{display:block; width:100%; text-align:left; font:inherit; color:inherit; cursor:pointer;}
 .corp-h .btn{margin-left:8px; vertical-align:1px;}
+/* 모의 투찰 결과: 추천 투찰가 vs 실제 낙찰금액, 예상 vs 실제 참가 (2026-09-28) */
+.paper-cmp{margin-top:6px;}
+.paper-cmp b.win-t{color:var(--ok);}
+.paper-cmp b.high-t{color:var(--text-sub);}
+.paper-cmp b.below{color:var(--target);}

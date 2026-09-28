@@ -96,7 +96,8 @@ def score(it, rec, op):
     S = plan / base * 100
     x = bid_to_sr(it["bid"], base, a, floor) or it["x"]
     xm = it.get("xm")
-    res = {"S": round(S, 4), "cnt": rec.get("cnt") or (len(op["r"]) if op and op.get("r") else None), "winner": rec.get("win")}
+    res = {"S": round(S, 4), "cnt": rec.get("cnt") or (len(op["r"]) if op and op.get("r") else None), "winner": rec.get("win"),
+           "amt": rec.get("amt")}   # 실제 낙찰금액 — 앱에서 추천 투찰가와의 차이 표시(2026-09-28)
     if op and op.get("r"):
         L = math.ceil((plan - a) * floor / 100 + a)
         valid = sorted(r[2] for r in op["r"] if r[2] and r[2] >= L)
@@ -112,6 +113,7 @@ def score(it, rec, op):
             Bm = bid_amount(base, xm, a, floor)
             res["mwin"] = int(Bm >= L and not any(v < Bm for v in valid))
         res["cnt"] = res["cnt"] or len(op["r"])
+        res["amt"] = res["amt"] or (valid[0] if valid else None)   # 낙찰 목록이 없으면 하한 이상 최저 투찰(1순위)
     else:
         amt = rec.get("amt")
         W = bid_to_sr(amt, base, a, floor) if amt else None
@@ -162,7 +164,7 @@ def main():
     recs, ops = load_results()
     n_scored = 0
     for it in items.values():
-        if it.get("res", {}).get("src") == "detail":
+        if it.get("res", {}).get("src") == "detail" and "amt" in it["res"]:
             continue
         rec, op = recs.get(it["id"]), ops.get(it["id"])
         if not rec and not op:
