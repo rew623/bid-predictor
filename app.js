@@ -2953,7 +2953,7 @@ async function renderResults(el, appItems, pseudo, head){
       </details>` : `<details class="rc-more"><summary>자세히</summary><div class="mybid-row"><button class="btn sm line" data-res-hide="${esc(x.key)}" type="button">목록에서 빼기</button></div></details>`;
     html += `<div class="rc ${x.cls}">
       <div class="rc-nm">${x.src === 'app' && rcPoints(x) ? `<button type="button" class="rc-title" data-rc-plot="${esc(x.key)}" title="업체들 투찰 위치 그래프">${esc(x.nm)} <span class="rc-plot-ico">📊</span></button>` : esc(x.nm)} ${x.src === 'app' ? sdTag(x.w) : ''}</div>
-      <div class="rc-sub">${esc(x.date.slice(11, 16) ? x.date.slice(0, 16) + ' 개찰' : x.date.slice(0, 10))} · ${esc(x.org || '')}${x.src === 'app' && resLink(x.w) ? ` · <a href="${esc(resLink(x.w))}" target="_blank" rel="noopener" class="rc-link">${x.w.src === '국방' ? '국방전자조달' : '나라장터'}에서 보기 ↗</a>` : ''}</div>
+      <div class="rc-sub">${esc(x.date.slice(11, 16) ? x.date.slice(0, 16) + ' 개찰' : x.date.slice(0, 10))} · ${esc(x.org || '')}${x.src === 'app' && resLink(x.w) ? ` · <a href="${esc(resLink(x.w))}" target="_blank" rel="noopener" class="rc-link">${x.w.src === '국방' ? '국방전자조달' : '나라장터'}에서 보기 ↗</a>${x.w.src !== '국방' && x.w.no ? ` <button type="button" class="copy-btn" data-copy-text="${esc(x.w.no)}" data-copy-msg="공고번호 복사됨 — 나라장터 입찰 → 개찰결과분류조회의 '입찰공고번호' 칸에 붙여 넣고 검색" title="나라장터 개찰결과분류조회에 붙여 넣을 공고번호">📋 공고번호</button>` : ''}` : ''}</div>
       <div class="rc-plot" data-rc-plot-box="${esc(x.key)}" hidden></div>
       <div class="rc-line"><span class="rc-tags">${x.rgn ? `<span class="tag">${esc(x.rgn)}</span>` : ''}${x.lic ? `<span class="tag">${esc(x.lic.split('|').join('·'))}</span>` : ''}<span class="tag">${esc(x.kind)}</span>${x.w?.src === '국방' ? '<span class="tag">🎖 국방</span>' : ''}</span><b class="rc-base">${x.base ? won(x.base) : ''}</b></div>
       <div class="rc-grid">
@@ -3956,6 +3956,10 @@ async function init(){
 
   // 금액 복사(나라장터 투찰 화면에 붙여넣기 — 쉼표 없는 숫자)
   document.addEventListener('click', async (e) => {
+    const t = e.target.closest('[data-copy-text]');
+    if(t){ e.preventDefault(); e.stopPropagation(); const v = t.dataset.copyText;
+      try{ await navigator.clipboard.writeText(v); toast(t.dataset.copyMsg || `${v} 복사됨`, 3200); }catch(err){ prompt('길게 눌러 복사하세요', v); }
+      return; }
     const c = e.target.closest('[data-copy]'); if(!c) return;
     e.preventDefault(); e.stopPropagation();
     const v = String(c.dataset.copy).replace(/\D/g, '');
