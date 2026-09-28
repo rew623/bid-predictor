@@ -2819,12 +2819,12 @@ async function renderCorpProfile(biz){
         <div class="rc-foot"><span class="rc-rank win">${esc(w[4])}${w[5] ? ` · ${fmtNum(w[5])}곳 참가` : ''}</span><span class="rc-amt">${w[2] ? won(w[2]) : '-'}</span></div>
         ${w[7] ? `<details class="rc-more" data-win="${i}"><summary>개찰 순위·공고 보기</summary><div class="win-detail">불러오는 중…</div></details>` : ''}</div>`).join('')}</div>
       ${wl.length > 20 ? `<div class="more"><button class="btn sm line" id="winMore" type="button">더 보기 (${fmtNum(wl.length - 20)}건 남음)</button></div>` : ''}` : ''}
-    ${rows.length ? `<h3 class="corp-h">강원 투찰 이력 (최근 ${fmtNum(Math.min(rows.length, 60))}건)</h3><div class="rc-list">${rows.slice(0, 60).map(r => {
+    ${rows.length ? `<h3 class="corp-h">강원 투찰 이력 (${fmtNum(rows.length)}건 전부${rows.length ? ` · ${esc(rows.at(-1).date || '')}~` : ''})</h3><div class="rc-list">${rows.map((r, i) => {
       const cls = r.rank === 1 || r.fin ? 'win' : r.d != null && r.d < 0 ? 'below' : 'high';
-      return `<div class="rc ${cls}"><div class="rc-nm">${esc(r.nm)}</div><div class="rc-sub">${esc(r.date || '')} · ${esc(r.org)}</div>
+      return `<div class="rc ${cls}"${i >= 30 ? ' data-more-bid hidden' : ''}><div class="rc-nm">${esc(r.nm)}</div><div class="rc-sub">${esc(r.date || '')} · ${esc(r.org)}</div>
         <div class="rc-grid"><div><span>사정율</span><b>${r.S ? r.S.toFixed(3) : '-'}</b></div><div><span>투찰률</span><b>${r.x != null ? r.x.toFixed(3) : '-'}</b></div><div><span>차이</span><b>${r.d != null ? (r.d >= 0 ? '+' : '') + r.d.toFixed(3) : '-'}</b></div></div>
         <div class="rc-foot"><span class="rc-rank ${cls}"><b>${r.rank ? fmtNum(r.rank) : '-'}</b> / ${fmtNum(r.n)}</span><span class="rc-amt">${won(r.amt)}</span><span class="rc-v ${cls}">${r.fin ? '🏆 최종 낙찰' : r.rank === 1 ? '1순위(낙찰 안 됨)' : r.d != null && r.d < 0 ? '하한 미달' : ''}</span></div></div>`;
-    }).join('')}</div>` : ''}`;
+    }).join('')}</div>${rows.length > 30 ? `<div class="more"><button class="btn sm line" id="bidMoreC" type="button">더 보기 (${fmtNum(rows.length - 30)}건 남음)</button></div>` : ''}` : ''}`;
   // 최종 낙찰 카드 펼치기: 개찰 순위 상위 10곳(강원 개찰 상세·국방) + 공고 원문
   out.querySelectorAll('[data-win]').forEach(det => det.addEventListener('toggle', async () => {
     if(!det.open || det.dataset.loaded) return;
@@ -2848,6 +2848,12 @@ async function renderCorpProfile(biz){
         <tbody>${rows.map(r => `<tr${r[1][1] === biz ? ' class="hl-row"' : ''}><td>${r[0] || '-'}</td><td>${esc(r[1][0] || '')}</td><td class="num">${won(r[2])}</td><td>${esc(r[3] || '')}</td></tr>`).join('')}</tbody></table></div>`
       : `<div class="meta-line">개찰 순위는 강원 공사(개찰 상세 수집 지역)와 국방만 있습니다.</div>`)
       + `<div class="btn-row" style="margin-top:8px;"><a class="btn line sm" href="${esc(link)}" target="_blank" rel="noopener">공고 원문 (${w[4] === '국방' ? '국방전자조달' : '나라장터'})</a></div>`;
+  }));
+  $('bidMoreC') && ($('bidMoreC').onclick = () => keepY(() => {
+    const hid = [...out.querySelectorAll('[data-more-bid][hidden]')];
+    hid.slice(0, 100).forEach(e => e.hidden = false);
+    const left = hid.length - 100;
+    if(left > 0) $('bidMoreC').textContent = `더 보기 (${fmtNum(left)}건 남음)`; else $('bidMoreC').parentElement.remove();
   }));
   $('winMore') && ($('winMore').onclick = () => keepY(() => {
     const hid = [...out.querySelectorAll('[data-more-win][hidden]')];
