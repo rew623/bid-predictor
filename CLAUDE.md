@@ -47,7 +47,7 @@ scripts/korea.py      시도·시군구 파싱, 면허 23개 + 옛 명칭 별칭
 scripts/regions.json  개찰 상세(전체 순위·복수예가)를 수집할 시·도 목록 — 2026-09-26부터 전국 17개. detail_priority.json 의 sido(강원)는 전부·전원 행, 그 밖은 **관심 면허(lic) 공고만** + 압축(상위 30곳 `OPEN_TOP` 금액 행 + WATCH_BIZ 행 + 전원 c·x·k, 국방 v2 와 같은 방식). 전국 전부는 1년 수백 MB~1GB라 저장소 한도 때문에 안 함(요금은 없음 — 공개 저장소 Actions·Pages·공공데이터 모두 무료). 앱은 우리 시·도 파일만 읽음(`homeDetailSidos`).
 scripts/local_models.json  지역 전용 추천 설정 {areas:[{sido, sgg, label}], small}
 scripts/detail_priority.json  개찰 상세 수집 우선순위 {sgg:[시·군], lic:[면허], max_cnt:참가 수} — 관심 시·군 → 관심 면허 → 참가 적은 공고, 같은 등급은 최신부터
-.github/workflows/collect.yml  02:00·14:00·20:00 KST 전체 + 09·13·17시 공고만 + 수동 실행(start_date, reset_backfill, quick_only)
+.github/workflows/collect.yml  02:00·08:00·14:00·20:00 KST 전체(08시는 2026-09-28 추가 — 실행 시간이 병목) + 13·17시 공고만 + 수동 실행(start_date, reset_backfill, quick_only)
 stable/               안정판(예전 버전 사본, scripts/make_stable.py 로만 만든다 — 직접 고치지 않음). data 는 ../data/ 를 읽고 서비스워커는 안 씀. 설정 '🛟 안정판으로 열기'
 scripts/make_stable.py  python scripts/make_stable.py <커밋> <버전> → stable/ (예: 7314795 1.7.5). 사용자가 '지금 버전을 안정판으로' 하면 이걸로 교체
 reference/prototype.html       초기 프로토타입 (디자인 참고용, 가상 데이터 코드는 쓰지 않음)

@@ -5,7 +5,8 @@ on:
     - cron: "0 17 * * *"      # 매일 02:00 KST — 전체 수집
     - cron: "0 5 * * *"       # 14:00 KST — 전체 수집 한 번 더 (새벽에 조달청 점검·장애로 실패한 날 대비, 남은 한도만 씀)
     - cron: "0 11 * * *"      # 20:00 KST — 전체 수집 세 번째 (운영계정이라 한도보다 실행 시간이 병목, 2026-09-27 추가. 02시 전에 끝남)
-    - cron: "0 0,4,8 * * *"   # 09·13·17시 KST — 진행중 공고·최근 낙찰만 빠르게
+    - cron: "0 23 * * *"      # 08:00 KST — 전체 수집 네 번째 (2026-09-28: 과거 낙찰·상세·물품곡선 밀린 것 — 실행 시간이 병목. 전체 수집도 처음에 공고를 받으므로 09시 빠른 수집 대신)
+    - cron: "0 4,8 * * *"     # 13·17시 KST — 진행중 공고·최근 낙찰만 빠르게 (앞 전체 수집이 돌고 있으면 기다렸다가)
   workflow_dispatch:
     inputs:
       start_date:
@@ -71,7 +72,7 @@ jobs:
 
       # 2차: 과거 낙찰(최근 24개월 먼저) → 개찰 상세 → 나머지 과거
       - name: 전체 수집 (과거 낙찰·개찰 상세)
-        if: ${{ github.event.schedule != '0 0,4,8 * * *' && !inputs.quick_only }}
+        if: ${{ github.event.schedule != '0 4,8 * * *' && !inputs.quick_only }}
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
           START_DATE: ${{ inputs.start_date }}
@@ -140,7 +141,7 @@ jobs:
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
           # 국방 게이트웨이도 운영계정(오퍼레이션마다 하루 10만, 2026-09-27) — 한도보다 실행 시간이 먼저 참. 02·14시 전체 수집 때는 본 수집(260분)과 나란히 길게
-          MAX_MINUTES: ${{ (github.event.schedule == '0 0,4,8 * * *' || inputs.quick_only) && '55' || '220' }}
+          MAX_MINUTES: ${{ (github.event.schedule == '0 4,8 * * *' || inputs.quick_only) && '55' || '220' }}
           WATCH_BIZ: ${{ secrets.WATCH_BIZ || vars.WATCH_BIZ }}
         run: python scripts/collect_d2b.py
 
