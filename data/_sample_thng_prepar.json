@@ -1,0 +1,54 @@
+{
+  "endpoint": "https://apis.data.go.kr/1230000/as/ScsbidInfoService/getOpengResultListInfoThngPreparPcDetail",
+  "params": {
+    "inqryDiv": "2",
+    "bidNtceNo": "R26BK01725022",
+    "pageNo": 1,
+    "numOfRows": 999
+  },
+  "saved_at": "2026-09-28T16:28:53+09:00",
+  "fields": [
+    "PrearngPrcePurcnstcst",
+    "bidClsfcNo",
+    "bidNtceNm",
+    "bidNtceNo",
+    "bidNtceOrd",
+    "bidwinrSlctnAplBssCntnts",
+    "bsisPlnprc",
+    "bssamt",
+    "bssamtBssUpNum",
+    "compnoRsrvtnPrceMkngDt",
+    "compnoRsrvtnPrceSno",
+    "drwtNum",
+    "drwtYn",
+    "inptDt",
+    "plnprc",
+    "rbidNo",
+    "rlOpengDt",
+    "totRsrvtnPrceNum"
+  ],
+  "item": {
+    "bidNtceNo": "R26BK01725022",
+    "bidNtceOrd": "000",
+    "bidClsfcNo": "1",
+    "rbidNo": "000",
+    "bidNtceNm": "2026년 2차 구조장비(펌프차구조대 산악구조장비) 구매",
+    "plnprc": "87318500",
+    "bssamt": "87318000",
+    "totRsrvtnPrceNum": "15",
+    "compnoRsrvtnPrceSno": "1",
+    "bsisPlnprc": "85617100",
+    "drwtYn": "Y",
+    "drwtNum": "54",
+    "bidwinrSlctnAplBssCntnts": "행자부",
+    "rlOpengDt": "2026-09-18 12:45:46",
+    "bssamtBssUpNum": "7",
+    "compnoRsrvtnPrceMkngDt": "2026-09-18 12:45:28",
+    "inptDt": "2026-09-18 12:45:46",
+    "PrearngPrcePurcnstcst": ""
+  },
+  "raw_header": {
+    "resultCode": "00",
+    "resultMsg": "정상"
+  }
+}
