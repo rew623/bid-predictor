@@ -2877,7 +2877,7 @@ function buildResultRows(appItems){
     const fin = !!(r0?.winBiz && r0.winBiz === String(Company.get().biz || ''));   // 최종 낙찰(1순위 포기로 올라온 경우 포함)
     const date = (w.open || r0?.date || w.close || '').slice(0, 16);
     return {src: 'app', w, r, id: w.id, nm: w.nm, org: w.org || w.dmd, rgn: [w.sido, w.sgg].filter(Boolean).join(' '), lic: (w.lic || []).map(l => LIC_SHORT[l] || l).join('·'),
-      date, base: r?.base || w.base, amt: w.myBid, S: r?.base && r?.plan ? r.plan / r.base * 100 : null, x: mine?.x ?? null,
+      date, base: r?.base || w.base, amt: w.myBid, S: r?.base && r?.plan ? r.plan / r.base * 100 : null, x: mine?.x ?? (w.myBid && r?.base ? bidToSr(w.myBid, r.base, w.a ?? r.a, w.floor || r.floor) : null),   // 승리 구간이 1%p 넘게 벌어진 공고(참가 적음)는 judgeBid 가 null 이라 진단에서 빠졌음(2026-09-28, 1순위 1건 누락)
       rank: offBelow || mine?.cls === 'below' ? -1 : rank, n: r?.cnt || w.res?.n || null, kind: w.kind || '공사', src2: w.src, winner: r?.win, winAmt: r?.amt, app,
       cls: fin || rank === 1 ? 'win' : offBelow ? 'below' : mine?.cls || '', label: fin ? '🏆 최종 낙찰' : rank === 1 ? '🏆 1순위' : offBelow ? '하한 미달' : mine?.label?.replace(' (1순위)', '') || (r ? '금액 기록 없음' : '결과 대기'), fin};
   });
@@ -3041,10 +3041,12 @@ function mcnemarP(b, c){ const n = b + c; if(n < 1) return 1; let t = 0; for(let
 async function renderDiag(el, appItems, pseudo, head){
   const hidD = ResHidden.get(), all = buildResultRows(appItems).filter(x => !hidD.has(x.key));
   const cut = Diag.period ? kstDay(new Date(Date.now() - Diag.period * 30.4 * 86400000)) : '';
-  const usable = all.filter(x => (!cut || x.date.slice(0, 10) >= cut) && x.S && x.x != null && x.n);
+  const inCut = all.filter(x => !cut || x.date.slice(0, 10) >= cut);
+  const usable = inCut.filter(x => x.S && x.x != null && x.n);
   const kindOf = (x) => x.kind === '공사' ? '공사' : x.kind === '물품' ? '물품' : '기타';
   const dKinds = [['공사', '🏗 공사'], ['물품', '📦 물품'], ['all', '전체']];
   const rows = Diag.kind === 'all' ? usable : usable.filter(x => kindOf(x) === Diag.kind);
+  const nOut = (Diag.kind === 'all' ? inCut : inCut.filter(x => kindOf(x) === Diag.kind)).length - rows.length;   // 개찰 결과 목록과 건수가 다른 이유를 보이게
   const kindSeg = `<div class="seg res-kind" id="diagKind">${dKinds.map(([k, t]) => `<button type="button" data-k="${k}" class="${Diag.kind === k ? 'on' : ''}">${t} <span class="cnt">${fmtNum(k === 'all' ? usable.length : usable.filter(x => kindOf(x) === k).length)}</span></button>`).join('')}</div>`;
   const periodSel = `<select id="diagPeriod" class="sort-select" aria-label="기간">${[[0, '전체 기간'], [12, '최근 12개월'], [6, '최근 6개월'], [3, '최근 3개월']].map(([v, t]) => `<option value="${v}"${+Diag.period === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
   const src = {app: all.filter(x => x.src === 'app' && !x.w?.auto).length, auto: all.filter(x => x.w?.auto).length, hist: all.filter(x => x.src === 'hist').length};
@@ -3092,7 +3094,7 @@ async function renderDiag(el, appItems, pseudo, head){
     const kindRows = kinds.map(kd => { const r = rows.filter(x => x.kind === kd), kk = r.filter(isWin).length, e = r.reduce((t, x) => t + 1 / x.n, 0);
       return `<tr><td>${esc(kd || '-')}</td><td class="num">${fmtNum(r.length)}</td><td class="num">${fmtNum(kk)}</td><td class="num">${fmtNum(e, 1)}</td><td class="num">${pc(r.filter(x => x.cls === 'below').length, r.length)}%</td></tr>`; }).join('');
     body = `<div class="res-sum">
-        <div><span>진단 건수</span><b>${fmtNum(N)}</b></div>
+        <div><span>진단 건수</span><b>${fmtNum(N)}</b>${nOut ? `<small class="faint" title="예정가격·내 투찰금액·참가 수 중 하나를 몰라 계산에서 뺀 건">제외 ${fmtNum(nOut)}건</small>` : ''}</div>
         <div class="${k ? 'win' : ''}"><span>🏆 1순위</span><b>${fmtNum(k)}</b></div>
         <div><span>평균 업체 기대</span><b>${fmtNum(E, 1)}</b></div>
         <div><span>하한 미달</span><b class="below">${pc(below, N)}%</b></div>
