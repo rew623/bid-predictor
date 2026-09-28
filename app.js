@@ -2952,7 +2952,7 @@ async function renderResults(el, appItems, pseudo, head){
         <div class="meta-line ops">기록 = 내가 넣은 금액을 고쳐 저장 · 다시 조회 = 조달청 개찰 결과를 새로 받아 순위·금액을 조달청 값으로 · 목록에서 빼기 = 맨 아래 '뺀 목록'으로 옮김(진단·요약에서도 빠짐, 언제든 되돌리기)</div>
       </details>` : `<details class="rc-more"><summary>자세히</summary><div class="mybid-row"><button class="btn sm line" data-res-hide="${esc(x.key)}" type="button">목록에서 빼기</button></div></details>`;
     html += `<div class="rc ${x.cls}">
-      <div class="rc-nm">${x.src === 'app' && rcPoints(x) ? `<button type="button" class="rc-title" data-rc-plot="${esc(x.key)}" title="업체들 투찰 위치 그래프">${esc(x.nm)} <span class="rc-plot-ico">📊</span></button>` : esc(x.nm)} ${x.src === 'app' ? sdTag(x.w) : ''}</div>
+      <div class="rc-nm">${x.src === 'app' && rcPoints(x) ? `<button type="button" class="rc-title" data-rc-plot="${esc(x.key)}" title="업체들 투찰 위치 그래프">${esc(x.nm)} <span class="rc-plot-ico">📊 업체 투찰 위치</span></button>` : esc(x.nm)} ${x.src === 'app' ? sdTag(x.w) : ''}</div>
       <div class="rc-sub">${esc(x.date.slice(11, 16) ? x.date.slice(0, 16) + ' 개찰' : x.date.slice(0, 10))} · ${esc(x.org || '')}${x.src === 'app' && resLink(x.w) ? ` · <a href="${esc(resLink(x.w))}" target="_blank" rel="noopener" class="rc-link">${x.w.src === '국방' ? '국방전자조달' : '나라장터'}에서 보기 ↗</a>${x.w.src !== '국방' && x.w.no ? ` <button type="button" class="copy-btn" data-copy-text="${esc(x.w.no)}" data-copy-msg="공고번호 복사됨 — 나라장터 입찰 → 개찰결과분류조회의 '입찰공고번호' 칸에 붙여 넣고 검색" title="나라장터 개찰결과분류조회에 붙여 넣을 공고번호">📋 공고번호</button>` : ''}` : ''}</div>
       <div class="rc-plot" data-rc-plot-box="${esc(x.key)}" hidden></div>
       <div class="rc-line"><span class="rc-tags">${x.rgn ? `<span class="tag">${esc(x.rgn)}</span>` : ''}${x.lic ? `<span class="tag">${esc(x.lic.split('|').join('·'))}</span>` : ''}<span class="tag">${esc(x.kind)}</span>${x.w?.src === '국방' ? '<span class="tag">🎖 국방</span>' : ''}</span><b class="rc-base">${x.base ? won(x.base) : ''}</b></div>
@@ -2977,8 +2977,9 @@ async function renderResults(el, appItems, pseudo, head){
   el.querySelectorAll('[data-rc-plot]').forEach(b => b.onclick = () => {
     const box = el.querySelector(`[data-rc-plot-box="${CSS.escape(b.dataset.rcPlot)}"]`), x = byKey.get(b.dataset.rcPlot);
     if(!box || !x) return;
-    if(!box.hidden){ box.hidden = true; return; }
-    box.innerHTML = rcPlot(x); box.hidden = false;
+    const ico = b.querySelector('.rc-plot-ico');
+    if(!box.hidden){ box.hidden = true; if(ico) ico.textContent = '📊 업체 투찰 위치'; return; }
+    box.innerHTML = rcPlot(x); box.hidden = false; if(ico) ico.textContent = '▲ 그래프 접기';
   });
   el.querySelectorAll('[data-res-hide]').forEach(b => b.onclick = () => { ResHidden.set(b.dataset.resHide, true); toast('뺀 목록으로 옮겼습니다 — 맨 아래에서 되돌릴 수 있어요', 2600); keepY(renderWatch); });
   el.querySelectorAll('[data-res-unhide]').forEach(b => b.onclick = () => { ResHidden.set(b.dataset.resUnhide, false); toast('되돌렸습니다'); keepY(renderWatch); });
