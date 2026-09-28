@@ -381,6 +381,16 @@ const Data = {
     return out;
   },
   /** 개찰 상세: {bids: Map(id → {date, plan, base, p:[[번호,가격,추첨,횟수]], r:[[순위,업체idx,금액,투찰률,비고]], corps})} */
+  /** 3년보다 옛 강원 개찰 상세(압축: 상위 30곳 r + 전원 c·x, nm·org 포함) — 업체 보기에서만 */
+  loadOpeningOld(sido){
+    return this.once('oo:' + sido, async () => {
+      const paths = Object.values(this.meta.files.opening_old?.[sido] || {}).flat();
+      const parts = await Promise.all(paths.map(p => this.fetchJson(p).catch(() => ({}))));
+      const bids = new Map();
+      for(const part of parts){ const corps = part.corps || []; for(const [id, b] of Object.entries(part.bids || {})){ b.corps = corps; bids.set(id, b); } }
+      return {bids};
+    });
+  },
   loadOpening(sido){
     return this.once('o:' + sido, async () => {
       const years = this.meta.files.opening?.[sido] || {};
@@ -2778,6 +2788,25 @@ async function renderCorpProfile(biz){
         fin: rec.winBiz === biz});   // 최종 낙찰 = 낙찰 목록의 낙찰자(1순위 포기·적격 탈락으로 2순위 이하가 된 경우 포함)
     }
   }
+  // 3년보다 옛 강원(압축 — 상위 30곳 밖이면 전원 목록의 투찰률로 금액 복원)
+  for(const sido of homeDetailSidos()){
+    let oo; try{ oo = await Data.loadOpeningOld(sido); }catch(e){ continue; }
+    for(const [id, b] of oo.bids){
+      const ci = (b.corps || []).findIndex(x => x[1] === biz);
+      if(ci < 0) continue;
+      let rank = 0, amt = null;
+      const row = (b.r || []).find(x => x[1] === ci);
+      if(row){ rank = row[0]; amt = row[2]; }
+      else{
+        const pos = (b.c || []).indexOf(ci);
+        if(pos < 0) continue;
+        const rate = (b.x || []).slice(0, pos + 1).reduce((t, v) => t + v, 0) / 1000;
+        rank = pos < (b.k || 0) ? pos + 1 : 0; amt = rate && b.plan ? Math.round(rate / 100 * b.plan) : null;
+      }
+      const S = b.base && b.plan ? b.plan / b.base * 100 : null;
+      rows.push({id, date: b.date, nm: b.nm || id, org: b.org || '', lic: [], n: b.n || (b.c || []).length, rank, amt, x: null, S, d: null, fin: false, old: true});
+    }
+  }
   rows.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   const valid = rows.filter(r => r.d != null);
   const top1 = rows.filter(r => r.rank === 1).length, fair = rows.reduce((t, r) => t + 1 / r.n, 0);
@@ -2823,7 +2852,7 @@ async function renderCorpProfile(biz){
       const cls = r.rank === 1 || r.fin ? 'win' : r.d != null && r.d < 0 ? 'below' : 'high';
       return `<div class="rc ${cls}"${i >= 30 ? ' data-more-bid hidden' : ''}><div class="rc-nm">${esc(r.nm)}</div><div class="rc-sub">${esc(r.date || '')} · ${esc(r.org)}</div>
         <div class="rc-grid"><div><span>사정율</span><b>${r.S ? r.S.toFixed(3) : '-'}</b></div><div><span>투찰률</span><b>${r.x != null ? r.x.toFixed(3) : '-'}</b></div><div><span>차이</span><b>${r.d != null ? (r.d >= 0 ? '+' : '') + r.d.toFixed(3) : '-'}</b></div></div>
-        <div class="rc-foot"><span class="rc-rank ${cls}"><b>${r.rank ? fmtNum(r.rank) : '-'}</b> / ${fmtNum(r.n)}</span><span class="rc-amt">${won(r.amt)}</span><span class="rc-v ${cls}">${r.fin ? '🏆 최종 낙찰' : r.rank === 1 ? '1순위(낙찰 안 됨)' : r.d != null && r.d < 0 ? '하한 미달' : ''}</span></div></div>`;
+        <div class="rc-foot"><span class="rc-rank ${cls}"><b>${r.rank ? fmtNum(r.rank) : '-'}</b> / ${fmtNum(r.n)}</span><span class="rc-amt">${r.amt ? won(r.amt) : '-'}</span><span class="rc-v ${cls}">${r.fin ? '🏆 최종 낙찰' : r.rank === 1 ? (r.old ? '1순위' : '1순위(낙찰 안 됨)') : r.d != null && r.d < 0 ? '하한 미달' : ''}</span></div></div>`;
     }).join('')}</div>${rows.length > 30 ? `<div class="more"><button class="btn sm line" id="bidMoreC" type="button">더 보기 (${fmtNum(rows.length - 30)}건 남음)</button></div>` : ''}` : ''}`;
   // 최종 낙찰 카드 펼치기: 개찰 순위 상위 10곳(강원 개찰 상세·국방) + 공고 원문
   out.querySelectorAll('[data-win]').forEach(det => det.addEventListener('toggle', async () => {

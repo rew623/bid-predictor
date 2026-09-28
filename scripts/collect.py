@@ -918,7 +918,7 @@ class OldStore(ScsbidStore):
             groups.setdefault(r.get("sido") or "기타", []).append(r)
         for sido, recs in groups.items():
             recs.sort(key=lambda r: (r.get("date") or "", r["id"]), reverse=True)
-            items = [clean({k: r.get(k) for k in ("id", "nm", "org", "dmd", "sido", "sgg", "amt", "rate", "cnt", "win", "winBiz", "date", "base", "cm")}) for r in recs]
+            items = [clean({k: r.get(k) for k in ("id", "no", "ord", "nm", "org", "dmd", "sido", "sgg", "amt", "rate", "cnt", "win", "winBiz", "date", "base", "plan", "cm")}) for r in recs]
             files[sido] = split_write(self.dir / sido, {"sido": sido, "v": SCHEMA_VERSION}, items)
             counts[sido] = len(items)
         return files, counts
@@ -997,6 +997,7 @@ class OpeningStore:
     """
     dir = DATA / "opening"
     top_only = False   # True(물품): 상위 30곳 + 우리 업체 행만, 전원 c·x 는 안 남김
+    force_compact = False   # True(옛 강원): 관심 시·도여도 상위 30곳 금액 + 전원 c·x (OldOpeningStore)
 
     def __init__(self):
         self.years = {}   # (sido, year) -> {"corps":[], "cidx":{}, "bids":{}}
@@ -1063,7 +1064,7 @@ class OpeningStore:
                 xs = [round((r[3] or 0) * 1000) for r in rows]
                 compact["x"] = xs[:1] + [b - a for a, b in zip(xs, xs[1:])]
             rows = rows[:OPEN_TOP] + [r for r in rows[OPEN_TOP:] if y["corps"][r[1]][1] in WATCH_BIZ]
-        elif sido not in FULL_SIDOS:   # 전국 전원 행은 1년 약 1GB → 상위 30곳(+우리 업체) 금액 행 + 전원은 업체·투찰률(국방 v2 와 같은 방식)
+        elif self.force_compact or sido not in FULL_SIDOS:   # 전국 전원 행은 1년 약 1GB → 상위 30곳(+우리 업체) 금액 행 + 전원은 업체·투찰률(국방 v2 와 같은 방식)
             compact = {"c": [r[1] for r in rows], "k": sum(1 for r in rows if r[0] > 0)}
             xs = [round((r[3] or 0) * 1000) for r in rows]
             compact["x"] = xs[:1] + [b - a for a, b in zip(xs, xs[1:])]
@@ -1157,6 +1158,62 @@ class OpeningStore:
             out[sd.name] = years
             counts[sd.name] = len(self.idx(sd.name)["done"])
         return out, counts
+
+
+class OldOpeningStore(OpeningStore):
+    """3년보다 옛 강원 공사 개찰 상세 → data/opening_old/{시도}/{연도}.json (2026-09-28 요청 '업체 검색하면 과거 강원 자료 다').
+    전원 행을 두면 3년에 약 150MB 라 강원 밖 시·도처럼 압축(상위 30곳 금액 + WATCH_BIZ + 전원 업체 c·투찰률 x·k + 복수예가 p) — 약 1/3.
+    앱은 업체 보기에서만 읽는다(평소 화면은 안 읽음)."""
+    dir = DATA / "opening_old"
+    force_compact = True
+
+    def add(self, sido, rec, ranks, prices):
+        out = super().add(sido, rec, ranks, prices)
+        b = self.year(sido, rec["date"][:4])["bids"].get(rec["id"])
+        if b is not None:   # 앱이 옛 낙찰 파일을 안 읽으므로 공고명·기관·참가 수를 같이
+            b.update(clean({"nm": (rec.get("nm") or "")[:60] or None, "org": rec.get("dmd") or rec.get("org"), "n": len(ranks)}))
+        return out
+
+
+def step_old_details(api, meta, old, oostore, now, checkpoint, minutes):
+    """옛낙찰(강원 공사)마다 개찰 순위 + 복수예가 — 최신(3년 전 바로 앞)부터 과거로. 진행은 oostore index(done/fail)."""
+    stop = time.time() + minutes * 60
+    queue = []
+    for r in old.recs.values():
+        if (r.get("cm") or "공사") != "공사" or r.get("sido") not in FULL_SIDOS or not r.get("date"):
+            continue
+        ix = oostore.idx(r["sido"])
+        if r["id"] in ix["done"] or ix["fail"].get(r["id"], 0) >= DETAIL_MAX_TRIES:
+            continue
+        queue.append(r)
+    queue.sort(key=lambda r: r["date"], reverse=True)
+    log(f"[옛상세] 대기 {len(queue)}건")
+    n = 0
+    for r in queue:
+        if time.time() > stop or api.remaining("scsbid") < 50 or api.time_left() < 10:
+            break
+        cut = r["id"].rfind("-")
+        rec = dict(r, no=r.get("no") or r["id"][:cut], ord=r.get("ord") or r["id"][cut + 1:])
+        try:
+            ranks = list(api.paged("opening_rank", {"bidNtceNo": rec["no"], "bidNtceOrd": rec["ord"]}))
+            prices = list(api.paged("prepar_detail", {"inqryDiv": "2", "bidNtceNo": rec["no"]}))
+        except ApiError as e:
+            log(f"  ! {rec['id']} {e}")
+            oostore.fail(rec["sido"], rec["id"])
+            continue
+        for lst in (ranks, prices):
+            rb = [to_int(pick(i, F_RBID)) or 0 for i in lst]
+            if rb and max(rb) > 0:
+                lst[:] = [i for i, k in zip(lst, rb) if k == max(rb)]
+        prices = [p for p in prices if str(pick(p, F_ORD) or rec["ord"]) == rec["ord"]] or prices
+        if not ranks:
+            oostore.fail(rec["sido"], rec["id"])
+            continue
+        oostore.add(rec["sido"], rec, ranks, prices)
+        n += 1
+        if n % 200 == 0:
+            checkpoint()
+    log(f"  이번 실행 {n}건")
 
 
 class ThngOpeningStore(OpeningStore):
@@ -1766,6 +1823,7 @@ def main():
     tostore = ThngOpeningStore()
     tcurve = ThngCurve(DATA / "thng_curve.json")
     oldstore = OldStore()
+    oostore = OldOpeningStore()
     errors = []
 
     def save_all(final=False):
@@ -1775,6 +1833,8 @@ def main():
         tostore.save()
         tcurve.save()
         files_old, counts_old = oldstore.save()
+        oostore.save()
+        files_oo, _ = oostore.files()
         files_s, counts_s = store.save()
         files_t, counts_t = tstore.save()
         files_o, counts_o = ostore.files()
@@ -1783,7 +1843,7 @@ def main():
         changed = write_if_changed(DATA / "bids.json", dumps({"items": bids, "v": SCHEMA_VERSION}))
         changed = write_lic_map(cache) or changed
         old_files = meta.get("files", {})
-        meta["files"] = {"scsbid": files_s, "opening": files_o, "thng": files_t, "opening_thng": files_to, "scsbid_old": files_old}
+        meta["files"] = {"scsbid": files_s, "opening": files_o, "thng": files_t, "opening_thng": files_to, "scsbid_old": files_old, "opening_old": files_oo}
         meta["counts"] = {"bids": len(bids), "scsbid": counts_s, "opening": counts_o,
                           "scsbid_total": sum(counts_s.values()), "thng": counts_t, "thng_total": sum(counts_t.values()), "opening_thng": counts_to}
         meta["v"] = SCHEMA_VERSION
@@ -1816,6 +1876,7 @@ def main():
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all)),
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all)),
         ("옛낙찰", lambda: step_old_backfill(api, meta, oldstore, now, save_all)),   # 3년보다 옛 낙찰(강원만, 업체 이력용) — 과거낙찰이 끝난 뒤 (2026-09-28)
+        ("옛상세", lambda: step_old_details(api, meta, oldstore, oostore, now, save_all, float(os.environ.get("OLD_DETAIL_MINUTES") or 40))),   # 옛 강원 공사 개찰 상세(압축) — 업체 보기용 (2026-09-28)
         ("업체정보", lambda: step_corp_info(api, meta, now, save_all)),   # 대표자·주소 채우기는 남는 한도로 (2026-09-27: 앞에 두었더니 물품·과거 수집 몫을 다 씀)
     ]
     only = {s.strip() for s in (os.environ.get("STEPS") or "").split(",") if s.strip()}
