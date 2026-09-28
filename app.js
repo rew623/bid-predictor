@@ -727,7 +727,22 @@ function quickPredictLocal(notice){
 }
 
 // ============================================================ 차트 (SVG)
-function histogram(values, {min, max, step, lines=[], h=130, color='var(--primary)', label=(x)=>x.toFixed(1)}){
+/** 그래프 오른쪽 세로축 눈금(2026-09-28 요청: 모든 그래프에 숫자·단위). maxV = 그림 맨 위(H-top 높이)에 해당하는 값 */
+const AXW = 38;
+function axisR(maxV, W, H, fmt, top=22){
+  if(!(maxV > 0)) return '';
+  const raw = maxV / 3, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag;
+  const st = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag;
+  let out = '';
+  for(let v = 0; v <= maxV * 1.0001; v += st){
+    const y = H - v / maxV * (H - top);
+    out += `<line x1="0" y1="${y.toFixed(1)}" x2="${W}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="${v ? .6 : 0}" opacity=".7"/>`
+      + `<text x="${W + 4}" y="${(y + 3).toFixed(1)}" font-size="9" fill="var(--text-faint)">${esc(fmt(v))}</text>`;
+  }
+  return out;
+}
+const fmtCnt = (unit) => (v) => (Math.abs(v - Math.round(v)) < 1e-9 ? fmtNum(Math.round(v)) : v.toFixed(1)) + unit;
+function histogram(values, {min, max, step, lines=[], h=130, color='var(--primary)', label=(x)=>x.toFixed(1), unit='건'}){
   const W = 360, H = h, bins = Math.max(1, Math.round((max - min) / step));
   const counts = new Array(bins).fill(0);
   values.forEach(v => {
@@ -748,7 +763,7 @@ function histogram(values, {min, max, step, lines=[], h=130, color='var(--primar
   }).join('');
   const ticks = [min, (min+max)/2, max].map((t,i) =>
     `<text x="${X(t).toFixed(1)}" y="${H+13}" font-size="9.5" fill="var(--text-faint)" text-anchor="${['start','middle','end'][i]}">${label(t)}</text>`).join('');
-  return `<div class="chart"><svg viewBox="0 0 ${W} ${H+16}" role="img"><line x1="0" y1="${H}" x2="${W}" y2="${H}" stroke="var(--border)"/>${bars}${ls}${ticks}</svg></div>`;
+  return `<div class="chart"><svg viewBox="0 0 ${W + AXW} ${H+16}" role="img">${axisR(maxC, W, H, fmtCnt(unit))}<line x1="0" y1="${H}" x2="${W}" y2="${H}" stroke="var(--border)"/>${bars}${ls}${ticks}</svg></div>`;
 }
 
 function catBars(items, {h=130, valueFmt=(v)=>v, refLine=null, labelEvery=1}){
@@ -763,12 +778,12 @@ function catBars(items, {h=130, valueFmt=(v)=>v, refLine=null, labelEvery=1}){
     const y = (H - refLine.v / maxV * (H - 22)).toFixed(1);
     return `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="${refLine.color}" stroke-dasharray="4,3" stroke-width="1.4"/><text x="${W}" y="${y-3}" font-size="9.5" fill="${refLine.color}" text-anchor="end">${esc(refLine.label)}</text>`;
   })() : '';
-  return `<div class="chart"><svg viewBox="0 0 ${W} ${H+16}" role="img"><line x1="0" y1="${H}" x2="${W}" y2="${H}" stroke="var(--border)"/>${bars}${ref}</svg></div>`;
+  return `<div class="chart"><svg viewBox="0 0 ${W + AXW} ${H+16}" role="img">${axisR(maxV, W, H, valueFmt)}<line x1="0" y1="${H}" x2="${W}" y2="${H}" stroke="var(--border)"/>${bars}${ref}</svg></div>`;
 }
 
 /** 여러 계열을 같은 가로축에 겹쳐 그린다. 계열마다 자기 최댓값 기준으로 높이를 맞춘다(모양 비교용).
  *  series: [{pts:[{x, y}], color, label, fill, bars}], marks: [{x, color, label}] */
-function plot(series, {min, max, h=150, marks=[], xLabel=(x)=>x.toFixed(2)}){
+function plot(series, {min, max, h=150, marks=[], xLabel=(x)=>x.toFixed(2), yAxis=null}){   // yAxis = {i: 눈금을 붙일 계열 번호, fmt}
   const W = 360, H = h, X = (x) => (x - min) / (max - min || 1) * W;
   const body = series.filter(s => s.pts.length).map(s => {
     const my = Math.max(maxOf(s.pts.map(p => p.y)), 1e-12);
@@ -790,7 +805,9 @@ function plot(series, {min, max, h=150, marks=[], xLabel=(x)=>x.toFixed(2)}){
   const ticks = [min, (min + max) / 2, max].map((t, i) =>
     `<text x="${X(t).toFixed(1)}" y="${H + 13}" font-size="9.5" fill="var(--text-faint)" text-anchor="${['start','middle','end'][i]}">${xLabel(t)}</text>`).join('');
   const legend = series.filter(s => s.label).map(s => `<span><i style="background:${s.color};${s.bars ? 'opacity:.35' : ''}"></i>${esc(s.label)}</span>`).join('');
-  return `<div class="chart"><svg viewBox="0 0 ${W} ${H + 16}" role="img"><line x1="0" y1="${H}" x2="${W}" y2="${H}" stroke="var(--border)"/>${body}${ms}${ticks}</svg></div>
+  const ys = yAxis && series[yAxis.i]?.pts.length ? series[yAxis.i] : null;
+  const axis = ys ? axisR(Math.max(maxOf(ys.pts.map(p => p.y)), 1e-12), W, H, yAxis.fmt, 26) : '';
+  return `<div class="chart"><svg viewBox="0 0 ${W + (ys ? AXW : 0)} ${H + 16}" role="img">${axis}<line x1="0" y1="${H}" x2="${W}" y2="${H}" stroke="var(--border)"/>${body}${ms}${ticks}</svg></div>
     ${legend ? `<div class="legend">${legend}</div>` : ''}`;
 }
 /** [값, 가중치] 목록 → 구간별 합 (막대/밀도용) */
@@ -2220,7 +2237,7 @@ async function runPredict(){
     const sBins = binPts(rows.map(r => [r.sr, 1]), vMin, vMax, (vMax - vMin) > 3 ? 0.05 : 0.02);
     drawCurve = (sel) => plot([{pts: sBins, color: 'var(--text-sub)', label: '실제 사정율 분포', bars: true},
               {pts: rec.pts(), color: 'var(--primary)', label: '과거 낙찰확률', fill: true}],
-        {min: vMin, max: vMax, marks: [{x: rec.x, color: 'var(--target)', label: `추천 ${rec.x.toFixed(3)}`}, {x: meanX, color: 'var(--text-faint)', label: `평균 ${meanX.toFixed(2)}`},
+        {min: vMin, max: vMax, yAxis: {i: 1, fmt: (v) => v ? (v * 100).toFixed(v * 100 < 1 ? 2 : 1) + '%' : '0%'}, marks: [{x: rec.x, color: 'var(--target)', label: `추천 ${rec.x.toFixed(3)}`}, {x: meanX, color: 'var(--text-faint)', label: `평균 ${meanX.toFixed(2)}`},
           ...(sel != null && Math.abs(sel - rec.x) > 1e-9 ? [{x: sel, color: 'var(--ok)', label: `선택 ${sel.toFixed(3)}`}] : [])]});
     pickInfo = (x, given) => {
       const amt = given || (base ? amtAt(x) : null);
@@ -3040,7 +3057,7 @@ function rcPlot(x){
   if(app != null) lines.push({x: app, color: 'var(--primary)', label: `앱 추천 ${app.toFixed(3)}`});
   const below = p.xs.filter(v => v < p.S).length, lowerValid = my != null ? p.xs.filter(v => v >= p.S && v < my).length : null;
   const N = x.n || p.xs.length;
-  return histogram(p.xs, {min, max, step, lines, h: 150, color: 'var(--text-faint)', label: (v) => v.toFixed(2)})
+  return histogram(p.xs, {min, max, step, lines, h: 150, color: 'var(--text-faint)', label: (v) => v.toFixed(2), unit: '곳'})
     + `<div class="meta-line">가로 = 투찰 사정률(금액을 사정율 단위로 되돌린 값), 막대 = 그 자리에 넣은 업체 수. 빨간 선 왼쪽은 낙찰하한가 아래(무효).</div>`
     + `<div class="meta-line">${p.full ? `${fmtNum(p.xs.length)}곳 전원` : `상위 ${fmtNum(p.xs.length)}곳만(이 공고는 전원 금액을 아직 못 받음 — 다음 수집 때 채워짐)`} · 하한 미달 ${fmtNum(below)}곳`
     + (my != null ? ` · <b>내 투찰은 ${my < p.S ? `실제 사정율보다 ${(p.S - my).toFixed(3)}%p 아래(하한 미달)` : `유효 투찰 중 나보다 낮은 곳 ${fmtNum(lowerValid)}곳`}</b>` : '') + ` · 참가 ${fmtNum(N)}곳</div>`;
@@ -3583,7 +3600,8 @@ async function renderStats(){
       <h2>경쟁사 투찰 사정률 vs 실제 사정율</h2>
       <p class="sub">파란 선 = 경쟁사들이 투찰한 위치(공고마다 같은 비중), 옅은 막대 = 실제 사정율이 떨어진 위치. 막대는 높은데 선이 낮은 곳이 "사정율은 자주 오는데 경쟁사가 덜 몰린" 빈틈입니다.</p>
       ${plot([{pts: binPts(allS, dMin, dMax, 0.02), color: 'var(--text-sub)', label: '실제 사정율', bars: true},
-              {pts: binPts(allX, dMin, dMax, 0.02), color: 'var(--primary)', label: '경쟁사 투찰 사정률'}], {min: dMin, max: dMax})}
+              {pts: binPts(allX, dMin, dMax, 0.02), color: 'var(--primary)', label: '경쟁사 투찰 사정률'}], {min: dMin, max: dMax,
+                yAxis: {i: 1, fmt: ((tot) => (v) => (v && tot ? (v / tot * 100).toFixed(1) : '0') + '%')(allX.reduce((t, v) => t + (v[1] ?? 1), 0))}})}
       <div class="meta-line">개찰 순위 ${sampleText(nRank)} · 투찰 ${fmtNum(allX.length)}건</div>
     </div>` : '';
   el.innerHTML = html + densCard + `
