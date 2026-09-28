@@ -690,3 +690,10 @@ main{overflow-x:hidden;}
 @media (min-width: 2400px){
   .bid-list, .rc-list{grid-template-columns:repeat(3, minmax(0, 1fr));}
 }
+/* 개찰 결과: 공고명 = 투찰 위치 그래프 열기 (2026-09-28) */
+.rc-title{all:unset; cursor:pointer; font:inherit; color:inherit;}
+.rc-title:hover{color:var(--primary);}
+.rc-plot-ico{font-size:12px; opacity:.7;}
+.rc-link{color:var(--primary); text-decoration:none; white-space:nowrap;}
+.rc-plot{margin:8px 0 4px; padding:10px; border:1px solid var(--border); border-radius:10px; background:var(--bg);}
+.rc-plot .chart{max-width:none;}

@@ -2538,9 +2538,12 @@ async function fetchOpeningResult(w){
   const plan = P2.map(it => numF(pickF(it, 'plnprc', 'plnPrc'))).find(Boolean) || null;
   const base = P2.map(it => numF(pickF(it, 'bssamt', 'bsisAmt', 'bssAmt'))).find(Boolean) || w.base || null;
   if(!R.length && !plan) return null;
+  // 예정가격 조회(복수예가 상세)가 순위보다 늦게 올라올 때가 있다(2026-09-28 삼척 농촌지도기반조성 — 개찰 뒤에도 '결과 대기') → 1순위 투찰률(= 금액 ÷ 예정가격)로 되돌림
+  let planEst = false;
+  if(!plan){ const t = R.find(x => x.rank > 0 && x.rate > 0); if(t){ plan = Math.round(t.amt / (t.rate / 100)); planEst = true; } }
   const biz = String(Company.get().biz || '').replace(/\D/g, '');
   const mine = biz ? R.find(x => x.biz === biz) || null : null;
-  return {at: new Date().toISOString(), n: R.length, plan, base, win: R[0] || null, mine,
+  return {at: new Date().toISOString(), n: R.length, plan, ...(planEst ? {planEst: 1} : {}), base, win: R[0] || null, mine,
     top: R.slice(0, 10), xs: R.map(x => x.amt)};   // xs = 전체 투찰금액 (순위 계산용)
 }
 const opened = (w) => { const t = parseKst(w.open || w.close); return t && t < new Date(); };
@@ -2949,8 +2952,9 @@ async function renderResults(el, appItems, pseudo, head){
         <div class="meta-line ops">기록 = 내가 넣은 금액을 고쳐 저장 · 다시 조회 = 조달청 개찰 결과를 새로 받아 순위·금액을 조달청 값으로 · 목록에서 빼기 = 맨 아래 '뺀 목록'으로 옮김(진단·요약에서도 빠짐, 언제든 되돌리기)</div>
       </details>` : `<details class="rc-more"><summary>자세히</summary><div class="mybid-row"><button class="btn sm line" data-res-hide="${esc(x.key)}" type="button">목록에서 빼기</button></div></details>`;
     html += `<div class="rc ${x.cls}">
-      <div class="rc-nm">${esc(x.nm)} ${x.src === 'app' ? sdTag(x.w) : ''}</div>
-      <div class="rc-sub">${esc(x.date.slice(11, 16) ? x.date.slice(0, 16) + ' 개찰' : x.date.slice(0, 10))} · ${esc(x.org || '')}</div>
+      <div class="rc-nm">${x.src === 'app' && rcPoints(x) ? `<button type="button" class="rc-title" data-rc-plot="${esc(x.key)}" title="업체들 투찰 위치 그래프">${esc(x.nm)} <span class="rc-plot-ico">📊</span></button>` : esc(x.nm)} ${x.src === 'app' ? sdTag(x.w) : ''}</div>
+      <div class="rc-sub">${esc(x.date.slice(11, 16) ? x.date.slice(0, 16) + ' 개찰' : x.date.slice(0, 10))} · ${esc(x.org || '')}${x.src === 'app' && resLink(x.w) ? ` · <a href="${esc(resLink(x.w))}" target="_blank" rel="noopener" class="rc-link">${x.w.src === '국방' ? '국방전자조달' : '나라장터'}에서 보기 ↗</a>` : ''}</div>
+      <div class="rc-plot" data-rc-plot-box="${esc(x.key)}" hidden></div>
       <div class="rc-line"><span class="rc-tags">${x.rgn ? `<span class="tag">${esc(x.rgn)}</span>` : ''}${x.lic ? `<span class="tag">${esc(x.lic.split('|').join('·'))}</span>` : ''}<span class="tag">${esc(x.kind)}</span>${x.w?.src === '국방' ? '<span class="tag">🎖 국방</span>' : ''}</span><b class="rc-base">${x.base ? won(x.base) : ''}</b></div>
       <div class="rc-grid">
         <div><span>사정율</span><b>${x.S ? x.S.toFixed(3) : '비공개'}</b></div>
@@ -2969,12 +2973,59 @@ async function renderResults(el, appItems, pseudo, head){
         ${hiddenRows.map(x => `<div class="res-bin-row"><span>${esc(x.nm)}<small>${esc((x.date || '').slice(0, 10))}${x.label ? ' · ' + esc(x.label) : ''}</small></span><button class="btn sm line" data-res-unhide="${esc(x.key)}" type="button">되돌리기</button></div>`).join('')}</details>` : '')
     + renderHistory();
   bindWatch(el, pseudo);
+  const byKey = new Map(allRows.map(x => [x.key, x]));
+  el.querySelectorAll('[data-rc-plot]').forEach(b => b.onclick = () => {
+    const box = el.querySelector(`[data-rc-plot-box="${CSS.escape(b.dataset.rcPlot)}"]`), x = byKey.get(b.dataset.rcPlot);
+    if(!box || !x) return;
+    if(!box.hidden){ box.hidden = true; return; }
+    box.innerHTML = rcPlot(x); box.hidden = false;
+  });
   el.querySelectorAll('[data-res-hide]').forEach(b => b.onclick = () => { ResHidden.set(b.dataset.resHide, true); toast('뺀 목록으로 옮겼습니다 — 맨 아래에서 되돌릴 수 있어요', 2600); keepY(renderWatch); });
   el.querySelectorAll('[data-res-unhide]').forEach(b => b.onclick = () => { ResHidden.set(b.dataset.resUnhide, false); toast('되돌렸습니다'); keepY(renderWatch); });
   $('resKind').onclick = (e) => { const k = e.target.closest('[data-k]')?.dataset.k; if(!k) return; Res.kind = k; LS.set('resKind', k); Res.shown = 50; renderWatch(); };
   $('resPeriod').onchange = () => { Res.period = +$('resPeriod').value; LS.set('resPeriod', Res.period); Res.shown = 50; renderWatch(); };
   $('resTop').onclick = () => { Res.top = !Res.top; renderWatch(); };
   $('resMore') && ($('resMore').onclick = () => keepY(() => { Res.shown += 100; return renderWatch(); }));
+}
+/** 개찰 결과 공고 원문 링크 — 나라장터 공고 상세(개찰결과 탭이 있음), 국방은 국방전자조달 목록 */
+function resLink(w){
+  if(!w) return '';
+  if(w.src === '국방') return D2B_LIST_URL;
+  if(w.url) return w.url;
+  if(!/^R\d/.test(w.no || '')) return '';
+  return `https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=${encodeURIComponent(w.no)}&bidPbancOrd=${encodeURIComponent(w.ord || '000')}`;
+}
+/** 개찰 결과 한 건의 업체 투찰 위치(투찰 사정률) — 조달청 조회·개찰 상세는 전원, 국방·물품·다른 시·도 자동 찾기는 상위 10곳 + 우리 */
+function rcPoints(x){
+  const w = x.w, r = x.r;
+  if(!w || !r?.base || !r?.plan) return null;
+  const a = w.a ?? r.a ?? 0, fl = r.floor || w.floor || DEFAULT_FLOOR;
+  const amts = w.res?.xs?.length ? w.res.xs : (Data.opening[w.sido]?.bids.get(w.id)?.r || []).map(row => row[2]);
+  const xs = amts.map(v => bidToSr(v, r.base, a, fl)).filter(v => v != null);
+  return xs.length >= 3 ? {xs, a, fl, S: r.plan / r.base * 100, full: !w.src} : null;
+}
+function rcPlot(x){
+  const p = rcPoints(x);
+  if(!p) return '<div class="meta-line">투찰 금액 자료가 없습니다.</div>';
+  const my = x.x ?? (x.amt ? bidToSr(x.amt, x.r.base, p.a, p.fl) : null);
+  const win = x.winAmt ? bidToSr(x.winAmt, x.r.base, p.a, p.fl) : null;
+  const app = x.app?.amt ? bidToSr(x.app.amt, x.r.base, p.a, p.fl) : null;
+  const marks = [my, win, app, p.S].filter(v => v != null);
+  // 그림 범위: 실제 사정율·내 투찰·1위를 모두 담고, 투찰이 몰린 곳(가운데 90%)까지
+  const sorted = [...p.xs].sort((a, b) => a - b), q = (f) => sorted[Math.min(sorted.length - 1, Math.floor(f * sorted.length))];
+  let min = Math.min(...marks, q(0.05)) - 0.3, max = Math.max(...marks, q(0.95)) + 0.3;
+  if(max - min > 6){ const c = p.S; min = Math.max(min, c - 3); max = Math.min(max, c + 3); }
+  const step = (max - min) > 3 ? 0.05 : (max - min) > 1.5 ? 0.02 : 0.01;
+  const lines = [{x: p.S, color: 'var(--target)', label: `실제 사정율 ${p.S.toFixed(3)}`}];
+  if(my != null) lines.push({x: my, color: 'var(--ok, #16A34A)', label: `내 투찰 ${my.toFixed(3)}`});
+  if(win != null && Math.abs(win - (my ?? -9)) > 0.001) lines.push({x: win, color: '#F59E0B', label: `1위 ${win.toFixed(3)}`});
+  if(app != null) lines.push({x: app, color: 'var(--primary)', label: `앱 추천 ${app.toFixed(3)}`});
+  const below = p.xs.filter(v => v < p.S).length, lowerValid = my != null ? p.xs.filter(v => v >= p.S && v < my).length : null;
+  const N = x.n || p.xs.length;
+  return histogram(p.xs, {min, max, step, lines, h: 150, color: 'var(--text-faint)', label: (v) => v.toFixed(2)})
+    + `<div class="meta-line">가로 = 투찰 사정률(금액을 사정율 단위로 되돌린 값), 막대 = 그 자리에 넣은 업체 수. 빨간 선 왼쪽은 낙찰하한가 아래(무효).</div>`
+    + `<div class="meta-line">${p.full ? `${fmtNum(p.xs.length)}곳 전원` : `상위 ${fmtNum(p.xs.length)}곳만(전원 금액은 수집하지 않은 공고)`} · 하한 미달 ${fmtNum(below)}곳`
+    + (my != null ? ` · <b>내 투찰은 ${my < p.S ? `실제 사정율보다 ${(p.S - my).toFixed(3)}%p 아래(하한 미달)` : `유효 투찰 중 나보다 낮은 곳 ${fmtNum(lowerValid)}곳`}</b>` : '') + ` · 참가 ${fmtNum(N)}곳</div>`;
 }
 // ---------- 🩺 내 투찰 진단: 내 개찰 결과(앱 기록·개찰 상세 자동·가져온 엑셀)로 투찰 위치 습관을 보고, 같은 공고에서 앱 추천가와 비교해 조언
 // 조언은 차이가 통계적으로 뚜렷할 때만(p < 0.05, 표본 20건↑) 내고, 아니면 '잡음 범위'라고 말한다 — 공고 고르기는 권하지 않는다(사용자는 참가 가능한 공고에 다 넣음)
@@ -3191,7 +3242,9 @@ async function renderWatch(){
   }catch(e){ console.warn(e); }
   // 개찰 시각이 지난 공고는 조달청에서 결과를 바로 가져온다 (한 번에 최대 5건, 결과 없으면 1시간 뒤 다시)
   if(apiKey()){
-    const due = items.filter(w => opened(w) && !w.res?.n && (!w.resTried || Date.now() - Date.parse(w.resTried) > 3600000)).slice(0, 5);
+    // 개찰 뒤 이틀 안은 10분마다, 그 뒤엔 1시간마다(개찰이 예정보다 늦거나 조달청 API 반영이 늦을 때 — 예전엔 1시간 기다려 '결과 대기'로 남음). 예정가격을 추정만 했으면 다시
+    const gap = (w) => Date.now() - (parseKst(w.open || w.close)?.getTime() || 0) < 2 * 86400000 ? 600000 : 3600000;
+    const due = items.filter(w => opened(w) && (!w.res?.n || (w.res.planEst && gap(w) < 3600000)) && (!w.resTried || Date.now() - Date.parse(w.resTried) > gap(w))).slice(0, 5);
     if(due.length){
       el.innerHTML = loadingHtml(`개찰 결과 조회 중… (${due.length}건)`);
       for(const w of due){
