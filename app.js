@@ -102,7 +102,7 @@ const FIREBASE_CONFIG = {
 };   // 웹 앱 설정값은 공개돼도 되는 값(비밀 아님) — 데이터는 보안 규칙이 지킨다
 const FB_VER = '10.12.2';
 const Cloud = {
-  keys: ['admin', 'company', 'watch', 'hiddenBids', 'resHidden', 'history', 'corpWatch', 'apiKey', 'theme', 'myCal', 'curveSmooth', 'guideClosed'],
+  keys: ['admin', 'company', 'watch', 'hiddenBids', 'resHidden', 'history', 'corpWatch', 'corpSeen', 'apiKey', 'theme', 'myCal', 'curveSmooth', 'guideClosed'],
   user: null, db: null, loading: null, status: '', lastSync: null, unsub: null, timers: {},
   dev: (() => { try{ let d = localStorage.getItem('bp._dev'); if(!d){ d = Math.random().toString(36).slice(2, 10); localStorage.setItem('bp._dev', d); } return d; }catch(e){ return 'x'; } })(),
   ts(){ try{ return JSON.parse(localStorage.getItem('bp._ts') || '{}'); }catch(e){ return {}; } },
@@ -2638,6 +2638,49 @@ let exitAt = 0;   // 뒤로 두 번 눌러 종료 — 첫 번째 누른 시각
 // 업체 목록 필터(2026-09-27 요청): 소재지(주소, 없으면 시·군 제한 공고 투찰로 추정) × 주로 투찰한 면허 × 정렬 — 기본 = 우리 시·군 · 우리 면허 = 경쟁사
 const corpF = () => { const co = Company.get(); return Object.assign({sido: co.sido || '', sgg: co.sgg || '', lic: 'mine', sort: 'dn'}, LS.get('corpF2', {})); };
 const D2B_LIST_URL = 'https://www.d2b.go.kr/mainBidAnnounceList.do';
+// ⭐ 관심 업체 새 낙찰 알림(2026-09-28 요청 — 업체 탭을 경쟁사 낙찰 모니터링에 많이 씀). corpw 파일의 낙찰 이력 중 이 기기·계정에서 아직 안 본 것.
+// bp.corpSeen {사업자번호: [본 낙찰 id…]} — 관심 업체로 처음 넣을 때는 지금 있는 것 모두 본 것으로(옛 낙찰로 알림 폭탄 방지).
+const winKey = (w) => w[7] || `${w[0]}|${w[1]}`;
+const CorpNew = {list: [], busy: null,
+  async load(biz){ try{ return (await Data.fetchJson(`corpw/${biz.slice(0, 3)}.json`))[biz] || []; }catch(e){ return []; } },
+  async compute(){
+    if(this.busy) return this.busy;
+    return (this.busy = (async () => {
+      const watch = LS.get('corpWatch', []), seen = LS.get('corpSeen', {});
+      let init = false; const out = [];
+      for(const biz of watch){
+        const wl = await this.load(biz);
+        if(!seen[biz]){ seen[biz] = wl.map(winKey); init = true; continue; }
+        const s = new Set(seen[biz]);
+        wl.filter(w => !s.has(winKey(w))).forEach(w => out.push({biz, w}));
+      }
+      if(init) LS.set('corpSeen', seen);
+      this.list = out.sort((a, b) => (b.w[0] || '').localeCompare(a.w[0] || ''));
+      const bd = $('corpBadge');
+      if(bd){ bd.hidden = !out.length; bd.textContent = out.length > 99 ? '99+' : out.length; }
+      this.busy = null;
+      return out;
+    })());
+  },
+  async markSeen(bizs){
+    const seen = LS.get('corpSeen', {});
+    for(const biz of bizs) seen[biz] = (await this.load(biz)).map(winKey);
+    LS.set('corpSeen', seen);
+    await this.compute();
+  },
+};
+/** 낙찰 이력 기간별 요약 — 최근 1·3·12개월·전체 × 공사·물품·국방 건수와 낙찰금액 합 */
+function winSummary(wl){
+  const now = Date.now(), per = [['최근 1개월', 1], ['최근 3개월', 3], ['최근 1년', 12], ['전체', 0]];
+  const kinds = ['공사', '물품', '국방'];
+  const rows = per.map(([t, m]) => {
+    const cut = m ? kstDay(new Date(now - m * 30.44 * 86400000)) : '';
+    const L = wl.filter(w => !cut || (w[0] || '') >= cut);
+    const byK = kinds.map(k => L.filter(w => w[4] === k));
+    return `<tr><td>${t}</td><td class="num"><b>${fmtNum(L.length)}</b></td>${byK.map(x => `<td class="num">${x.length ? fmtNum(x.length) : '-'}</td>`).join('')}<td class="num">${L.length ? eok(L.reduce((t, w) => t + (w[2] || 0), 0)) : '-'}</td></tr>`;
+  }).join('');
+  return `<div class="table-wrap" style="max-height:none;"><table><thead><tr><th>기간</th><th class="num">낙찰</th>${kinds.map(k => `<th class="num">${k}</th>`).join('')}<th class="num">낙찰금액 합</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
 async function loadCorps(){
   if(!Corp.idx){
     const d = await Data.fetchJson('corps.json');
@@ -2698,10 +2741,16 @@ async function renderCorpSearch(){
       && (!lic.length || c.lics.some(l => lic.includes(l))) && (c.dn || c.wins));
     list.sort((a, b) => (b[F.sort] || 0) - (a[F.sort] || 0) || b.dn - a.dn);
     const lv = $('cfLic').value, label = `${area ? esc(area.replace('|', ' ').trim()) : '전체 지역'} · ${lv === 'mine' ? '우리 면허' : lv === 'all' ? '전체 면허' : esc(LIC_SHORT[lv] || lv)}`;
-    out.innerHTML = (mine ? `<h3 class="corp-h">우리 업체</h3>${row(mine)}` : '')
+    const nw = await CorpNew.compute();
+    const nmOf = (b) => idx.items.find(c => c.biz === b)?.nm || b;
+    const newHtml = nw.length ? `<h3 class="corp-h">🔔 관심 업체 새 낙찰 ${fmtNum(nw.length)}건 <button type="button" class="btn sm line" id="corpSeenAll">모두 확인</button></h3>
+      <div class="rc-list">${nw.slice(0, 30).map(({biz, w}) => `<button type="button" class="rc win corp-new" data-corp="${esc(biz)}"><div class="rc-nm"><span class="fin-badge">새 낙찰</span> ${esc(nmOf(biz))}</div>
+        <div class="rc-sub">${esc(w[0])} · ${esc(w[4])} · ${esc(w[1])}</div><div class="rc-foot"><span class="rc-rank win">${esc(w[3] || '')}</span><span class="rc-amt">${w[2] ? won(w[2]) : '-'}</span></div></button>`).join('')}</div>` : '';
+    out.innerHTML = newHtml + (mine ? `<h3 class="corp-h">우리 업체</h3>${row(mine)}` : '')
       + (w.length ? `<h3 class="corp-h">⭐ 관심 업체</h3>${w.map(row).join('')}` : '')
       + `<h3 class="corp-h">${label} ${fmtNum(list.length)}곳${list.length > 50 ? ' (위 50곳)' : ''}</h3>`
       + (list.length ? list.slice(0, 50).map(row).join('') : '<div class="card empty">조건에 맞는 업체가 없습니다.</div>');
+    $('corpSeenAll') && ($('corpSeenAll').onclick = async () => { await CorpNew.markSeen(LS.get('corpWatch', [])); renderCorpSearch(); });
     return;
   }
   const hits = /^\d{3,10}$/.test(q) ? idx.items.filter(c => c.biz.startsWith(q)) : idx.items.filter(c => c.nm.replace(/\s/g, '').includes(q) || c.ceo.replace(/\s/g, '') === q || (q.length >= 2 && c.ceo.includes(q)));
@@ -2741,6 +2790,8 @@ async function renderCorpProfile(biz){
   let wl = [];
   try{ wl = (await Data.fetchJson(`corpw/${biz.slice(0, 3)}.json`, false))[biz] || []; }catch(e){}   // 작은 파일이라 늘 새로(캐시된 옛 형식 방지)
   const nFin = rows.filter(r => r.fin).length;
+  if(on && wl.length) CorpNew.markSeen([biz]);   // 관심 업체를 열어 봤으면 새 낙찰 알림 지움
+  const cut20 = wl.length === 20 && c.wins > 20;   // 강원에서 낙찰한 적 없는 업체는 최근 20건만 받아 둠
   out.innerHTML = `<button class="corp-back" id="corpBack" type="button">← 업체 목록으로</button><div class="card corp-prof">
       <div class="corp-top"><div><h2 style="margin:0;">${esc(c.nm)}</h2><div class="meta-line" style="margin:2px 0 0;">${bizFmt(biz)}${c.ceo ? ` · 대표 <b>${esc(c.ceo)}</b>` : ''}</div>
         ${c.adr ? `<div class="meta-line" style="margin:2px 0 0;">📍 ${esc(c.adr)}</div>` : ''}${c.tel ? `<div class="meta-line" style="margin:2px 0 0;">☎ <a href="tel:${esc(c.tel)}">${esc(c.tel)}</a></div>` : ''}</div>
@@ -2760,11 +2811,14 @@ async function renderCorpProfile(biz){
       ${orgs.length ? `<div class="corp-tags"><b>자주 넣는 발주처</b> ${orgs.map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join('')}</div>` : ''}
       ${lics.length ? `<div class="corp-tags"><b>공고 면허</b> ${lics.map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join('')}</div>` : ''}
     </div>
-    ${wl.length ? `<h3 class="corp-h">🏆 최종 낙찰 이력 (최근 ${fmtNum(wl.length)}건 · 공사·물품·국방)</h3><div class="rc-list">${wl.map((w, i) => `<div class="rc win">
+    ${wl.length ? `<h3 class="corp-h">📈 낙찰 요약${cut20 ? ' <small class="faint">(최근 20건 기준 — 강원 낙찰이 없는 업체)</small>' : ''}</h3>${winSummary(wl)}
+      <div class="meta-line ops">공사·물품 = 나라장터 낙찰(3년, 강원은 그보다 옛날도), 국방 = 국방전자조달. 전국 낙찰 ${fmtNum(c.wins)}건은 3년 기준.</div>` : ''}
+    ${wl.length ? `<h3 class="corp-h">🏆 최종 낙찰 이력 (${cut20 ? '최근 ' : ''}${fmtNum(wl.length)}건 · 공사·물품·국방)</h3><div class="rc-list">${wl.map((w, i) => `<div class="rc win"${i >= 20 ? ' data-more-win hidden' : ''}>
         <div class="rc-nm"><span class="fin-badge">최종낙찰</span> ${esc(w[1])}</div><div class="rc-sub">${esc(w[0])} · ${esc(w[3])}${w[6] ? ' · ' + esc(w[6]) : ''}</div>
         <div class="rc-grid"><div><span>기초금액</span><b>${w[10] ? eok(w[10]) : '-'}</b></div><div><span>사정율</span><b>${w[9] ? (+w[9]).toFixed(3) : '-'}</b></div><div><span>낙찰률</span><b>${w[8] ? (+w[8]).toFixed(3) : '-'}</b></div></div>
         <div class="rc-foot"><span class="rc-rank win">${esc(w[4])}${w[5] ? ` · ${fmtNum(w[5])}곳 참가` : ''}</span><span class="rc-amt">${w[2] ? won(w[2]) : '-'}</span></div>
-        ${w[7] ? `<details class="rc-more" data-win="${i}"><summary>개찰 순위·공고 보기</summary><div class="win-detail">불러오는 중…</div></details>` : ''}</div>`).join('')}</div>` : ''}
+        ${w[7] ? `<details class="rc-more" data-win="${i}"><summary>개찰 순위·공고 보기</summary><div class="win-detail">불러오는 중…</div></details>` : ''}</div>`).join('')}</div>
+      ${wl.length > 20 ? `<div class="more"><button class="btn sm line" id="winMore" type="button">더 보기 (${fmtNum(wl.length - 20)}건 남음)</button></div>` : ''}` : ''}
     ${rows.length ? `<h3 class="corp-h">강원 투찰 이력 (최근 ${fmtNum(Math.min(rows.length, 60))}건)</h3><div class="rc-list">${rows.slice(0, 60).map(r => {
       const cls = r.rank === 1 || r.fin ? 'win' : r.d != null && r.d < 0 ? 'below' : 'high';
       return `<div class="rc ${cls}"><div class="rc-nm">${esc(r.nm)}</div><div class="rc-sub">${esc(r.date || '')} · ${esc(r.org)}</div>
@@ -2794,6 +2848,12 @@ async function renderCorpProfile(biz){
         <tbody>${rows.map(r => `<tr${r[1][1] === biz ? ' class="hl-row"' : ''}><td>${r[0] || '-'}</td><td>${esc(r[1][0] || '')}</td><td class="num">${won(r[2])}</td><td>${esc(r[3] || '')}</td></tr>`).join('')}</tbody></table></div>`
       : `<div class="meta-line">개찰 순위는 강원 공사(개찰 상세 수집 지역)와 국방만 있습니다.</div>`)
       + `<div class="btn-row" style="margin-top:8px;"><a class="btn line sm" href="${esc(link)}" target="_blank" rel="noopener">공고 원문 (${w[4] === '국방' ? '국방전자조달' : '나라장터'})</a></div>`;
+  }));
+  $('winMore') && ($('winMore').onclick = () => keepY(() => {
+    const hid = [...out.querySelectorAll('[data-more-win][hidden]')];
+    hid.slice(0, 50).forEach(e => e.hidden = false);
+    const left = hid.length - 50;
+    if(left > 0) $('winMore').textContent = `더 보기 (${fmtNum(left)}건 남음)`; else $('winMore').parentElement.remove();
   }));
   $('corpBack').onclick = () => { if(location.hash.startsWith('#corp/')) history.back(); else { Corp.sel = null; renderCorpSearch(); } };
   $('corpStar').onclick = () => { const w = LS.get('corpWatch', []); LS.set('corpWatch', on ? w.filter(b => b !== biz) : [biz, ...w]); renderCorpProfile(biz); };
@@ -4037,6 +4097,7 @@ async function init(){
   if(LS.get('cloud', false)) Cloud.init().catch(e => console.warn(e));
   updateNewBadge();
   updateWatchBadge();
+  if(LS.get('corpWatch', []).length) setTimeout(() => CorpNew.compute().catch(() => {}), 1500);   // 관심 업체 새 낙찰 배지
 }
 
 init();

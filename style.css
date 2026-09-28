@@ -698,3 +698,6 @@ main{overflow-x:hidden;}
 .rc-plot{margin:8px 0 4px; padding:10px; border:1px solid var(--border); border-radius:10px; background:var(--bg);}
 .rc-plot .chart{max-width:none;}
 .rc-nm:has(.rc-title){white-space:normal;}
+/* 업체 탭 관심 업체 새 낙찰 (2026-09-28) */
+.corp-new{display:block; width:100%; text-align:left; font:inherit; color:inherit; cursor:pointer;}
+.corp-h .btn{margin-left:8px; vertical-align:1px;}

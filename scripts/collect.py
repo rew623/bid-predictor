@@ -893,6 +893,72 @@ class ThngStore(ScsbidStore):
     dir = DATA / "thng"
 
 
+class OldStore(ScsbidStore):
+    """3년보다 옛 낙찰 — 관심 시·도(강원) 것만 data/scsbid_old/{시도}.json (2026-09-28 요청: 업체 낙찰 이력을 길게).
+    전국을 다 두면 저장소가 커져서 강원만. 앱은 이 파일을 안 읽고 corp_index.py(업체 낙찰 이력·수)만 읽는다.
+    공고 보강(기초금액·A값)은 안 함 — 낙찰자·금액·공고명만 필요. 물품은 kind='물품'으로 같이."""
+    dir = DATA / "scsbid_old"
+
+    def merge(self, it, cache, kind=None):
+        super().merge(it, cache)
+        id_ = notice_id(it)[0]
+        r = self.recs.get(id_)
+        if r is not None and r.get("sido") not in FULL_SIDOS:
+            del self.recs[id_]
+            ids = self.by_no.get(r["no"], [])
+            if id_ in ids:
+                ids.remove(id_)
+        elif r is not None and kind:
+            r["cm"] = kind   # 공사/물품 구분(옛 파일에서는 cm = 업무)
+
+    def save(self):
+        files, counts = {}, {}
+        groups = {}
+        for r in self.recs.values():
+            groups.setdefault(r.get("sido") or "기타", []).append(r)
+        for sido, recs in groups.items():
+            recs.sort(key=lambda r: (r.get("date") or "", r["id"]), reverse=True)
+            items = [clean({k: r.get(k) for k in ("id", "nm", "org", "dmd", "sido", "sgg", "amt", "rate", "cnt", "win", "winBiz", "date", "base", "cm")}) for r in recs]
+            files[sido] = split_write(self.dir / sido, {"sido": sido, "v": SCHEMA_VERSION}, items)
+            counts[sido] = len(items)
+        return files, counts
+
+
+OLD_YEARS = int(os.environ.get("OLD_YEARS") or 6)   # 옛 낙찰(강원만)을 몇 년 전까지
+
+
+def step_old_backfill(api, meta, old, now, checkpoint):
+    """과거낙찰(3년)이 끝난 뒤 그보다 옛 달을 한 달씩 — 공사·물품 낙찰 목록만, 강원 것만 저장. 진행 meta.backfill_old {cursor, target, done}"""
+    if not meta.get("backfill", {}).get("done"):
+        return
+    bo = meta.setdefault("backfill_old", {})
+    bo.setdefault("target", (now - dt.timedelta(days=365 * OLD_YEARS)).strftime("%Y%m%d"))
+    if bo.get("done"):
+        return
+    target = dt.datetime.strptime(bo["target"], "%Y%m%d").replace(tzinfo=KST)
+    start = dt.datetime.strptime(meta["backfill"]["target_start"], "%Y%m%d").replace(tzinfo=KST) - dt.timedelta(days=1)
+    cursor = bo.get("cursor") or start.strftime("%Y%m%d")
+    while True:
+        cur = dt.datetime.strptime(cursor, "%Y%m%d").replace(tzinfo=KST)
+        if cur < target:
+            bo["done"] = True
+            log("[옛낙찰] 완료")
+            return
+        if api.remaining("scsbid") < 40 or api.time_left() < 15:
+            log(f"[옛낙찰] 여기까지, 커서 {cursor}")
+            return
+        end = cur.replace(hour=23, minute=59)
+        bgn = max(cur.replace(day=1, hour=0, minute=0), target)
+        n0 = len(old.recs)
+        for op, kind in (("scsbid_list", "공사"), ("thng_list", "물품")):
+            for it in api.fetch_range(op, bgn, end):
+                old.merge(it, None, kind)
+        old.dirty = True
+        cursor = bo["cursor"] = (bgn - dt.timedelta(days=1)).strftime("%Y%m%d")
+        log(f"[옛낙찰] {bgn:%Y-%m} 강원 {len(old.recs) - n0}건")
+        checkpoint()
+
+
 def enrich_thng(store, it):
     """물품 기초금액 API 한 행 → 같은 공고의 낙찰 레코드에 기초금액·예가범위"""
     _, no, ord_ = notice_id(it)
@@ -1699,6 +1765,7 @@ def main():
     ostore = OpeningStore()
     tostore = ThngOpeningStore()
     tcurve = ThngCurve(DATA / "thng_curve.json")
+    oldstore = OldStore()
     errors = []
 
     def save_all(final=False):
@@ -1707,6 +1774,7 @@ def main():
         ostore.save()
         tostore.save()
         tcurve.save()
+        files_old, counts_old = oldstore.save()
         files_s, counts_s = store.save()
         files_t, counts_t = tstore.save()
         files_o, counts_o = ostore.files()
@@ -1715,7 +1783,7 @@ def main():
         changed = write_if_changed(DATA / "bids.json", dumps({"items": bids, "v": SCHEMA_VERSION}))
         changed = write_lic_map(cache) or changed
         old_files = meta.get("files", {})
-        meta["files"] = {"scsbid": files_s, "opening": files_o, "thng": files_t, "opening_thng": files_to}
+        meta["files"] = {"scsbid": files_s, "opening": files_o, "thng": files_t, "opening_thng": files_to, "scsbid_old": files_old}
         meta["counts"] = {"bids": len(bids), "scsbid": counts_s, "opening": counts_o,
                           "scsbid_total": sum(counts_s.values()), "thng": counts_t, "thng_total": sum(counts_t.values()), "opening_thng": counts_to}
         meta["v"] = SCHEMA_VERSION
@@ -1747,6 +1815,7 @@ def main():
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all, horizon)),
         ("상세", lambda: step_details(api, meta, store, ostore, regions, now, save_all)),
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all)),
+        ("옛낙찰", lambda: step_old_backfill(api, meta, oldstore, now, save_all)),   # 3년보다 옛 낙찰(강원만, 업체 이력용) — 과거낙찰이 끝난 뒤 (2026-09-28)
         ("업체정보", lambda: step_corp_info(api, meta, now, save_all)),   # 대표자·주소 채우기는 남는 한도로 (2026-09-27: 앞에 두었더니 물품·과거 수집 몫을 다 씀)
     ]
     only = {s.strip() for s in (os.environ.get("STEPS") or "").split(",") if s.strip()}

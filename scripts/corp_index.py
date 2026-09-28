@@ -84,6 +84,18 @@ def main():
                     wsido[b][sidos.index(s)] += 1
                 wlist[b].append([d, (r.get("nm") or "")[:40], r.get("amt"), (r.get("org") or r.get("dmd") or "")[:20], kind, r.get("cnt"), s,
                                  r.get("id"), r.get("rate"), r.get("sr"), r.get("base")])
+    # 3년보다 옛 낙찰(강원만, collect.py 옛낙찰) — 업체 낙찰 이력·강원 최종 낙찰 수에만(전국 낙찰 수는 3년 기준 그대로) (2026-09-28)
+    for f in sorted(glob.glob(str(DATA / "scsbid_old" / "*.json"))):
+        for r in load(f).get("items", []):
+            b = r.get("winBiz")
+            if not b:
+                continue
+            kind = r.get("cm") or "공사"
+            name.setdefault(b, r.get("win") or "")
+            if kind == "공사" and r.get("sido") == HOME:
+                whome[b] += 1
+            wlist[b].append([r.get("date") or "", (r.get("nm") or "")[:40], r.get("amt"), (r.get("org") or r.get("dmd") or "")[:20], kind, r.get("cnt"), r.get("sido") or "",
+                             r.get("id"), r.get("rate"), None, r.get("base")])
     dbid, dtop = collections.Counter(), collections.Counter()
     blic = collections.defaultdict(collections.Counter)   # 업체가 투찰한 공고의 면허 (업체 면허 추정 — 면허 자료가 따로 없음)
     bsgg = collections.defaultdict(collections.Counter)   # 시·군 하나로 참가 제한한 공고에 투찰한 시·군 (소재지 추정 — 낙찰 못 한 업체는 주소가 없음)
@@ -167,7 +179,8 @@ def main():
         if not (wsido[b][home_i] or dbid[b] or mbid[b] or any(x[4] == "국방" for x in lst)):
             continue
         lst.sort(key=lambda x: x[0], reverse=True)
-        groups[b[:3]][b] = lst[:WIN_KEEP]
+        # 강원에서 낙찰한 업체는 이력 전부(업체 모니터링용, 2026-09-28 요청 — 약 +4천 건), 나머지는 최근 WIN_KEEP 건
+        groups[b[:3]][b] = lst if (whome[b] or wsido[b][home_i]) else lst[:WIN_KEEP]
     for pre, g in groups.items():
         write_if_changed(DATA / "corpw" / f"{pre}.json", dumps(g))
     print(f"업체 색인 {len(items)}곳 · 낙찰 이력 {len(wlist)}곳 ({len(groups)}개 파일) · 주소 {sum(1 for x in items if x[10])}곳")
