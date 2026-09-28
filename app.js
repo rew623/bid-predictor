@@ -460,6 +460,7 @@ function winWindow(r, op){
   let W = null;
   if(op?.r?.length){
     for(const row of op.r){
+      if(/미달/.test(row[4] || '')) continue;   // 조달청 공식 판정이 하한 미달이면 1위 후보가 아님(100억↑ 공사의 순공사원가 98% 미달 등 — 계산으론 하한 위, 2026-09-28 점검 26건)
       const x = bidToSr(row[2], base, a, floor);
       if(x != null && x >= S && (W == null || x < W)) W = x;
     }
@@ -2559,7 +2560,7 @@ function judgeBid(amt, r, op){
   const winAmt = bidAmount(base, w.W, a, floor);
   let rank = null;
   if(op?.r?.length && x >= w.S){
-    rank = 1 + op.r.filter(row => { const y = bidToSr(row[2], base, a, floor); return y != null && y >= w.S && y < x; }).length;
+    rank = 1 + op.r.filter(row => { if(/미달/.test(row[4] || '')) return false; const y = bidToSr(row[2], base, a, floor); return y != null && y >= w.S && y < x; }).length;
   }
   const res = x < w.S ? {cls: 'below', label: '하한 미달', gap: floorPrice - amt, gapText: `낙찰하한가보다 ${won(floorPrice - amt)} 낮음`}
     : x < w.W ? {cls: 'win', label: '낙찰권 (1순위)', gap: 0, gapText: `1위보다 ${won(winAmt - amt)} 낮게 씀`}
@@ -2859,6 +2860,8 @@ function buildResultRows(appItems){
     if(mine) judged.push(mine);
     // 조달청 공식 판정(비고 '낙찰하한선 미달')이 있으면 그걸 따른다 — 하한율·A값이 빠진 공고는 계산 판정이 틀려 '1순위'로 잘못 셌다(2026-09-27, 금석건설 3건)
     const offBelow = /미달/.test(w.res?.mine?.note || '');
+    const offOk = !!w.res?.mine?.note && !offBelow;   // 공식 판정 '정상' — 하한율이 빠진 공고(기본 87.745 로 계산)에서 계산이 '하한 미달'로 틀리던 것(2026-09-28 점검)
+    const noFloor = !(w.floor || r0?.floor || r?.floor);
     const other = (w.kind && w.kind !== '공사') || w.src === '국방';   // 물품·국방은 적격·규격 탈락이 많아 계산 순위 대신 조달청 순위만
     const rank = w.res?.mine?.rank || (offBelow || other ? null : mine?.rank) || null;
     // 앱 추천가였다면: 저장할 때 기록한 추천(개찰 전 값, w.pred.bid)이 있으면 그것, 없으면 지금 모델로 계산(참고). 내 실제 투찰은 빼고 다른 업체와 비교
@@ -2877,9 +2880,9 @@ function buildResultRows(appItems){
     const fin = !!(r0?.winBiz && r0.winBiz === String(Company.get().biz || ''));   // 최종 낙찰(1순위 포기로 올라온 경우 포함)
     const date = (w.open || r0?.date || w.close || '').slice(0, 16);
     return {src: 'app', w, r, id: w.id, nm: w.nm, org: w.org || w.dmd, rgn: [w.sido, w.sgg].filter(Boolean).join(' '), lic: (w.lic || []).map(l => LIC_SHORT[l] || l).join('·'),
-      date, base: r?.base || w.base, amt: w.myBid, S: r?.base && r?.plan ? r.plan / r.base * 100 : null, x: mine?.x ?? (w.myBid && r?.base ? bidToSr(w.myBid, r.base, w.a ?? r.a, w.floor || r.floor) : null),   // 승리 구간이 1%p 넘게 벌어진 공고(참가 적음)는 judgeBid 가 null 이라 진단에서 빠졌음(2026-09-28, 1순위 1건 누락)
-      rank: offBelow || mine?.cls === 'below' ? -1 : rank, n: r?.cnt || w.res?.n || null, kind: w.kind || '공사', src2: w.src, winner: r?.win, winAmt: r?.amt, app,
-      cls: fin || rank === 1 ? 'win' : offBelow ? 'below' : mine?.cls || '', label: fin ? '🏆 최종 낙찰' : rank === 1 ? '🏆 1순위' : offBelow ? '하한 미달' : mine?.label?.replace(' (1순위)', '') || (r ? '금액 기록 없음' : '결과 대기'), fin};
+      date, base: r?.base || w.base, amt: w.myBid, S: r?.base && r?.plan ? r.plan / r.base * 100 : null, x: noFloor ? null : mine?.x ?? (w.myBid && r?.base ? bidToSr(w.myBid, r.base, w.a ?? r.a, w.floor || r.floor) : null),   // 하한율 모르면 투찰률도 모름(진단 '제외'로)   // 승리 구간이 1%p 넘게 벌어진 공고(참가 적음)는 judgeBid 가 null 이라 진단에서 빠졌음(2026-09-28, 1순위 1건 누락)
+      rank: offBelow || (mine?.cls === 'below' && !offOk) ? -1 : rank, n: r?.cnt || w.res?.n || null, kind: w.kind || '공사', src2: w.src, winner: r?.win, winAmt: r?.amt, app,
+      cls: fin || rank === 1 ? 'win' : offBelow ? 'below' : offOk && mine?.cls === 'below' ? 'high' : mine?.cls || '', label: fin ? '🏆 최종 낙찰' : rank === 1 ? '🏆 1순위' : offBelow ? '하한 미달' : offOk && mine?.cls === 'below' ? '1위보다 높음' : mine?.label?.replace(' (1순위)', '') || (r ? '금액 기록 없음' : '결과 대기'), fin};
   });
   LS.set('myCal', calibrate(judged));
   // 가져온 엑셀 이력 (앱 기록과 같은 공고(이름·개찰일)는 앱 쪽만)
@@ -3061,7 +3064,9 @@ async function renderDiag(el, appItems, pseudo, head){
   const kindOf = (x) => x.kind === '공사' ? '공사' : x.kind === '물품' ? '물품' : '기타';
   const dKinds = [['공사', '🏗 공사'], ['물품', '📦 물품'], ['all', '전체']];
   const rows = Diag.kind === 'all' ? usable : usable.filter(x => kindOf(x) === Diag.kind);
-  const nOut = (Diag.kind === 'all' ? inCut : inCut.filter(x => kindOf(x) === Diag.kind)).length - rows.length;   // 개찰 결과 목록과 건수가 다른 이유를 보이게
+  const kindAll = Diag.kind === 'all' ? inCut : inCut.filter(x => kindOf(x) === Diag.kind);
+  const nOut = kindAll.length - rows.length;   // 개찰 결과 목록과 건수가 다른 이유를 보이게
+  const outWins = kindAll.filter(x => (x.rank === 1 || x.fin) && !(x.S && x.x != null && x.n)).length;   // 기초금액 없는 1인 수의 견적 등 — 1순위지만 위치 계산 불가
   const kindSeg = `<div class="seg res-kind" id="diagKind">${dKinds.map(([k, t]) => `<button type="button" data-k="${k}" class="${Diag.kind === k ? 'on' : ''}">${t} <span class="cnt">${fmtNum(k === 'all' ? usable.length : usable.filter(x => kindOf(x) === k).length)}</span></button>`).join('')}</div>`;
   const periodSel = `<select id="diagPeriod" class="sort-select" aria-label="기간">${[[0, '전체 기간'], [12, '최근 12개월'], [6, '최근 6개월'], [3, '최근 3개월']].map(([v, t]) => `<option value="${v}"${+Diag.period === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
   const src = {app: all.filter(x => x.src === 'app' && !x.w?.auto).length, auto: all.filter(x => x.w?.auto).length, hist: all.filter(x => x.src === 'hist').length};
@@ -3110,7 +3115,7 @@ async function renderDiag(el, appItems, pseudo, head){
       return `<tr><td>${esc(kd || '-')}</td><td class="num">${fmtNum(r.length)}</td><td class="num">${fmtNum(kk)}</td><td class="num">${fmtNum(e, 1)}</td><td class="num">${pc(r.filter(x => x.cls === 'below').length, r.length)}%</td></tr>`; }).join('');
     body = `<div class="res-sum">
         <div><span>진단 건수</span><b>${fmtNum(N)}</b>${nOut ? `<small class="faint" title="예정가격·내 투찰금액·참가 수 중 하나를 몰라 계산에서 뺀 건">제외 ${fmtNum(nOut)}건</small>` : ''}</div>
-        <div class="${k ? 'win' : ''}"><span>🏆 1순위</span><b>${fmtNum(k)}</b></div>
+        <div class="${k ? 'win' : ''}"><span>🏆 1순위</span><b>${fmtNum(k)}</b>${outWins ? `<small class="faint" title="기초금액·예정가격이 없어(1인 수의 견적 등) 위치 계산에서 뺀 1순위">+ 제외된 1순위 ${fmtNum(outWins)}건</small>` : ''}</div>
         <div><span>평균 업체 기대</span><b>${fmtNum(E, 1)}</b></div>
         <div><span>하한 미달</span><b class="below">${pc(below, N)}%</b></div>
         <div><span>1위보다 높음</span><b>${pc(high, N)}%</b></div>
