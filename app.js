@@ -2008,6 +2008,7 @@ const P = {
 };
 
 function initPredict(){
+  if(!P.sidos.size && Company.get().sido) P.sidos.add(Company.get().sido);   // 지역 기본 = 우리 시·도 (2026-09-28 — 비어 있으면 '필수'인데 아무것도 안 골라져 있었음)
   buildChips($('pSidoChips'), SIDOS, P.sidos, () => { LS.set('pSidos', [...P.sidos]); renderSggChips(); },
     (s) => Data.hasScsbid(s) ? '' : '데이터 없음');
   buildChips($('pLicChips'), LICENSES, P.lics, () => LS.set('pLics', [...P.lics]));
@@ -2957,7 +2958,7 @@ async function renderResults(el, appItems, pseudo, head){
         <div><span>기초대비</span><b>${ratio ? ratio.toFixed(3) : '-'}</b></div>
       </div>
       ${x.src === 'app' ? sdAlert(x.w, x.rank === 1 || x.fin, x.date) : ''}
-      <div class="rc-foot"><span class="rc-rank ${x.cls}"><b>${rk}</b> / ${x.n ? fmtNum(x.n) : '-'}</span><span class="rc-amt">${x.amt ? won(x.amt) + (x.w?.res?.mine?.est && x.amt === x.w.res.mine.amt ? '<small class="faint" title="투찰률 × 예정가격으로 계산한 금액"> (추정)</small>' : '') : '금액 기록 없음'}</span><span class="rc-v ${x.cls}">${esc(x.label)}</span></div>
+      <div class="rc-foot"><span class="rc-rank ${x.cls}"><b>${rk}${x.rank > 0 ? '위' : ''}</b> / ${x.n ? fmtNum(x.n) + '곳' : '-'}</span><span class="rc-amt">${x.amt ? '<small class="faint">내 투찰</small> ' + won(x.amt) + (x.w?.res?.mine?.est && x.amt === x.w.res.mine.amt ? '<small class="faint" title="투찰률 × 예정가격으로 계산한 금액"> (추정)</small>' : '') : '금액 기록 없음'}</span><span class="rc-v ${x.cls}">${esc(x.label)}</span></div>
       ${x.app ? `<div class="rc-app ${x.app.cls}">📱 앱 추천가 ${won(x.app.amt)}이었다면 → <b>${x.app.cls === 'win' ? '🏆 1순위' : x.app.cls === 'below' ? '하한 미달' : x.app.rank ? fmtNum(x.app.rank) + '위' : '1위보다 높음'}</b>${x.app.now ? '<span class="ops"> (개찰 전 추천 기록이 없어 지금 모델로 계산 — 참고용)</span>' : ''}</div>` : ''}
       ${more}
     </div>`;

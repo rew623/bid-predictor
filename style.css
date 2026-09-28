@@ -668,3 +668,25 @@ main{overflow-x:hidden;}
 .res-bin>summary{cursor:pointer; color:var(--text-sub); font-size:.92em;}
 .res-bin-row{display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 0; border-top:1px solid var(--border);}
 .res-bin-row small{display:block; color:var(--text-faint); font-size:11.5px;}
+
+/* ---------- PC 넓은 화면 (2026-09-28 요청: 화면 전체를 쓰게) ---------- */
+@media (min-width: 1200px){
+  .main{max-width:none; padding:28px 40px 60px;}
+}
+@media (min-width: 1440px){
+  /* 공고·개찰 결과 카드는 두 줄로 — 날짜 구분선·더 보기는 한 줄 전체 */
+  .bid-list, .rc-list{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px 14px; align-items:start;}
+  .bid-list > :not(.bcard), .rc-list > :not(.rc){grid-column:1 / -1;}
+  .bid-list .day-sep, .rc-list .day-sep{margin:10px 0 2px;}
+  /* 우리 공고: 업무·지역·면허 버튼과 마감 달력을 나란히 */
+  #bidsMine{display:grid; grid-template-columns:minmax(0, 5fr) minmax(0, 7fr); column-gap:18px; align-items:stretch;}
+  #bidsMine > *{grid-column:1 / -1;}
+  #bidsMine > .mine-head{grid-column:1;}
+  #bidsMine > .cal-card{grid-column:2;}
+  /* 분석: 입력 카드 두 개를 나란히 */
+  .pred-pair{display:grid; grid-template-columns:minmax(0, 5fr) minmax(0, 7fr); gap:18px; align-items:stretch;}
+  .pred-pair > .card{margin-bottom:18px;}
+}
+@media (min-width: 2400px){
+  .bid-list, .rc-list{grid-template-columns:repeat(3, minmax(0, 1fr));}
+}
