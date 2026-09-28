@@ -7,7 +7,9 @@
 강원(전원 행이 있는 시·도)은 앱이 개찰 상세를 직접 읽으므로 뺀다.
 
 형식: {"v":1, "items":[{id, src:"나라장터"|"국방", kind:"공사"|"물품"|"용역", nm, org, dmd?, sido?, sgg?, lic?, base, a?, floor?, rng?,
-        date, plan, n(참가 수), top:[[순위, 업체명, 금액, 투찰률, 비고?]…10], mine:[순위(0=순위 없음), 금액, 투찰률, 비고?, 추정(1=금액을 투찰률로 계산)?]}]}
+        date, plan, n(참가 수), top:[[순위, 업체명, 금액, 투찰률, 비고?]…10], mine:[순위(0=순위 없음), 금액, 투찰률, 비고?, 추정(1=금액을 투찰률로 계산)?],
+        p?:[[번호, 복수예가, 추첨 0/1]…15]}]}
++ 전원 투찰률은 따로 data/mine_x.json · data/d2b/mine_x.json {공고ID: [투찰률×1000, 앞 값과의 차이…](순위 순)} — 앱이 그래프를 열 때만 읽음(2026-09-28 '우리가 넣은 공고는 상세 데이터 다')
 """
 import json
 import os
@@ -37,6 +39,9 @@ def save(p, obj):
     if p.exists() and p.read_text(encoding="utf-8") == s:
         return
     p.write_text(s, encoding="utf-8")
+
+
+XS = {}   # 공고ID → 전원 투찰률(순위 순, ×1000 차이)
 
 
 def ours(corps):
@@ -103,8 +108,10 @@ def g2b():
                               "sido": rec.get("sido") or sido, "sgg": rec.get("sgg"), "lic": rec.get("lic"), "base": b.get("base") or rec.get("base"),
                               "a": rec.get("a"), "floor": rec.get("floor"), "rng": rec.get("rng"), "date": b.get("date") or rec.get("date"),
                               "plan": b.get("plan") or rec.get("plan"), "n": b.get("n") or len(b.get("c") or []) or len(b.get("r") or []) or rec.get("cnt"),
-                              "top": top10(b, corps, True), "mine": m}
+                              "top": top10(b, corps, True), "mine": m, "p": [q[:3] for q in b.get("p") or []]}
                         items.append({k: v for k, v in it.items() if v not in (None, "", [])})
+                        if b.get("x"):
+                            XS[bid_id] = b["x"]
     return items
 
 
@@ -124,8 +131,11 @@ def d2b():
                 continue
             it = {"id": b["id"], "src": "국방", "kind": kinds.get(b.get("kind"), b.get("kind") or "물품"), "nm": b.get("nm") or b["id"], "org": b.get("org"),
                   "base": b.get("base"), "floor": b.get("floor"), "rng": b.get("rng"), "date": b.get("date"), "plan": b.get("plan"),
-                  "n": b.get("cnt") or len(b.get("c") or []), "top": top10(b, corps, False), "mine": m, "cm": b.get("cm")}
+                  "n": b.get("cnt") or len(b.get("c") or []), "top": top10(b, corps, False), "mine": m, "cm": b.get("cm"),
+                  "p": [q[:3] for q in b.get("p") or []]}
             items.append({k: v for k, v in it.items() if v not in (None, "", [])})
+            if b.get("x"):
+                XS[b["id"]] = b["x"]
     return items
 
 
@@ -138,6 +148,7 @@ def main():
     items.sort(key=lambda x: x.get("date") or "", reverse=True)
     out = DATA / "d2b" / "mine.json" if which == "d2b" else DATA / "mine.json"
     save(out, {"v": 1, "items": items})
+    save(out.with_name("mine_x.json"), XS)
     print(f"[우리 투찰] {which} {len(items)}건 → {out.relative_to(ROOT)}")
 
 

@@ -2974,11 +2974,12 @@ async function renderResults(el, appItems, pseudo, head){
     + renderHistory();
   bindWatch(el, pseudo);
   const byKey = new Map(allRows.map(x => [x.key, x]));
-  el.querySelectorAll('[data-rc-plot]').forEach(b => b.onclick = () => {
+  el.querySelectorAll('[data-rc-plot]').forEach(b => b.onclick = async () => {
     const box = el.querySelector(`[data-rc-plot-box="${CSS.escape(b.dataset.rcPlot)}"]`), x = byKey.get(b.dataset.rcPlot);
     if(!box || !x) return;
     const ico = b.querySelector('.rc-plot-ico');
     if(!box.hidden){ box.hidden = true; if(ico) ico.textContent = '📊 업체 투찰 위치'; return; }
+    if(x.w?.src && !MineX.d){ box.hidden = false; box.innerHTML = loadingHtml('전원 투찰 금액 불러오는 중…'); await MineX.load(); }
     box.innerHTML = rcPlot(x); box.hidden = false; if(ico) ico.textContent = '▲ 그래프 접기';
   });
   el.querySelectorAll('[data-res-hide]').forEach(b => b.onclick = () => { ResHidden.set(b.dataset.resHide, true); toast('뺀 목록으로 옮겼습니다 — 맨 아래에서 되돌릴 수 있어요', 2600); keepY(renderWatch); });
@@ -2997,10 +2998,23 @@ function resLink(w){
   return `https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=${encodeURIComponent(w.no)}&bidPbancOrd=${encodeURIComponent(w.ord || '000')}`;
 }
 /** 개찰 결과 한 건의 업체 투찰 위치(투찰 사정률) — 조달청 조회·개찰 상세는 전원, 국방·물품·다른 시·도 자동 찾기는 상위 10곳 + 우리 */
+// 우리가 넣은 국방·물품·다른 시·도 공고의 전원 투찰률(scripts/my_bids.py → mine_x.json, 그래프 열 때만 읽음)
+const MineX = {d: null, async load(){
+  if(this.d) return this.d;
+  const d = {};
+  for(const f of ['mine_x.json', 'd2b/mine_x.json']){ try{ Object.assign(d, await Data.fetchJson(f)); }catch(e){} }
+  return (this.d = d);
+}};
 function rcPoints(x){
   const w = x.w, r = x.r;
   if(!w || !r?.base || !r?.plan) return null;
   const a = w.a ?? r.a ?? 0, fl = r.floor || w.floor || DEFAULT_FLOOR;
+  const xr = w.src && MineX.d?.[w.id];
+  if(xr){   // 투찰률(= 금액 ÷ 예정가격)로 금액 복원
+    let c = 0; const amts = xr.map(d => (c += d) / 1000).filter(v => v > 0).map(v => v / 100 * r.plan);
+    const xs = amts.map(v => bidToSr(v, r.base, a, fl)).filter(v => v != null);
+    if(xs.length >= 3) return {xs, a, fl, S: r.plan / r.base * 100, full: true};
+  }
   const amts = w.res?.xs?.length ? w.res.xs : (Data.opening[w.sido]?.bids.get(w.id)?.r || []).map(row => row[2]);
   const xs = amts.map(v => bidToSr(v, r.base, a, fl)).filter(v => v != null);
   return xs.length >= 3 ? {xs, a, fl, S: r.plan / r.base * 100, full: !w.src} : null;
@@ -3025,7 +3039,7 @@ function rcPlot(x){
   const N = x.n || p.xs.length;
   return histogram(p.xs, {min, max, step, lines, h: 150, color: 'var(--text-faint)', label: (v) => v.toFixed(2)})
     + `<div class="meta-line">가로 = 투찰 사정률(금액을 사정율 단위로 되돌린 값), 막대 = 그 자리에 넣은 업체 수. 빨간 선 왼쪽은 낙찰하한가 아래(무효).</div>`
-    + `<div class="meta-line">${p.full ? `${fmtNum(p.xs.length)}곳 전원` : `상위 ${fmtNum(p.xs.length)}곳만(전원 금액은 수집하지 않은 공고)`} · 하한 미달 ${fmtNum(below)}곳`
+    + `<div class="meta-line">${p.full ? `${fmtNum(p.xs.length)}곳 전원` : `상위 ${fmtNum(p.xs.length)}곳만(이 공고는 전원 금액을 아직 못 받음 — 다음 수집 때 채워짐)`} · 하한 미달 ${fmtNum(below)}곳`
     + (my != null ? ` · <b>내 투찰은 ${my < p.S ? `실제 사정율보다 ${(p.S - my).toFixed(3)}%p 아래(하한 미달)` : `유효 투찰 중 나보다 낮은 곳 ${fmtNum(lowerValid)}곳`}</b>` : '') + ` · 참가 ${fmtNum(N)}곳</div>`;
 }
 // ---------- 🩺 내 투찰 진단: 내 개찰 결과(앱 기록·개찰 상세 자동·가져온 엑셀)로 투찰 위치 습관을 보고, 같은 공고에서 앱 추천가와 비교해 조언

@@ -236,7 +236,7 @@ class Store:
         d = self.month(m)
         rec["r"] = [[rk, self.corp(nm, biz, ceo), amt] + ([note] if note else []) for rk, nm, biz, amt, rate, note, ceo in bidders[:TOP] + [b for b in bidders[TOP:] if b[2] in WATCH]]
         rec["k"] = sum(1 for b in bidders if b[0] > 0)
-        if m >= self.full_from:
+        if m >= self.full_from or any(b[2] in WATCH for b in bidders):   # 우리가 넣은 공고는 오래된 달도 전원(2026-09-28 요청 — 우리 투찰 상세 분석용)
             rec["c"] = [self.corp(nm, biz, ceo) for rk, nm, biz, amt, rate, note, ceo in bidders]
             xs = [round(rate * 1000) if rate else 0 for rk, nm, biz, amt, rate, note, ceo in bidders]
             rec["x"] = xs[:1] + [b - a for a, b in zip(xs, xs[1:])]

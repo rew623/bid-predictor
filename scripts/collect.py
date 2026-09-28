@@ -993,6 +993,9 @@ class OpeningStore:
         compact = {}
         if self.top_only:   # 물품은 참가 수천 곳 — 1위 자리(적격 탈락 포함 순위)만 알면 역검증이 되므로 상위 30곳만
             compact = {"k": sum(1 for r in rows if r[0] > 0), "n": len(rows)}
+            if any(y["corps"][r[1]][1] in WATCH_BIZ for r in rows):   # 우리가 넣은 공고는 전원 투찰률(순위 순, 앞 값과의 차이 ×1000)까지 — 우리 투찰 상세 분석용(2026-09-28)
+                xs = [round((r[3] or 0) * 1000) for r in rows]
+                compact["x"] = xs[:1] + [b - a for a, b in zip(xs, xs[1:])]
             rows = rows[:OPEN_TOP] + [r for r in rows[OPEN_TOP:] if y["corps"][r[1]][1] in WATCH_BIZ]
         elif sido not in FULL_SIDOS:   # 전국 전원 행은 1년 약 1GB → 상위 30곳(+우리 업체) 금액 행 + 전원은 업체·투찰률(국방 v2 와 같은 방식)
             compact = {"c": [r[1] for r in rows], "k": sum(1 for r in rows if r[0] > 0)}
@@ -1565,6 +1568,18 @@ def step_thng_details(api, meta, tstore, tostore, now, checkpoint, minutes):
     since = (now - dt.timedelta(days=round(30.44 * 24))).strftime("%Y-%m-%d")
     tm = meta.setdefault("thng_detail", {})
     queue = []
+    if WATCH_BIZ and not meta.get("thng_mine_fix"):   # 전원 투찰률(x) 없이 받아 둔 우리 공고는 한 번 다시 받는다(2026-09-28)
+        n_redo = 0
+        for sido in sorted(FULL_SIDOS):
+            ix = tostore.idx(sido)
+            for year in sorted({v for v in ix["done"].values()}):
+                y = tostore.year(sido, year)
+                for bid_id, b in y["bids"].items():
+                    if "x" not in b and any(y["corps"][r[1]][1] in WATCH_BIZ for r in b.get("r", [])):
+                        ix["done"].pop(bid_id, None)
+                        n_redo += 1
+        meta["thng_mine_fix"] = True
+        log(f"[물품상세] 우리 공고 {n_redo}건 전원 투찰률·복수예가로 다시 받음")
     for sido in sorted(FULL_SIDOS):
         ix = tostore.idx(sido)
         recs = [r for r in tstore.recs.values() if r.get("sido") == sido and (r.get("date") or "") >= since
@@ -1591,7 +1606,13 @@ def step_thng_details(api, meta, tstore, tostore, now, checkpoint, minutes):
         if not ranks:
             tostore.fail(sido, rec["id"])
             continue
-        tostore.add(sido, rec, ranks, [])
+        prices = []
+        if any(re.sub(r"\D", "", str(pick(i, F_BIZ) or "")) in WATCH_BIZ for i in ranks):   # 우리 공고 = 복수예가까지(2026-09-28)
+            try:
+                prices = list(api.paged("thng_prepar", {"inqryDiv": "2", "bidNtceNo": rec["no"]}))
+            except ApiError as e:
+                log(f"  ! {rec['id']} 복수예가 {e}")
+        tostore.add(sido, rec, ranks, prices)
         tm[sido]["done"] += 1
         done_now += 1
         if done_now % 200 == 0:
@@ -1599,7 +1620,7 @@ def step_thng_details(api, meta, tstore, tostore, now, checkpoint, minutes):
     log(f"  이번 실행 {done_now}건")
 
 
-def step_thng_curve(api, meta, tstore, curve, now, checkpoint, minutes):
+def step_thng_curve(api, meta, tstore, curve, now, checkpoint, minutes, tostore=None):
     """물품곡선(2026-09-28, 사용자 요청 '물품도 분석'): 전국 물품 낙찰 중 참가 50곳↑·기초·하한율·예가범위 있는 최근 THNG_CURVE_MONTHS(12)개월,
     최신부터 — 개찰 순위 전원 + 복수예가를 받아 추첨 평균 1순위 확률 곡선을 합계에만 더한다(원자료는 저장 안 함, scripts/thng_curve.py)."""
     stop = time.time() + minutes * 60
@@ -1647,6 +1668,9 @@ def step_thng_curve(api, meta, tstore, curve, now, checkpoint, minutes):
         rng = rec["rng"]
         key = f"{rec['date'][:7]}|{curve_bucket(n)}|{rng[0]:g},{rng[1]:g}|{'수의' if '수의' in (rec.get('cm') or '') else '경쟁'}"
         curve.add(key, n, c, real_window(plan, top, base, rec["floor"]))
+        if any(re.sub(r"\D", "", str(pick(i, F_BIZ) or "")) in WATCH_BIZ for i in ranks):   # 우리가 넣은 공고는 개찰 상세(전원 투찰률·복수예가)도 저장 → my_bids·앱 개찰 결과
+            if tostore is not None:
+                tostore.add(rec.get("sido") or "기타", rec, ranks, prices)
         done[rec["id"]] = 1
         fail.pop(rec["id"], None)
         n_now += 1
@@ -1717,7 +1741,7 @@ def main():
         ("빈달", lambda: step_refill(api, meta, store, now, save_all)),
         ("물품과거", lambda: step_thng_backfill(api, meta, tstore, now, save_all)),
         ("물품상세", lambda: step_thng_details(api, meta, tstore, tostore, now, save_all, float(os.environ.get("THNG_DETAIL_MINUTES") or 40))),   # 물품 개찰 순위(관심 시·도) — 물품 역검증용 (2026-09-27)
-        ("물품곡선", lambda: step_thng_curve(api, meta, tstore, tcurve, now, save_all, float(os.environ.get("THNG_CURVE_MINUTES") or 50))),   # 전국 물품 참가 50곳↑ 추첨 평균 곡선 (2026-09-28)
+        ("물품곡선", lambda: step_thng_curve(api, meta, tstore, tcurve, now, save_all, float(os.environ.get("THNG_CURVE_MINUTES") or 50), tostore)),   # 전국 물품 참가 50곳↑ 추첨 평균 곡선 (2026-09-28)
         ("지역보강", lambda: step_region_fill(api, meta, store, now, save_all)),
         ("A값보강", lambda: step_bsis_fill(api, meta, store, now, save_all)),   # 2026-09-27: 기초금액 조회가 빠진 과거 낙찰(A값 모름)을 다시 채워 곡선·역검증 표본을 늘림
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all, horizon)),
