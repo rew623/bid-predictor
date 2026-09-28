@@ -42,6 +42,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from korea import SIDO_ORDER, normalize_licenses, parse_region  # noqa: E402
+from thng_curve import ThngCurve, bucket as curve_bucket, lottery_curve, real_window  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -87,6 +88,7 @@ OPS = {
     "scsbid_list": ("scsbid", "getScsbidListSttusCnstwk", "1"),          # 공사 낙찰 목록
     "opening_rank": ("scsbid", "getOpengResultListInfoOpengCompt", None),  # 개찰결과 전체 순위
     "prepar_detail": ("scsbid", "getOpengResultListInfoCnstwkPreparPcDetail", "2"),  # 복수예비가격 상세
+    "thng_prepar": ("scsbid", "getOpengResultListInfoThngPreparPcDetail", "2"),  # 물품 복수예비가격 상세 (물품곡선)
     "notice_list": ("bid", "getBidPblancListInfoCnstwk", "1"),           # 공사 입찰공고 목록
     "notice_bsis": ("bid", "getBidPblancListInfoCnstwkBsisAmount", "1"),  # 기초금액·A값
     "notice_license": ("bid", "getBidPblancListInfoLicenseLimit", "1"),   # 면허제한
@@ -1597,6 +1599,63 @@ def step_thng_details(api, meta, tstore, tostore, now, checkpoint, minutes):
     log(f"  이번 실행 {done_now}건")
 
 
+def step_thng_curve(api, meta, tstore, curve, now, checkpoint, minutes):
+    """물품곡선(2026-09-28, 사용자 요청 '물품도 분석'): 전국 물품 낙찰 중 참가 50곳↑·기초·하한율·예가범위 있는 최근 THNG_CURVE_MONTHS(12)개월,
+    최신부터 — 개찰 순위 전원 + 복수예가를 받아 추첨 평균 1순위 확률 곡선을 합계에만 더한다(원자료는 저장 안 함, scripts/thng_curve.py)."""
+    stop = time.time() + minutes * 60
+    months = int(os.environ.get("THNG_CURVE_MONTHS") or 12)
+    since = (now - dt.timedelta(days=round(30.44 * months))).strftime("%Y-%m-%d")
+    done, fail = curve.d["done"], curve.d["fail"]
+    queue = [r for r in tstore.recs.values() if (r.get("date") or "") >= since and r.get("base") and r.get("floor") and r.get("rng")
+             and (r.get("cnt") or 0) >= 50 and r["id"] not in done and fail.get(r["id"], 0) < DETAIL_MAX_TRIES]
+    queue.sort(key=lambda r: r["date"], reverse=True)
+    total = sum(1 for r in tstore.recs.values() if (r.get("date") or "") >= since and r.get("base") and r.get("floor") and r.get("rng") and (r.get("cnt") or 0) >= 50)
+    meta["thng_curve"] = {"total": total, "done": sum(1 for r in tstore.recs.values() if r["id"] in done and (r.get("date") or "") >= since), "months": months}
+    log(f"[물품곡선] 대기 {len(queue)}건 / 대상 {total}건")
+    n_now = 0
+    for rec in queue:
+        if time.time() > stop or api.remaining("scsbid") < 50 or api.time_left() < 10:
+            break
+        try:
+            ranks = list(api.paged("opening_rank", {"bidNtceNo": rec["no"], "bidNtceOrd": rec["ord"]}))
+            prices = list(api.paged("thng_prepar", {"inqryDiv": "2", "bidNtceNo": rec["no"]}))
+        except ApiError as e:
+            log(f"  ! {rec['id']} {e}")
+            fail[rec["id"]] = fail.get(rec["id"], 0) + 1
+            continue
+        rb = [to_int(pick(i, F_RBID)) or 0 for i in ranks]
+        if rb and max(rb) > 0:
+            ranks = [i for i, n in zip(ranks, rb) if n == max(rb)]
+        amts, top = [], None
+        for it in ranks:
+            amt = to_int(pick(it, F_BID_AMT))
+            if amt is None or re.sub(r"\D", "", str(pick(it, F_BIZ) or "")) in WATCH_BIZ:
+                continue
+            rank = to_int(pick(it, F_RANK)) or 0
+            if rank == 1:
+                top = amt
+            if rank > 0 or "미달" in str(pick(it, F_NOTE) or ""):
+                amts.append(amt)
+        ps = sorted((to_int(pick(i, F_SNO)) or 0, to_int(pick(i, F_PRICE))) for i in prices if to_int(pick(i, F_PRICE)))
+        base = next((to_int(pick(i, F_BASE)) for i in prices if pick(i, F_BASE)), None) or rec["base"]
+        plan = next((to_int(pick(i, F_PLAN)) for i in prices if pick(i, F_PLAN)), None) or rec.get("plan")
+        c = lottery_curve([p for _, p in ps], amts, base, rec["floor"])
+        if c is None:
+            fail[rec["id"]] = fail.get(rec["id"], 0) + 1
+            continue
+        n = rec.get("cnt") or len(ranks)
+        rng = rec["rng"]
+        key = f"{rec['date'][:7]}|{curve_bucket(n)}|{rng[0]:g},{rng[1]:g}|{'수의' if '수의' in (rec.get('cm') or '') else '경쟁'}"
+        curve.add(key, n, c, real_window(plan, top, base, rec["floor"]))
+        done[rec["id"]] = 1
+        fail.pop(rec["id"], None)
+        n_now += 1
+        if n_now % 200 == 0:
+            checkpoint()
+    meta["thng_curve"]["done"] += n_now
+    log(f"  이번 실행 {n_now}건")
+
+
 # ---------------------------------------------------------------- main
 def main():
     started = time.time()
@@ -1615,6 +1674,7 @@ def main():
     tstore = ThngStore()
     ostore = OpeningStore()
     tostore = ThngOpeningStore()
+    tcurve = ThngCurve(DATA / "thng_curve.json")
     errors = []
 
     def save_all(final=False):
@@ -1622,6 +1682,7 @@ def main():
         corp_info().save()
         ostore.save()
         tostore.save()
+        tcurve.save()
         files_s, counts_s = store.save()
         files_t, counts_t = tstore.save()
         files_o, counts_o = ostore.files()
@@ -1656,6 +1717,7 @@ def main():
         ("빈달", lambda: step_refill(api, meta, store, now, save_all)),
         ("물품과거", lambda: step_thng_backfill(api, meta, tstore, now, save_all)),
         ("물품상세", lambda: step_thng_details(api, meta, tstore, tostore, now, save_all, float(os.environ.get("THNG_DETAIL_MINUTES") or 40))),   # 물품 개찰 순위(관심 시·도) — 물품 역검증용 (2026-09-27)
+        ("물품곡선", lambda: step_thng_curve(api, meta, tstore, tcurve, now, save_all, float(os.environ.get("THNG_CURVE_MINUTES") or 50))),   # 전국 물품 참가 50곳↑ 추첨 평균 곡선 (2026-09-28)
         ("지역보강", lambda: step_region_fill(api, meta, store, now, save_all)),
         ("A값보강", lambda: step_bsis_fill(api, meta, store, now, save_all)),   # 2026-09-27: 기초금액 조회가 빠진 과거 낙찰(A값 모름)을 다시 채워 곡선·역검증 표본을 늘림
         ("과거낙찰", lambda: step_backfill(api, meta, store, now, save_all, horizon)),
