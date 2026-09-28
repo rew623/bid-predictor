@@ -88,7 +88,7 @@ const LS = {
 };
 // 화면 조건(검색·필터·보던 칸)은 이번에 앱을 연 동안만 기억한다 — 앱을 새로 열거나 새로고침하면 모든 탭이 기본(우리 업체 시·도·시·군 등)으로 (2026-09-27 요청).
 // 탭을 오가는 동안은 그대로(탭 상태 유지). 그래서 동기화(Cloud.keys)에도 넣지 않는다.
-const VIEW_KEYS = ['bidsFilter', 'bidsMode', 'mineKind', 'mineArea', 'mineSort', 'watchMode', 'statsFilter', 'pSidos', 'pLics', 'paperArea', 'resKind', 'resPeriod', 'diagPeriod', 'corpF2'];
+const VIEW_KEYS = ['bidsFilter', 'bidsMode', 'mineKind', 'mineArea', 'mineSort', 'watchMode', 'statsFilter', 'pSidos', 'pLics', 'paperArea', 'resKind', 'resPeriod', 'diagPeriod', 'diagKind', 'corpF2'];
 try{ VIEW_KEYS.forEach(k => localStorage.removeItem('bp.' + k)); }catch(e){}
 
 // ============================================================ PC·폰 같이 쓰기 (구글 로그인 + Firestore)
@@ -2977,7 +2977,7 @@ async function renderResults(el, appItems, pseudo, head){
 }
 // ---------- 🩺 내 투찰 진단: 내 개찰 결과(앱 기록·개찰 상세 자동·가져온 엑셀)로 투찰 위치 습관을 보고, 같은 공고에서 앱 추천가와 비교해 조언
 // 조언은 차이가 통계적으로 뚜렷할 때만(p < 0.05, 표본 20건↑) 내고, 아니면 '잡음 범위'라고 말한다 — 공고 고르기는 권하지 않는다(사용자는 참가 가능한 공고에 다 넣음)
-const Diag = {period: LS.get('diagPeriod', 0)};
+const Diag = {period: LS.get('diagPeriod', 0), kind: LS.get('diagKind', '공사')};   // 공사·물품은 투찰 전략이 달라 따로 본다(2026-09-28 요청)
 /** 포아송 95% 구간(Wilson–Hilferty 근사) */
 function poisCI(k){
   const z = 1.96, lo = k === 0 ? 0 : k * Math.pow(1 - 1 / (9 * k) - z / (3 * Math.sqrt(k)), 3), k1 = k + 1;
@@ -2989,12 +2989,16 @@ function mcnemarP(b, c){ const n = b + c; if(n < 1) return 1; let t = 0; for(let
 async function renderDiag(el, appItems, pseudo, head){
   const hidD = ResHidden.get(), all = buildResultRows(appItems).filter(x => !hidD.has(x.key));
   const cut = Diag.period ? kstDay(new Date(Date.now() - Diag.period * 30.4 * 86400000)) : '';
-  const rows = all.filter(x => (!cut || x.date.slice(0, 10) >= cut) && x.S && x.x != null && x.n);
+  const usable = all.filter(x => (!cut || x.date.slice(0, 10) >= cut) && x.S && x.x != null && x.n);
+  const kindOf = (x) => x.kind === '공사' ? '공사' : x.kind === '물품' ? '물품' : '기타';
+  const dKinds = [['공사', '🏗 공사'], ['물품', '📦 물품'], ['all', '전체']];
+  const rows = Diag.kind === 'all' ? usable : usable.filter(x => kindOf(x) === Diag.kind);
+  const kindSeg = `<div class="seg res-kind" id="diagKind">${dKinds.map(([k, t]) => `<button type="button" data-k="${k}" class="${Diag.kind === k ? 'on' : ''}">${t} <span class="cnt">${fmtNum(k === 'all' ? usable.length : usable.filter(x => kindOf(x) === k).length)}</span></button>`).join('')}</div>`;
   const periodSel = `<select id="diagPeriod" class="sort-select" aria-label="기간">${[[0, '전체 기간'], [12, '최근 12개월'], [6, '최근 6개월'], [3, '최근 3개월']].map(([v, t]) => `<option value="${v}"${+Diag.period === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
   const src = {app: all.filter(x => x.src === 'app' && !x.w?.auto).length, auto: all.filter(x => x.w?.auto).length, hist: all.filter(x => x.src === 'hist').length};
   let body = '';
   if(!rows.length){
-    body = `<div class="empty">진단할 개찰 결과가 없습니다. 투찰한 공고가 개찰되면(또는 사업자번호를 넣어 개찰 상세에서 자동으로 찾거나, 더비스 투찰 이력 엑셀을 가져오면) 여기서 내 투찰 습관을 봅니다.</div>`;
+    body = usable.length ? `<div class="empty">${Diag.kind === '물품' ? '물품' : '공사'} 개찰 결과가 아직 없습니다. 위에서 다른 업무를 골라 보세요.</div>` : `<div class="empty">진단할 개찰 결과가 없습니다. 투찰한 공고가 개찰되면(또는 사업자번호를 넣어 개찰 상세에서 자동으로 찾거나, 더비스 투찰 이력 엑셀을 가져오면) 여기서 내 투찰 습관을 봅니다.</div>`;
   }else{
     const N = rows.length, isWin = (x) => x.rank === 1 || x.fin;
     const k = rows.filter(isWin).length, E = rows.reduce((t, x) => t + 1 / x.n, 0);
@@ -3048,15 +3052,15 @@ async function renderDiag(el, appItems, pseudo, head){
       ${hist}
       <p class="sub">0(빨간 선)보다 왼쪽 = 낙찰하한가 아래(무효), 오른쪽으로 갈수록 높게 넣은 것. 실제 사정율은 추첨이라 미리 알 수 없으니, 막대가 0 바로 오른쪽에 몰릴수록 운이 좋았던 것입니다. 한쪽으로 크게 치우쳐 있으면 위치를 옮길 여지가 있습니다.</p>
       <div class="meta-line">내 투찰 사정률 중앙값 ${med(xs).toFixed(3)}% (가운데 절반 ${quantile(xs, .25).toFixed(3)}~${quantile(xs, .75).toFixed(3)}%)</div>
-      <h3>업무별</h3>
-      <div class="table-wrap" style="max-height:none;"><table><thead><tr><th>업무</th><th class="num">건수</th><th class="num">1순위</th><th class="num">평균 업체 기대</th><th class="num">하한 미달</th></tr></thead><tbody>${kindRows}</tbody></table></div>
+      ${kinds.length > 1 ? `<h3>업무별</h3>
+      <div class="table-wrap" style="max-height:none;"><table><thead><tr><th>업무</th><th class="num">건수</th><th class="num">1순위</th><th class="num">평균 업체 기대</th><th class="num">하한 미달</th></tr></thead><tbody>${kindRows}</tbody></table></div>` : ''}
       <p class="meta-line ops">자료: 앱 기록 ${fmtNum(src.app)}건 · 개찰 상세 자동 ${fmtNum(src.auto)}건 · 가져온 엑셀 ${fmtNum(src.hist)}건 (예정가격·투찰률을 아는 것만 진단). 앱 추천가 비교 ${fmtNum(pr.length)}건 중 ${fmtNum(nowCnt)}건은 개찰 전 추천 기록이 없어 지금 모델로 계산 — 그 공고가 모델 학습 기간에 들어 있어 앱에 조금 유리할 수 있습니다. 평균 업체 기대 = Σ 1÷참가 수. 조언은 같은 공고 짝 비교에서 p &lt; 0.05 일 때만.</p>`;
   }
   // 우리 지역 × 우리 면허 공사 역검증(수집 워크플로가 매일 계산, scripts/company_val.py) — 설정의 우리 업체와 시·도·면허가 맞을 때만
   let cvHtml = '';
   try{
     const cv = await Data.fetchJson('company_val.json'), c = Company.get();
-    if(cv?.n && c.sido === cv.sido && (!cv.lics.length || cv.lics.some(l => c.lics.includes(l)))){
+    if(Diag.kind !== '물품' && cv?.n && c.sido === cv.sido && (!cv.lics.length || cv.lics.some(l => c.lics.includes(l)))){
       const r = (w) => cv.fair ? w / cv.fair : 0, [lo, hi] = cv.ci.map(v => v / cv.fair);
       const verdict = lo > 1 ? `<b>평균 업체보다 뚜렷하게 많습니다</b> (95% 구간 ×${lo.toFixed(2)}~×${hi.toFixed(2)})`
         : `평균 업체보다 ${cv.ours >= cv.fair ? '많지만' : '적고'} <b>아직 잡음 범위</b>입니다 (95% 구간 ×${lo.toFixed(2)}~×${hi.toFixed(2)} — 1을 걸침)`;
@@ -3072,8 +3076,9 @@ async function renderDiag(el, appItems, pseudo, head){
         <div class="meta-line ops">계산 ${esc((cv.updated_at || '').slice(0, 16).replace('T', ' '))} · ${esc(cv.rule || '')}</div>`;
     }
   }catch(e){ /* 아직 없음 */ }
-  el.innerHTML = head + `<div class="res-ctrl"><div class="res-row2">${periodSel}</div></div>` + body + cvHtml;
+  el.innerHTML = head + `<div class="res-ctrl">${kindSeg}<div class="res-row2">${periodSel}</div></div>` + body + cvHtml;
   bindWatch(el, pseudo);
+  el.querySelectorAll('#diagKind button').forEach(b => b.onclick = () => { Diag.kind = b.dataset.k; LS.set('diagKind', Diag.kind); renderWatch(); });
   $('diagPeriod').onchange = () => { Diag.period = +$('diagPeriod').value; LS.set('diagPeriod', Diag.period); renderWatch(); };
 }
 /** 과거 투찰 이력 판정: 1순위 / 하한 미달 / 1위보다 높음 / 예정가격 비공개(나라장터 밖) */
