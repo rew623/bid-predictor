@@ -1277,7 +1277,8 @@ function liveNotice(it){
     floor: numF(pickF(it, 'sucsfbidLwltRate', 'scsbdLwltRate')), ntce: normDt(pickF(it, 'bidNtceDt', 'rgstDt')),
     close: normDt(pickF(it, 'bidClseDt')), open: normDt(pickF(it, 'opengDt', 'rlOpengDt')),
     url: pickF(it, 'bidNtceDtlUrl', 'bidNtceUrl'), cancel: /취소/.test(pickF(it, 'ntceKindNm') || ''), live: true, kind: Live.kind,
-    corr: /정정/.test(pickF(it, 'ntceKindNm') || ''), sui: /수의/.test(pickF(it, 'cntrctCnclsMthdNm') || '')};
+    corr: /정정/.test(pickF(it, 'ntceKindNm') || ''), sui: /수의/.test(pickF(it, 'cntrctCnclsMthdNm') || ''),
+    nego: /시담/.test([it.bidMethdNm, it.sucsfbidMthdNm, it.sucsfbidMthdAppStd].join(' '))};   // 수의시담: 정해진 계약 대상자만 참가(2026-09-29)
   Object.keys(b).forEach(k => { if(b[k] == null || b[k] === '') delete b[k]; });
   return b;
 }
@@ -1887,6 +1888,7 @@ function capCheck(b){
 function eligibility(b){
   const c = Company.get();
   const out = {ok: true, lic: null, rgn: null, cap: null};
+  if(b.nego){ out.ok = false; out.nego = true; return out; }   // 수의시담·다자간수의시담: 계약 대상자로 정해진 업체만
   const lics = licOf(b), rgn = rgnOf(b);
   const groups = c.lics.length ? limGroups(b) : null;
   if(groups){
@@ -1951,6 +1953,7 @@ function eligTag(b){
       : `<span class="tag bad">참가 불가 · ${esc(e.why)}</span>`;
   }
   const e = eligibility(b);
+  if(e.nego) return '<span class="tag bad" title="수의시담·다자간수의시담 — 나라장터가 정보공개로만 올린 공고, 계약 대상자가 아니면 참가 불가">참가 불가 · 수의시담</span>';
   if(!e.ok) return `<span class="tag bad">참가 불가 · ${e.rgn === 'no' ? '지역 제한' : e.cap === 'no' ? '실적 한도 초과' : e.lic === 'mf' ? '주력분야 불일치' : '면허 불일치'}</span>`;
   if(e.cap === 'check') return '<span class="tag warn" title="추정가격이 지자체 3년 실적 한도는 넘고 5년 한도 안 — 공고문의 실적 기간 확인">실적 확인 (지자체 5년 기준만 가능)</span>';
   if(e.lic === 'unknown') return '<span class="tag warn">면허 확인 필요</span>';

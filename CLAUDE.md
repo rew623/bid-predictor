@@ -122,6 +122,8 @@ data/                 수집 결과 (아래)
 | seen | 수집기가 처음 본 시각(ISO) — 앱의 NEW 표시 기준 |
 | sd | 1 = 사실조사(사전단속) 공사 (공고문 첨부에서 찾음, 없으면 키 생략) |
 
+**수의시담·다자간수의시담 공고는 bids.json·goods.json 에서 뺀다**(2026-09-29 사용자: 나라장터가 '정보공개 차원에서 공고, 계약대상자가 아닌 업체는 참가 불가'). 판정 `is_nego` = bidMethdNm·sucsfbidMthdNm 에 '시담'(예: 입찰방식 전자시담, 낙찰방법 수의시담) → notice_cache `nego`, 처음 한 번 30일치 목록 다시(`meta.nego_scan`). 앱 실시간 공고는 `liveNotice` 의 `nego` → `eligibility` 참가 불가('참가 불가 · 수의시담' 태그).
+
 ### data/model.json — 전국 추천 모델 + 매일 역검증 (scripts/model.py)
 ```jsonc
 {"v":1, "updated_at":"…", "data":{"from","to","rows"}, "grid":{"x0":97,"step":0.01,"n":601,"scale":1e5},

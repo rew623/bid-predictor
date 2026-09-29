@@ -619,6 +619,10 @@ class NoticeCache:
         docs = notice_docs(it)
         if docs:
             e["docs"] = docs
+        if is_nego(it):
+            e["nego"] = 1
+        else:
+            e.pop("nego", None)
         base = to_int(pick(it, F_BASE))
         if base:
             e["base"] = base
@@ -692,7 +696,7 @@ class NoticeCache:
         recent = (now - dt.timedelta(days=14)).strftime("%Y-%m-%d")
         out = []
         for e in self.items.values():
-            if not e.get("nm") or e.get("cancel") or e.get("old"):
+            if not e.get("nm") or e.get("cancel") or e.get("old") or e.get("nego"):
                 continue
             close = e.get("close")
             if close and close < cur:
@@ -1232,10 +1236,11 @@ def step_notices(api, meta, cache, now):
     bgn = now - dt.timedelta(days=days)
     seen = now.isoformat(timespec="minutes")
     log(f"[공고] 최근 {days}일")
-    list_bgn = bgn if meta.get("doc_scan") else now - dt.timedelta(days=30)   # 공고문 첨부(docs)를 처음 받을 때 한 번은 30일치 목록을 다시
+    list_bgn = bgn if meta.get("doc_scan") and meta.get("nego_scan") else now - dt.timedelta(days=30)   # 공고문 첨부(docs)·수의시담(nego)을 처음 받을 때 한 번은 30일치 목록을 다시
     for it in api.fetch_range("notice_list", list_bgn, now):
         cache.add_notice(it, seen)
     meta["doc_scan"] = True
+    meta["nego_scan"] = True
     for it in api.fetch_range("notice_bsis", now - dt.timedelta(days=max(days, 14)), now):
         cache.add_bsis(it)
     for it in api.fetch_range("notice_license", now - dt.timedelta(days=lic_days), now):
@@ -1245,6 +1250,11 @@ def step_notices(api, meta, cache, now):
         cache.add_region(it)
     cache.finalize(now)
     meta["notice_last"] = seen
+
+
+def is_nego(it):
+    """수의시담·다자간수의시담 공고 — 계약 대상자로 정해진 업체만 참가(나라장터 '정보공개 차원에서 공고', 2026-09-29 사용자 확인) → 우리 공고·진행중 목록에서 뺀다"""
+    return any("시담" in str(it.get(k) or "") for k in ("bidMethdNm", "sucsfbidMthdNm", "sucsfbidMthdAppStd"))
 
 
 def notice_docs(it):
@@ -1265,7 +1275,7 @@ def step_doc_flags(api, cache, now, minutes):
     import notice_doc
     t_end = time.time() + 60 * max(0, min(minutes, api.time_left() - 5))
     cur = now.strftime("%Y-%m-%d %H:%M")
-    todo = [e for e in cache.items.values() if e.get("docs") and not e.get("sdc") and e.get("sdt", 0) < DOC_TRIES
+    todo = [e for e in cache.items.values() if e.get("docs") and not e.get("nego") and not e.get("sdc") and e.get("sdt", 0) < DOC_TRIES
             and not e.get("cancel") and not e.get("old") and (e.get("close") or "9999") >= cur]
     todo.sort(key=lambda e: (e.get("sido") not in FULL_SIDOS, e.get("sdt", 0), e.get("close") or "9999"))   # 관심 시·도(강원) → 처음 보는 공고 → 마감 임박
     done = hit = fail = 0
@@ -1459,7 +1469,7 @@ def write_goods(notices, bsis, cache, now):
             continue
         latest[no] = ord_
         close = norm_dt(pick(it, F_CLOSE_DT))
-        if "취소" in (pick(it, F_KIND) or "") or not close or close < cur:
+        if "취소" in (pick(it, F_KIND) or "") or not close or close < cur or is_nego(it):
             out.pop(no, None)
             continue
         e = (cache.items.get(id_) if cache else None) or {}
