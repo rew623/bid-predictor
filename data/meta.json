@@ -21,7 +21,7 @@
   "filled": 46320
  },
  "counts": {
-  "bids": 1943,
+  "bids": 1593,
   "opening": {
    "강원": 26457,
    "경기": 2212,
@@ -643,22 +643,23 @@
   "cursor": "202401"
  },
  "last_run": {
-  "at": "2026-09-29T12:33:35+09:00",
+  "at": "2026-09-29T13:27:16+09:00",
   "calls": {
    "bid": 1149,
    "date": "20260929",
    "scsbid": 27448
   },
   "errors": [
-   "업체정보: 한도 소진 (time)"
+   "공고: ApiError: NET: getBidPblancListInfoCnstwk: HTTPSConnectionPool(host='apis.data.go.kr', port=443): Max retries exceeded with url: /1230000/BidPublicInfoService04/getBidPblancListInfoCnstwk?serviceKey=***&type=json&inqryDiv=1&inqryBgnDt=202609271304&inqryEndDt=202609291304&pageNo=1&numOfRows=100 (Caused by ConnectTimeoutError(<HTTPSConnection(host='apis.data.go.kr', port=443) at 0x7fd95e490d70>, 'Connection to apis.data.go.kr timed out. (connect timeout=15)'))",
+   "최근낙찰: 한도 소진 (network)"
   ],
-  "minutes": 260.2
+  "minutes": 23.0
  },
  "lim_scan": true,
  "mf_scan": true,
  "model": {
   "rows": 191402,
-  "updated_at": "2026-09-29T12:33:44+09:00"
+  "updated_at": "2026-09-29T13:27:27+09:00"
  },
  "notice_last": "2026-09-29T08:09+09:00",
  "refill": [],
@@ -684,6 +685,6 @@
   }
  },
  "thng_mine_fix": true,
- "updated_at": "2026-09-29T12:33:44+09:00",
+ "updated_at": "2026-09-29T13:27:27+09:00",
  "v": 1
 }
