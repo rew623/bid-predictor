@@ -358,7 +358,7 @@ const Data = {
   },
   loadGoods(){
     return this.once('goods', async () => {
-      try{ this.goods = ((await this.fetchJson('goods.json')).items || []).map(g => ({...g, kind: '물품'})); }
+      try{ const j = await this.fetchJson('goods.json'); this.goodsAt = j.updated_at; this.goods = (j.items || []).map(g => ({...g, kind: '물품'})); }
       catch(e){ this.goods = []; }
       return this.goods;
     });
@@ -3994,20 +3994,84 @@ async function renderSettings(){
     </dl>
     ${Object.keys(sc).length ? `<h3>시·도별 낙찰 건수</h3><div class="chip-group">${SIDOS.concat(['기타']).filter(s => sc[s]).map(s => `<span class="chip sm" style="cursor:default;">${s} ${fmtNum(sc[s])}</span>`).join('')}</div>` : ''}
     ${m.last_run?.errors?.length ? `<div class="alert warn">${m.last_run.errors.map(esc).join('<br>')}</div>` : ''}`;
-  const d = m.detail || {};
-  const regions = d.regions || [];
-  $('setDetail').innerHTML = regions.length ? regions.map(s => {
-    const x = d[s] || {};
-    const p = x.total ? (x.done / x.total * 100) : 0;
-    return `<div style="margin-bottom:12px;"><div class="card-head"><b>${esc(s)}</b><span class="meta-line" style="margin:0;">${fmtNum(x.done||0)} / ${fmtNum(x.total||0)}건 (${p.toFixed(1)}%)${x.failed ? ` · 실패 ${fmtNum(x.failed)}` : ''}</span></div>
-      <div class="progress"><div style="width:${p.toFixed(1)}%"></div></div></div>`;
-  }).join('') + `<div class="meta-line">남은 ${fmtNum(d.remaining || 0)}건 · 하루 약 ${fmtNum(d.per_day || 0)}건 → ${d.remaining ? `약 ${fmtNum(d.eta_days)}일 남음` : '완료'}</div>
-    <div class="meta-line">수집 대상 지역은 저장소의 scripts/regions.json 에서 바꿀 수 있습니다.</div>`
-    : '<div class="empty">아직 상세 수집 기록이 없습니다.</div>';
+  renderCollectStatus();
   $('setVal').innerHTML = renderValidation();
   $('appVersion').textContent = await getAppVersion();
   const theme = LS.get('theme', 'auto');
   $('themeSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === theme));
+}
+
+/** 설정 '수집 현황'(2026-09-30 사용자: 지금 뭘 받고 있고 얼마나 남았는지 공사·물품·국방별로) —
+ *  지금 도는 수집 = GitHub Actions 공개 API(설정 화면 열 때 2~3회), 나머지는 meta.json·d2b/meta.json·goods.json */
+const STEP_NAMES = {공고: '공사 진행중 공고', 최근낙찰: '공사 최근 낙찰', 공고문: '공고문(사전단속)', 상세: '공사 개찰 상세', 물품최근: '물품 진행중 공고·최근 낙찰',
+  빈달: '빈 달 다시', 물품과거: '물품 과거 낙찰', 물품상세: '물품 개찰 순위', 물품곡선: '물품 추첨 곡선', 지역보강: '참가지역 보강', A값보강: 'A값 보강',
+  과거낙찰: '공사 과거 낙찰', 옛낙찰: '강원 옛 낙찰', 옛상세: '강원 옛 개찰 상세', 업체정보: '업체 대표자·주소'};
+async function renderCollectStatus(){
+  const el = $('setDetail'); if(!el) return;
+  const m = Data.meta || {}, today = new Date();
+  const d8 = (s) => s ? new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8) || '01'}T00:00:00+09:00`) : null;
+  const ym = (s) => s ? `${s.slice(0,4)}-${s.slice(4,6)}` : '-';
+  const hm = (t) => (t || '-').slice(5,16).replace('T',' ');
+  const [d2m, goods, d2b] = await Promise.all([Data.once('d2bMeta', () => Data.fetchJson('d2b/meta.json')).catch(() => null), Data.loadGoods(), Data.loadD2bBids()]);
+  const row = (name, pct, text) => `<div class="cs-row"><div class="card-head"><b>${esc(name)}</b><span class="meta-line" style="margin:0;">${text}</span></div>${pct != null ? `<div class="progress"><div style="width:${Math.max(0, Math.min(100, pct)).toFixed(1)}%"></div></div>` : ''}</div>`;
+  const span = (from, to) => { const a = d8(from), b = d8(to); return a && b ? (today - a) / (today - b) * 100 : null; };
+  const bf = m.backfill || {}, bo = m.backfill_old || {}, dt = m.detail || {}, tb = m.thng_backfill || {}, tc = m.thng_curve || {}, info = m.info_fill || {};
+  const regs = dt.regions || [];
+  const dDone = regs.reduce((a, r) => a + (dt[r]?.done || 0), 0), dTot = regs.reduce((a, r) => a + (dt[r]?.total || 0), 0);
+  const tdR = Object.keys(m.thng_detail || {}), tdDone = tdR.reduce((a, r) => a + m.thng_detail[r].done, 0), tdTot = tdR.reduce((a, r) => a + m.thng_detail[r].total, 0);
+  const infoStop = new Date(today.getFullYear(), today.getMonth() - 36, 1);
+  const infoPct = info.done ? 100 : info.cursor ? (today - d8(info.cursor)) / (today - infoStop) * 100 : 0;
+  const calls = m.last_run?.calls || m.api?.calls || {};
+  const d2bf = d2m?.backfill || {};
+  const cnst = [
+    row('진행중 공고', null, `${fmtNum(m.counts?.bids || 0)}건 · ${hm(m.updated_at)} 갱신`),
+    row('과거 낙찰 (3년)', bf.done ? 100 : span(bf.oldest, bf.target_start), bf.done ? `완료 · ${fmtNum(m.counts?.scsbid_total || 0)}건` : `${ym(bf.oldest)}까지 받음 · 목표 ${ym(bf.target_start)} · ${fmtNum(m.counts?.scsbid_total || 0)}건`),
+    row('개찰 상세 (전체 순위·복수예가)', dTot ? dDone / dTot * 100 : 0, `${fmtNum(dDone)} / ${fmtNum(dTot)}건${dt.remaining ? ` · 하루 약 ${fmtNum(dt.per_day || 0)}건 → 약 ${fmtNum(dt.eta_days)}일` : ' · 완료'}`),
+    row('A값 보강', null, m.bsis_fill?.cursor ? `${ym(m.bsis_fill.cursor)}까지 확인 · ${fmtNum(m.bsis_fill.filled || 0)}건 채움` : `완료 · ${fmtNum(m.bsis_fill?.filled || 0)}건`),
+    row('강원 옛 낙찰 (6년)', bo.done ? 100 : bo.cursor ? span(bo.cursor, bo.target) : 0, bo.done ? '완료' : bo.cursor ? `${ym(bo.cursor)}까지 · 목표 ${ym(bo.target)}` : '과거 낙찰(3년)이 끝나면 시작'),
+  ];
+  const thng = [
+    row('진행중 공고', null, `${fmtNum(goods.length)}건 · ${hm(Data.goodsAt)} 갱신`),
+    row('과거 낙찰', tb.done ? 100 : null, tb.done ? `완료 · ${ym(tb.oldest)}부터 · ${fmtNum(m.counts?.thng_total || 0)}건` : `${ym(tb.oldest)}까지 받음 · ${fmtNum(m.counts?.thng_total || 0)}건`),
+    row(`개찰 순위 (${tdR.join('·') || '-'})`, tdTot ? tdDone / tdTot * 100 : 0, `${fmtNum(tdDone)} / ${fmtNum(tdTot)}건`),
+    row(`추첨 곡선 (전국 ${tc.months || 12}개월)`, tc.total ? tc.done / tc.total * 100 : 0, `${fmtNum(tc.done || 0)} / ${fmtNum(tc.total || 0)}건`),
+  ];
+  const d2 = [
+    row('진행중 공고 (물품·시설)', null, `${fmtNum(d2b.length)}건 · ${hm(d2m?.updated_at)} 갱신`),
+    row('입찰 결과', d2bf.done ? 100 : null, `${d2bf.done ? '완료' : '진행 중'} · ${ym(d2bf.oldest)}부터 · ${fmtNum(d2m?.total || 0)}건`),
+  ];
+  const etc = [
+    row('업체 대표자·주소 (36개월)', infoPct, info.done ? '완료' : `${ym(info.cursor)}까지`),
+    row('오늘 조달청 호출', null, `입찰공고 ${fmtNum(calls.bid || 0)} · 낙찰정보 ${fmtNum(calls.scsbid || 0)} (오퍼레이션마다 하루 10만)`),
+  ];
+  const steps = m.last_run?.steps || [];
+  el.innerHTML = `<div id="csLive" class="meta-line">지금 도는 수집 확인 중…</div>
+    <h3>공사 (나라장터)</h3>${cnst.join('')}
+    <h3>물품 (나라장터)</h3>${thng.join('')}
+    <h3>국방 (d2b)</h3>${d2.join('')}
+    <h3>기타</h3>${etc.join('')}
+    ${steps.length ? `<h3>마지막 실행 ${hm(m.last_run.at)} · ${m.last_run.minutes}분</h3><div class="chip-group">${steps.map(([n, t, r]) => `<span class="chip sm" style="cursor:default;">${esc(STEP_NAMES[n] || n)} ${t}분${r !== 'ok' ? ` · ${esc(r)}` : ''}</span>`).join('')}</div>` : ''}
+    <details><summary>시·도별 개찰 상세</summary>${regs.map(r => { const x = dt[r] || {}; return row(r, x.total ? x.done / x.total * 100 : 0, `${fmtNum(x.done || 0)} / ${fmtNum(x.total || 0)}${x.failed ? ` · 실패 ${fmtNum(x.failed)}` : ''}`); }).join('')}</details>`;
+  // 지금 도는 수집: GitHub Actions 공개 API (저장소 = 이 페이지 주소)
+  const live = $('csLive');
+  try{
+    const owner = /github\.io$/.test(location.hostname) ? location.hostname.split('.')[0] : 'rew623';
+    const repo = (/github\.io$/.test(location.hostname) && location.pathname.split('/')[1]) || 'bid-predictor';
+    const api = `https://api.github.com/repos/${owner}/${repo}/actions`;
+    const runs = ((await (await fetch(`${api}/workflows/collect.yml/runs?per_page=6`)).json()).workflow_runs || []);
+    const act = runs.filter(r => r.status === 'in_progress'), wait = runs.filter(r => r.status === 'queued' || r.status === 'pending' || r.status === 'waiting');
+    if(!act.length){ live.innerHTML = `<b>지금 도는 수집 없음</b>${wait.length ? ` · 대기 ${wait.length}건` : ''} · 정기 수집 02·08·14·20시(전체) + 13·17시(공고만)`; return; }
+    const parts = [];
+    for(const r of act){
+      const jobs = ((await (await fetch(`${api}/runs/${r.id}/jobs`)).json()).jobs || []).filter(j => j.status === 'in_progress');
+      for(const j of jobs){
+        const st = (j.steps || []).find(s => s.status === 'in_progress');
+        const mins = st?.started_at ? Math.round((Date.now() - new Date(st.started_at)) / 60000) : null;
+        parts.push(`<b>${esc(j.name === 'd2b' ? '국방' : '나라장터')}</b>: ${esc(st?.name || '준비 중')}${mins != null ? ` (${mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60}분` : `${mins}분`}째)` : ''}`);
+      }
+    }
+    live.innerHTML = `🔄 지금 수집 중 — ${parts.join(' · ') || '준비 중'}${wait.length ? ` · 대기 ${wait.length}건` : ''}`;
+  }catch(e){ live.textContent = '지금 도는 수집은 확인하지 못했습니다(GitHub 연결).'; }
 }
 
 /** 매일 자동 역검증 표 (model.json 의 validation) */

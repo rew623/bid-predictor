@@ -1828,6 +1828,7 @@ def step_thng_curve(api, meta, tstore, curve, now, checkpoint, minutes, tostore=
 # ---------------------------------------------------------------- main
 def main():
     started = time.time()
+    steps_log = []   # [[단계, 분, 결과]] — 앱 설정 '수집 현황'의 마지막 실행 단계별 시간(2026-09-30)
     now = now_kst()
     key = os.environ.get("DATA_GO_KR_KEY", "")
     DATA.mkdir(exist_ok=True)
@@ -1873,7 +1874,7 @@ def main():
             meta["updated_at"] = now_kst().isoformat(timespec="seconds")
         meta["last_run"] = {"at": now_kst().isoformat(timespec="seconds"),
                             "minutes": round((time.time() - started) / 60, 1),
-                            "calls": dict(api.calls), "errors": errors[-20:]}
+                            "calls": dict(api.calls), "errors": errors[-20:], "steps": steps_log}
         write_if_changed(DATA / "meta.json", json.dumps(meta, ensure_ascii=False, indent=1, sort_keys=True))
         store.dirty = tstore.dirty = False
         if final:
@@ -1906,19 +1907,24 @@ def main():
     for name, fn in steps:
         if only and name not in only:
             continue
+        t0, res = time.time(), "ok"
         try:
             fn()
         except BudgetExhausted as e:
             log(f"[{name}] 한도/시간 소진: {e}")
             errors.append(hide_key(f"{name}: 한도 소진 ({e})"))
+            res = "한도"
         except FatalApiError as e:
             log(f"[{name}] 치명적 오류: {e}")
             errors.append(hide_key(f"{name}: {e}"))
             fatal = e
+            steps_log.append([name, round((time.time() - t0) / 60, 1), "오류"])
             break
         except Exception as e:  # 한 단계가 죽어도 나머지는 진행
             log(traceback.format_exc())
             errors.append(hide_key(f"{name}: {type(e).__name__}: {e}"))
+            res = "오류"
+        steps_log.append([name, round((time.time() - t0) / 60, 1), res])
     save_all(final=True)
     if fatal:
         sys.exit(2)

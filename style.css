@@ -362,6 +362,7 @@ tr.click:hover td{background:var(--bg);}
 .kv dd{margin:0; font-weight:500; word-break:break-all; min-width:0;}
 .progress{height:8px; background:var(--border); border-radius:99px; overflow:hidden; margin-top:6px;}
 .progress > div{height:100%; background:var(--primary);}
+.cs-row{margin-bottom:10px;}
 .loading{color:var(--text-sub); font-size:13px; padding:14px 0; text-align:center;}
 .spinner{display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--primary); border-radius:50%; animation:spin .8s linear infinite; vertical-align:-2px; margin-right:6px;}
 @keyframes spin{to{transform:rotate(360deg);}}
