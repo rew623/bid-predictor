@@ -1137,7 +1137,7 @@ function bidCard(b, today, opts = {}){
   }else if(goodsRec(b)){
     const g = goodsRec(b);
     pred = `<div class="b-pred">
-        <div class="pv hl big"><span>추천 투찰가${g.bid ? ` <button type="button" class="copy-btn" data-copy="${g.bid}" title="붙여넣기용 숫자">📋 복사</button>` : ''}</span><b>${g.bid ? won(g.bid) : '기초금액 공개 후'}</b></div>
+        <div class="pv hl big"><span>추천 투찰가${g.bid ? ` <button type="button" class="copy-btn" data-copy="${g.bid}" title="붙여넣기용 숫자">📋 복사</button>` : ''}</span><b>${g.bid ? won(g.bid) : b.base ? '<span title="기초금액은 있지만 낙찰하한율이 없음 — 금액만 투찰하는 적격심사 공고가 아닐 수 있으니 공고문 확인">하한율 없음</span>' : '기초금액 공개 후'}</b></div>
         <div class="pv"><span>투찰 사정률</span><b>${pct(g.x, 2)}</b></div>
         ${g.lift ? `<div class="pv"><span>역검증</span><b>×${g.lift.toFixed(1)} <small class="faint">${fmtNum(g.n)}건</small></b></div>` : ''}
       </div>${g.small ? `<div class="g-small">참가 50곳 미만 예상 공고는 ${pct(g.small.x, 1)}${g.small.bid ? ` → <b>${won(g.small.bid)}</b>` : ''} (${g.src} 물품 규칙은 참가 50곳↑ 공고로 검증)</div>` : ''}`;
