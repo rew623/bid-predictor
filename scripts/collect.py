@@ -1470,7 +1470,7 @@ def write_goods(notices, bsis, cache, now):
         id_, _, _ = notice_id(it)
         if id_:
             base[id_] = clean({"base": to_int(pick(it, F_BASE)), "rng": price_range(it)})
-    latest, out = {}, {}
+    latest, out, skipped = {}, {}, {}
     for it in notices:
         id_, no, ord_ = notice_id(it)
         if not id_:
@@ -1479,7 +1479,11 @@ def write_goods(notices, bsis, cache, now):
             continue
         latest[no] = ord_
         close = norm_dt(pick(it, F_CLOSE_DT))
-        if "취소" in (pick(it, F_KIND) or "") or not close or close < cur or is_nego(it):
+        nego = is_nego(it)
+        if nego and close and close >= cur:   # 뺀 이유 점검용 — 이유 × 낙찰방법 원문별 건수만(용량 작게)
+            k = f"{nego} | {(it.get('sucsfbidMthdNm') or '').strip()[:40]} | {(it.get('cntrctCnclsMthdNm') or '').strip()}"
+            skipped[k] = skipped.get(k, 0) + 1
+        if "취소" in (pick(it, F_KIND) or "") or not close or close < cur or nego:
             out.pop(no, None)
             continue
         e = (cache.items.get(id_) if cache else None) or {}
@@ -1499,7 +1503,8 @@ def write_goods(notices, bsis, cache, now):
             **base.get(id_, {}),
         })
     items = sorted(out.values(), key=lambda x: (x.get("close") or "9999", x["id"]))
-    write_if_changed(DATA / "goods.json", dumps({"v": SCHEMA_VERSION, "updated_at": now.isoformat(timespec="minutes"), "items": items}))
+    write_if_changed(DATA / "goods.json", dumps({"v": SCHEMA_VERSION, "updated_at": now.isoformat(timespec="minutes"), "items": items,
+                                                  "skipped": dict(sorted(skipped.items(), key=lambda x: -x[1]))}))
     log(f"  진행중 물품 공고 {len(items)}건 → goods.json")
 
 
