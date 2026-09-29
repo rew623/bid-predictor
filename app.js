@@ -1064,7 +1064,7 @@ function licShortTags(b){
   if(b.src === '국방') return d2bTags(b);
   if(b.kind === '물품') return goodsTags(b);
   const lics = licOf(b);
-  if(!lics.length) return b.live && !b.limTried ? ['<span class="tag">면허 조회 중…</span>'] : [];
+  if(!lics.length) return b.live && !b.limTried ? ['<span class="tag">면허 조회 중…</span>'] : ['<span class="tag warn" title="면허제한 정보가 아직 없음 — 공고문에서 참가 자격 확인">면허 정보 없음</span>'];
   const mine = new Set(Company.isSet() ? Company.get().lics : []);
   const mf = [...new Set(mfOf(b).flatMap(m => mfClean(m).split(/[·,]\s*|\],\s*\[/)).map(x => x.replace(/^\[?\d+\^?/, '').replace(/(석|토)공사$/, '$1공').replace(/공사$/, '').trim()).filter(Boolean))];   // '석공사'→'석공', '도장공사'→'도장'
   return [...lics.map(l => `<span class="tag${mine.has(l) ? ' lic mine' : ''}" title="${esc(l)}">${mine.has(l) ? '✓ ' : ''}${esc(LIC_SHORT[l] || l)}</span>`),
@@ -1080,7 +1080,7 @@ function licTags(b){
       ...(mf.length ? [`<span class="tag" title="면허제한의 주력분야">주력: ${esc(mf.map(mfClean).join(', '))}</span>`] : [])];
   }
   if(!b.live) return [];
-  if(b.limOk) return ['<span class="tag">면허 제한 없음</span>'];
+  if(b.limOk) return [(b.kind || '공사') === '공사' ? '<span class="tag warn" title="조달청에 면허제한이 아직 없음 — 공고문에서 참가 자격 확인">면허 정보 없음</span>' : '<span class="tag">면허 제한 없음</span>'];
   return [b.limTried ? '<span class="tag">요구 면허 조회 실패</span>' : '<span class="tag">요구 면허 조회 중…</span>'];
 }
 function bidCard(b, today, opts = {}){
@@ -1902,7 +1902,8 @@ function eligibility(b){
     // 실제로는 같이 요구하는 공고(참가 불가)를 참가 가능으로 잘못 보여줬다(2026-09-26, 자운교 공고 등).
     const held = lics.filter(l => c.lics.includes(l));
     const passed = held.filter(l => mfPass(b, l, c));
-    if(!lics.length) out.lic = b.limOk ? 'ok' : 'unknown';   // limOk: 조달청 조회 결과 면허 제한 없음
+    // limOk: 조달청 조회 결과 면허 제한 없음. 공사는 면허 없이 못 하므로 '제한 없음'은 대개 등록 전·누락(2026-09-29 원주 소액 공사 2건이 우리 공고에 뜬 일) → 모름으로
+    if(!lics.length) out.lic = b.limOk && (b.kind || '공사') !== '공사' ? 'ok' : 'unknown';
     else if(!held.length){ out.lic = 'no'; out.ok = false; }
     else if(!passed.length){ out.lic = 'mf'; out.ok = false; }
     else if(lics.length > held.length || passed.length < held.length) out.lic = 'mf-check';   // 못 가진 면허도 걸려 있거나 통과 못한 면허가 섞여 있음
