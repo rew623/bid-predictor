@@ -863,7 +863,7 @@ const applyMode = () => document.body.classList.toggle('simple', !LS.get('admin'
 /** 탭을 옮겨 다녀도 하던 화면 그대로(2026-09-27 요청): 조건·펼침·결과는 DOM·변수에 남기고, 하단 탭·뒤로 버튼으로 돌아오면 스크롤도 되돌린다.
  *  분석 탭은 마지막으로 보던 화면(금액 분석·모의 투찰·통계). 내 투찰 탭도 보던 칸 그대로, 앱을 열고 처음 들어갈 때만 🏁 개찰 결과부터(요청). */
 const ANA_TABS = ['predict', 'paper', 'stats'];
-let lastAna = 'predict';
+let lastAna = 'paper';   // 분석 탭을 처음 열면 🧪 모의 투찰부터 (2026-09-29 요청)
 const tabY = {}, tabSeen = {};   // 탭별 스크롤 위치, 마지막으로 그렸을 때의 데이터 갱신 시각
 function switchTab(tab, push=true, opt={}){
   if(!TAB_TITLES[tab]) tab = 'home';
@@ -2941,10 +2941,13 @@ async function renderCorpProfile(biz){
 }
 
 // ---------- 🧪 모의 투찰: 수집기(scripts/paper.py)가 강원 공사 공고마다 마감 전 추천 투찰가를 기록하고 개찰 뒤 채점한 data/paper.json
-const Paper = {area: LS.get('paperArea', 'sgg'), shown: 60};
+const Paper = {area: LS.get('paperArea', 'sgg'), kind: '공사', src: 'all', shown: 60};
+const paperKindSeg = () => `<div class="chip-group" id="paperKind" style="margin:0 0 10px;">${[['공사', '🏗 공사'], ['물품', '📦 물품']].map(([k, t]) => `<button type="button" class="chip ${Paper.kind === k ? 'selected' : ''}" data-k="${k}">${t}</button>`).join('')}</div>`;
+const bindPaperKind = () => { $('paperKind').onclick = (e) => { const k = e.target.closest('[data-k]')?.dataset.k; if(!k || k === Paper.kind) return; Paper.kind = k; Paper.shown = 60; renderPaper(); }; };
 async function renderPaper(){
   const el = $('paperBody');
   el.innerHTML = loadingHtml();
+  if(Paper.kind === '물품') return renderPaperThng(el);
   let d;
   try{ d = await Data.fetchJson('paper.json', false); }catch(e){ el.innerHTML = '<div class="card empty">아직 모의 투찰 기록이 없습니다. 다음 자동 수집 뒤에 생깁니다.</div>'; return; }
   const c = Company.get(), sgg = c.sido === d.sido && c.sgg ? c.sgg : '춘천시';
@@ -2984,14 +2987,14 @@ async function renderPaper(){
   let html = '', last = null;
   const list = [...wait.filter(it => !(parseKst(it.close) && parseKst(it.close) < now)).sort((a, b) => (a.close || '').localeCompare(b.close || '')), ...done, ...wait.filter(it => parseKst(it.close) && parseKst(it.close) < now)];
   // 결과 나온 것(최근 개찰부터) → 개찰 기다리는 것 → 마감 전 (2026-09-28 요청: 결과부터 위에)
-  const doneSorted = [...done].sort((a, b) => String(b.open || '').localeCompare(String(a.open || '')));
+  const doneSorted = [...done].sort((a, b) => (b.res.win || 0) - (a.res.win || 0) || String(b.open || '').localeCompare(String(a.open || '')));   // 1순위 한 것 맨 위(2026-09-29 요청)
   const ord = [...doneSorted, ...wait.filter(it => parseKst(it.close) && parseKst(it.close) < now), ...wait.filter(it => !(parseKst(it.close) && parseKst(it.close) < now)).sort((a, b) => (a.close || '').localeCompare(b.close || ''))].slice(0, Paper.shown);
   for(const it of ord){
-    const g = it.res ? `개찰 ${dayLabel(String(it.open || '').slice(0, 10))}` : (parseKst(it.close) && parseKst(it.close) < now ? '개찰 기다리는 중' : '마감 전 (추천 투찰가 기록 중)');
+    const g = it.res ? (it.res.win ? '🏆 추천값 낙찰' : `개찰 ${dayLabel(String(it.open || '').slice(0, 10))}`) : (parseKst(it.close) && parseKst(it.close) < now ? '개찰 기다리는 중' : '마감 전 (추천 투찰가 기록 중)');
     if(g !== last){ last = g; html += `<div class="day-sep">${esc(g)}</div>`; }
     html += card(it);
   }
-  el.innerHTML = `<div class="card">
+  el.innerHTML = paperKindSeg() + `<div class="card">
       <h2>🧪 모의 투찰 — 추천값으로 넣었다면?</h2>
       <p class="sub">${esc(d.sido)} 공사 공고마다 <b>마감 전에 앱의 추천 투찰가를 자동으로 기록</b>해 두고, 개찰되면 실제 결과로 채점합니다(실제 투찰은 하지 않음). 수집할 때마다(하루 5번) 갱신 · 마지막 ${esc(String(d.updated_at || '').slice(5, 16).replace('T', ' '))}</p>
       <div class="chip-group" id="paperArea" style="margin:8px 0 12px;">${areas.map(([k, t]) => `<button type="button" class="chip ${Paper.area === k ? 'selected' : ''}" data-a="${k}">📍 ${esc(t)}</button>`).join('')}</div>
@@ -3007,6 +3010,69 @@ async function renderPaper(){
     ${html ? `<div class="rc-list">${html}</div>` : '<div class="card empty">이 지역 기록이 아직 없습니다.</div>'}
     ${list.length > Paper.shown ? `<div class="more"><button class="btn sm line" id="paperMore" type="button">더 보기</button></div>` : ''}`;
   $('paperArea').onclick = (e) => { const k = e.target.closest('[data-a]')?.dataset.a; if(!k) return; Paper.area = k; LS.set('paperArea', k); renderPaper(); };
+  bindPaperKind();
+  $('paperMore') && ($('paperMore').onclick = () => keepY(() => { Paper.shown += 100; return renderPaper(); }));
+}
+
+/** 📦 물품 모의 투찰(data/paper_thng.json, scripts/paper_thng.py): 나라장터·국방 물품 공고마다 마감 전 추천 투찰가 기록 → 개찰 뒤 채점 */
+async function renderPaperThng(el){
+  let d;
+  try{ d = await Data.fetchJson('paper_thng.json', false); }catch(e){ el.innerHTML = paperKindSeg() + '<div class="card empty">아직 물품 모의 투찰 기록이 없습니다. 다음 자동 수집 뒤에 생깁니다.</div>'; bindPaperKind(); return; }
+  const now = new Date(), closedP = (it) => parseKst(it.close) && parseKst(it.close) < now;
+  const all = d.items.filter(it => Paper.src === 'all' || it.src === Paper.src);
+  const done = all.filter(it => it.res && !it.res.na), wait = all.filter(it => !it.res);
+  const nWin = done.filter(it => it.res.win).length, nS = done.filter(it => it.res.wins).length, hasS = done.some(it => it.bids);
+  const fair = done.reduce((t, it) => t + (it.res.cnt ? 1 / (it.res.cnt + 1) : 0), 0);
+  const nBelow = done.filter(it => it.res.below).length;
+  const card = (it) => {
+    const r = it.res;
+    const st = !r ? (closedP(it) ? {cls: '', t: '개찰 대기'} : {cls: 'wait', t: `마감 ${String(it.close || '').slice(5, 16).replace('-', '/')}`})
+      : r.win ? {cls: 'win', t: '🏆 1순위'} : r.below ? {cls: 'below', t: '하한 미달'} : {cls: 'high', t: '1위보다 높음'};
+    const unit = it.base * it.floor / 1e4;
+    return `<div class="rc ${st.cls}">
+      <div class="rc-nm">${esc(it.nm)}</div>
+      <div class="rc-sub">${esc(String(it.open || '').slice(0, 16))} 개찰 · ${esc(it.org || '')}</div>
+      <div class="rc-line"><span class="rc-tags">${it.src === '국방' ? '<span class="tag d2b">🎖 국방</span>' : '<span class="tag">나라장터</span>'}<span class="tag goods">📦 물품</span></span><b class="rc-base">${won(it.base)}</b></div>
+      <div class="rc-grid">
+        <div><span>추천 투찰 사정률</span><b>${it.x.toFixed(2)}</b></div>
+        <div><span>실제 사정율</span><b>${r?.S ? r.S.toFixed(3) : '-'}</b></div>
+        <div><span>${it.xs ? `${it.xs.toFixed(1)}였다면` : '하한율'}</span><b>${it.xs ? (r ? (r.wins ? '🏆 1순위' : '-') : won(it.bids)) : it.floor + '%'}</b></div>
+      </div>
+      ${r ? `<div class="rc-grid paper-cmp">
+        <div><span>추천 투찰가</span><b>${won(it.bid)}</b></div>
+        <div><span>1순위 금액</span><b>${r.amt ? won(r.amt) : '-'}</b></div>
+        <div><span>차이 (추천 − 1순위)</span><b class="${r.amt ? (it.bid < r.amt ? (r.below ? 'below' : 'win-t') : 'high-t') : ''}">${r.amt ? (it.bid >= r.amt ? '+' : '−') + won(Math.abs(it.bid - r.amt)) : '-'}</b></div>
+      </div>` : ''}
+      <div class="rc-foot"><span class="rc-rank ${st.cls}">${r ? `<b>${r.win ? 1 : r.below ? '미달' : '-'}</b> / ${r.cnt ? fmtNum(r.cnt) : '-'}곳` : '<b>대기</b>'}</span><span class="rc-amt">${won(it.bid)}</span><span class="rc-v ${st.cls}">${st.t}</span></div>
+      ${r?.winner ? `<div class="rc-sub" style="margin-top:4px;">낙찰 ${esc(r.winner)}</div>` : ''}
+    </div>`;
+  };
+  const doneSorted = [...done].sort((a, b) => (b.res.win || 0) - (a.res.win || 0) || String(b.open || '').localeCompare(String(a.open || '')));
+  const ord = [...doneSorted, ...wait.filter(closedP), ...wait.filter(it => !closedP(it)).sort((a, b) => (a.close || '').localeCompare(b.close || ''))];
+  let html = '', last = null;
+  for(const it of ord.slice(0, Paper.shown)){
+    const g = it.res ? (it.res.win ? '🏆 추천값 1순위' : `개찰 ${dayLabel(String(it.open || '').slice(0, 10))}`) : (closedP(it) ? '개찰 기다리는 중' : '마감 전 (추천 투찰가 기록 중)');
+    if(g !== last){ last = g; html += `<div class="day-sep">${esc(g)}</div>`; }
+    html += card(it);
+  }
+  const srcs = [['all', '전체'], ['나라장터', '나라장터'], ['국방', '🎖 국방']];
+  el.innerHTML = paperKindSeg() + `<div class="card">
+      <h2>🧪 물품 모의 투찰 — 추천 사정률로 넣었다면?</h2>
+      <p class="sub">나라장터·국방 물품 공고마다 <b>마감 전에 앱의 추천 투찰가를 기록</b>해 두고(마감 뒤엔 고정), 개찰되면 1순위였는지 채점합니다. 나라장터는 참가 50곳 미만용 ${esc(String(d.items.find(i => i.xs)?.xs ?? 101))}도 같이 채점. 1순위 기준(적격심사 탈락·포기는 반영 안 됨) · 마지막 ${esc(String(d.updated_at || '').slice(5, 16).replace('T', ' '))}</p>
+      <div class="chip-group" id="paperSrc" style="margin:8px 0 12px;">${srcs.map(([k, t]) => `<button type="button" class="chip ${Paper.src === k ? 'selected' : ''}" data-s="${k}">${esc(t)}</button>`).join('')}</div>
+      <div class="res-sum">
+        <div><span>채점</span><b>${fmtNum(done.length)}</b></div>
+        <div class="${nWin ? 'win' : ''}"><span>🏆 추천값 1순위</span><b>${fmtNum(nWin)}</b></div>
+        ${hasS ? `<div><span>101.0이었다면</span><b>${fmtNum(nS)}</b></div>` : ''}
+        <div><span>평균 업체(공정 기대)</span><b>${fmtNum(fair, 2)}</b></div>
+        <div><span>하한 미달</span><b class="below">${done.length ? Math.round(nBelow / done.length * 100) : 0}%</b></div>
+      </div>
+      <div class="meta-line">기록 ${fmtNum(all.length)}건 · 마감 전 ${fmtNum(wait.filter(it => !closedP(it)).length)} · 개찰 대기 ${fmtNum(wait.filter(closedP).length)}. 참가 수백~수천 곳 공고가 많아 1순위가 드뭅니다 — "평균 업체"와 비교하세요${done.length < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}.</div>
+    </div>
+    ${html ? `<div class="rc-list">${html}</div>` : '<div class="card empty">기록이 아직 없습니다.</div>'}
+    ${ord.length > Paper.shown ? `<div class="more"><button class="btn sm line" id="paperMore" type="button">더 보기</button></div>` : ''}`;
+  bindPaperKind();
+  $('paperSrc').onclick = (e) => { const k = e.target.closest('[data-s]')?.dataset.s; if(!k) return; Paper.src = k; Paper.shown = 60; renderPaper(); };
   $('paperMore') && ($('paperMore').onclick = () => keepY(() => { Paper.shown += 100; return renderPaper(); }));
 }
 
