@@ -1294,6 +1294,13 @@ function normLic(raw){
   const hit = [k, k.replace(/공사업$/, ''), k.replace(/사업$/, ''), k.replace(/업$/, '')].map(x => LIC_BY_KEY.get(x)).find(Boolean);
   return [hit || String(raw).split('/')[0].trim()];
 }
+const NEGO_KINDS = [['시담', '수의시담'], ['협상', '협상에 의한 계약'], ['2단계', '2단계 경쟁'], ['규격가격동시', '규격가격 동시입찰'],
+  ['제안', '제안서 평가'], ['종합평가', '종합평가'], ['종합낙찰', '종합낙찰']];   // scripts/collect.py NEGO_KINDS 와 같게
+function negoOf(it){
+  const t = [it.bidMethdNm, it.sucsfbidMthdNm, it.sucsfbidMthdAppStd, it.cntrctCnclsMthdNm].join(' ');
+  const k = NEGO_KINDS.find(([kw]) => t.includes(kw));
+  return k ? k[1] : '';
+}
 function liveNotice(it){
   const no = String(pickF(it, 'bidNtceNo') || '').trim(), ord = String(pickF(it, 'bidNtceOrd') ?? '000').trim();
   const org = pickF(it, 'ntceInsttNm'), dmd = pickF(it, 'dminsttNm');
@@ -1304,7 +1311,7 @@ function liveNotice(it){
     close: normDt(pickF(it, 'bidClseDt')), open: normDt(pickF(it, 'opengDt', 'rlOpengDt')),
     url: pickF(it, 'bidNtceDtlUrl', 'bidNtceUrl'), cancel: /취소/.test(pickF(it, 'ntceKindNm') || ''), live: true, kind: Live.kind,
     corr: /정정/.test(pickF(it, 'ntceKindNm') || ''), sui: /수의/.test(pickF(it, 'cntrctCnclsMthdNm') || ''),
-    nego: /시담/.test([it.bidMethdNm, it.sucsfbidMthdNm, it.sucsfbidMthdAppStd].join(' '))};   // 수의시담: 정해진 계약 대상자만 참가(2026-09-29)
+    nego: negoOf(it)};   // 바로 금액만 투찰하는 공고가 아님(수의시담·협상·2단계·규격가격 동시입찰 등, 2026-09-29)
   Object.keys(b).forEach(k => { if(b[k] == null || b[k] === '') delete b[k]; });
   return b;
 }
@@ -1914,7 +1921,7 @@ function capCheck(b){
 function eligibility(b){
   const c = Company.get();
   const out = {ok: true, lic: null, rgn: null, cap: null};
-  if(b.nego){ out.ok = false; out.nego = true; return out; }   // 수의시담·다자간수의시담: 계약 대상자로 정해진 업체만
+  if(b.nego){ out.ok = false; out.nego = b.nego; return out; }   // 수의시담·협상·2단계·규격가격 동시입찰 등: 금액만 투찰하는 공고가 아님
   const lics = licOf(b), rgn = rgnOf(b);
   const groups = c.lics.length ? limGroups(b) : null;
   if(groups){
@@ -1957,6 +1964,7 @@ const normQ = (s) => String(s || '').replace(/[\s·ㆍ.,()\[\]\/-]/g, '').replac
 function goodsEligibility(g){
   const c = Company.get(), q = c.goods || {};
   const out = {ok: true, why: null, warn: []};
+  if(g.nego){ out.ok = false; out.why = g.nego; out.nego = g.nego; return out; }
   const rgn = g.rgn || [];
   if(c.sido && rgn.length && !rgn.some(t => { if(/전국/.test(t)) return true; const r = parseRegion(t); return r.sido === c.sido && (!r.sgg || !c.sgg || r.sgg === c.sgg); })){ out.ok = false; out.why = '지역 제한'; return out; }
   if(g.mnf && !q.direct){ out.ok = false; out.why = '직접생산 필요'; return out; }
@@ -1971,15 +1979,19 @@ function goodsEligibility(g){
   if(g.plim) out.warn.push('품명 등록 확인');
   return out;
 }
+function negoTag(n){
+  return `<span class="tag bad" title="금액만 투찰해 바로 계약하는 공고가 아님 — 수의시담(계약 대상자만)·협상에 의한 계약·2단계 경쟁·규격가격 동시입찰(제안·규격 심사) 등">참가 불가 · ${esc(n)}</span>`;
+}
 function eligTag(b){
   if(!Company.isSet()) return '';
   if(b.kind === '물품' || b.src === '국방'){
     const e = goodsEligibility(b);
+    if(e.nego) return negoTag(e.nego);
     return e.ok ? '<span class="tag okc">참가 가능</span>' + e.warn.map(w => `<span class="tag warn" title="물품분류(세부품명) 제한 공고 — 나라장터 경쟁입찰참가자격에 이 품명이 등록돼 있어야 합니다(없으면 투찰 전 추가 등록)">${esc(w)}</span>`).join('')
       : `<span class="tag bad">참가 불가 · ${esc(e.why)}</span>`;
   }
   const e = eligibility(b);
-  if(e.nego) return '<span class="tag bad" title="수의시담·다자간수의시담 — 나라장터가 정보공개로만 올린 공고, 계약 대상자가 아니면 참가 불가">참가 불가 · 수의시담</span>';
+  if(e.nego) return negoTag(e.nego);
   if(!e.ok) return `<span class="tag bad">참가 불가 · ${e.rgn === 'no' ? '지역 제한' : e.cap === 'no' ? '실적 한도 초과' : e.lic === 'mf' ? '주력분야 불일치' : '면허 불일치'}</span>`;
   if(e.cap === 'check') return '<span class="tag warn" title="추정가격이 지자체 3년 실적 한도는 넘고 5년 한도 안 — 공고문의 실적 기간 확인">실적 확인 (지자체 5년 기준만 가능)</span>';
   if(e.lic === 'unknown') return '<span class="tag warn">면허 확인 필요</span>';

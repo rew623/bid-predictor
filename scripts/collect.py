@@ -619,8 +619,9 @@ class NoticeCache:
         docs = notice_docs(it)
         if docs:
             e["docs"] = docs
-        if is_nego(it):
-            e["nego"] = 1
+        nego = is_nego(it)
+        if nego:
+            e["nego"] = nego
         else:
             e.pop("nego", None)
         base = to_int(pick(it, F_BASE))
@@ -1236,11 +1237,11 @@ def step_notices(api, meta, cache, now):
     bgn = now - dt.timedelta(days=days)
     seen = now.isoformat(timespec="minutes")
     log(f"[공고] 최근 {days}일")
-    list_bgn = bgn if meta.get("doc_scan") and meta.get("nego_scan") else now - dt.timedelta(days=30)   # 공고문 첨부(docs)·수의시담(nego)을 처음 받을 때 한 번은 30일치 목록을 다시
+    list_bgn = bgn if meta.get("doc_scan") and meta.get("nego_scan2") else now - dt.timedelta(days=30)   # 공고문 첨부(docs)·수의시담 등(nego)을 처음 받을 때 한 번은 30일치 목록을 다시
     for it in api.fetch_range("notice_list", list_bgn, now):
         cache.add_notice(it, seen)
     meta["doc_scan"] = True
-    meta["nego_scan"] = True
+    meta["nego_scan2"] = True
     for it in api.fetch_range("notice_bsis", now - dt.timedelta(days=max(days, 14)), now):
         cache.add_bsis(it)
     for it in api.fetch_range("notice_license", now - dt.timedelta(days=lic_days), now):
@@ -1252,9 +1253,18 @@ def step_notices(api, meta, cache, now):
     meta["notice_last"] = seen
 
 
+NEGO_KINDS = [("시담", "수의시담"), ("협상", "협상에 의한 계약"), ("2단계", "2단계 경쟁"), ("규격가격동시", "규격가격 동시입찰"),
+              ("제안", "제안서 평가"), ("종합평가", "종합평가"), ("종합낙찰", "종합낙찰")]   # app.js NEGO_KINDS 와 같게
+
+
 def is_nego(it):
-    """수의시담·다자간수의시담 공고 — 계약 대상자로 정해진 업체만 참가(나라장터 '정보공개 차원에서 공고', 2026-09-29 사용자 확인) → 우리 공고·진행중 목록에서 뺀다"""
-    return any("시담" in str(it.get(k) or "") for k in ("bidMethdNm", "sucsfbidMthdNm", "sucsfbidMthdAppStd"))
+    """'바로 금액만 투찰해서 계약'이 아닌 공고 — 수의시담(정해진 계약 대상자만, 나라장터 '정보공개 차원에서 공고')·협상에 의한 계약·2단계 경쟁·
+    규격가격 동시입찰(제안·규격 심사)·제안서·종합평가 → 우리 공고·진행중 목록에서 뺀다(2026-09-29 사용자). 해당하면 이유 이름, 아니면 ''"""
+    txt = " ".join(str(it.get(k) or "") for k in ("bidMethdNm", "sucsfbidMthdNm", "sucsfbidMthdAppStd", "cntrctCnclsMthdNm"))
+    for kw, name in NEGO_KINDS:
+        if kw in txt:
+            return name
+    return ""
 
 
 def notice_docs(it):
