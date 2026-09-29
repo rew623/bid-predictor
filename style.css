@@ -315,6 +315,10 @@ tr.click:hover td{background:var(--bg);}
 .b-note{grid-column:2 / -1; font-size:11.5px; color:var(--text-faint);}
 .b-actions{grid-column:2 / -1; display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:4px;}
 .b-meta{margin-left:auto; font-size:11.5px; color:var(--text-faint);}
+.cp-t{cursor:copy;}
+.cp-t:active{background:var(--primary-soft, rgba(47,111,237,.12)); border-radius:4px;}
+.cp-no{padding:0 2px; border:0; background:none; color:inherit; font:inherit; cursor:copy; text-decoration:underline dotted; text-underline-offset:2px;}
+.cp-no:hover{color:var(--primary);}
 @media (max-width:620px){
   .bcard{grid-template-columns:52px minmax(0,1fr) auto; gap:6px 10px; padding:12px;}
   .b-dday b{font-size:15px;}

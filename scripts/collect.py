@@ -1267,7 +1267,7 @@ def step_doc_flags(api, cache, now, minutes):
     cur = now.strftime("%Y-%m-%d %H:%M")
     todo = [e for e in cache.items.values() if e.get("docs") and not e.get("sdc") and e.get("sdt", 0) < DOC_TRIES
             and not e.get("cancel") and not e.get("old") and (e.get("close") or "9999") >= cur]
-    todo.sort(key=lambda e: e.get("close") or "9999")
+    todo.sort(key=lambda e: (e.get("sido") not in FULL_SIDOS, e.get("sdt", 0), e.get("close") or "9999"))   # 관심 시·도(강원) → 처음 보는 공고 → 마감 임박
     done = hit = fail = 0
     for e in todo:
         if time.time() > t_end:

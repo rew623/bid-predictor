@@ -1125,12 +1125,14 @@ function bidCard(b, today, opts = {}){
   }
   if(res?.amt) more += `<div class="b-note result">개찰 결과 · ${res.sr != null ? `사정율 <b>${pct(res.sr, 3)}</b> · ` : ''}1위 ${esc(res.win || '-')} ${won(res.amt)}${res.rate ? ` (${pct(res.rate)})` : ''}${res.cnt ? ` · ${fmtNum(res.cnt)}개사 참가` : ''}</div>`;
   const open = b.open ? `개찰 ${b.open.slice(5, 16).replace('-', '/')}` : '';
+  const cardNo = b.src === '국방' ? d2bNum(b.id) : b.no ? `${b.no}-${b.ord}` : '';   // 국방은 판단번호(국방전자조달 화면 번호)
+  if(b.src === '국방' && b.res?.win) pred = `<div class="b-note result">개찰 결과 · 1위 ${esc(b.res.win.name || '-')} ${won(b.res.win.amt)}${b.res.plan && b.base ? ` · 사정율 <b>${pct(b.res.plan / b.base * 100, 3)}</b>` : ''}${b.res.n ? ` · ${fmtNum(b.res.n)}곳 참가` : ''}${b.res.mine?.amt ? ` · 우리 ${b.res.mine.rank ? fmtNum(b.res.mine.rank) + '위' : '순위 없음'} ${won(b.res.mine.amt)}` : ''}</div>`;
   const myAmt = bidMap.get(b.id);
   if(myAmt) pred = `<div class="b-mine">✓ 투찰 등록함 · <b>${won(myAmt)}</b> <button type="button" class="copy-btn" data-copy="${myAmt}">📋 복사</button></div>` + pred;
   return `<article class="bcard ${dd.cls}${myAmt ? ' done' : ''}">
     <div class="b-dday"><b>${dd.big}</b><span>${esc(dd.small)}</span></div>
     <div class="b-main">
-      <div class="b-title">${isNew(b) ? '<span class="new">NEW</span>' : ''}${esc(b.nm)}</div>
+      <div class="b-title">${isNew(b) ? '<span class="new">NEW</span>' : ''}<span class="cp-t" data-copy-text="${esc(b.nm)}" data-copy-msg="공고명 복사됨" title="누르면 공고명 복사">${esc(b.nm)}</span></div>
       <div class="b-org">${esc(b.org || b.dmd || '')}${b.dmd && b.org && b.dmd !== b.org ? ` <span class="faint">· 수요 ${esc(b.dmd)}</span>` : ''}</div>
       <div class="b-tags">${tags}</div>
     </div>
@@ -1146,7 +1148,7 @@ function bidCard(b, today, opts = {}){
       ${b.url ? `<a class="btn line sm" href="${esc(b.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}
       ${opts.hide ? `<button class="btn line sm" data-hide="${esc(b.id)}" type="button" title="우리가 못 하는 공고면 빼 두세요. 이 기기에만 저장">목록에서 빼기</button>` : ''}
       ${opts.unhide ? `<button class="btn line sm" data-unhide="${esc(b.id)}" type="button">되돌리기</button>` : ''}
-      <span class="b-meta">${esc([b.no ? `${b.no}-${b.ord}` : '', open].filter(Boolean).join(' · '))}</span>
+      <span class="b-meta">${cardNo ? `<button type="button" class="cp-no" data-copy-text="${esc(cardNo)}" data-copy-msg="공고번호 ${esc(cardNo)} 복사됨" title="누르면 공고번호 복사">${esc(cardNo)} 📋</button>` : ''}${esc(open ? (cardNo ? ' · ' : '') + open : '')}</span>
     </div>
   </article>`;
 }
@@ -1544,6 +1546,7 @@ function liveRows(){
   const lic = $('lLic').value;
   // 참가 가능만: 요구 면허를 끝내 알 수 없는 공고(조회 실패)는 뺀다. 아직 조회 전인 공고는 조회되도록 잠깐 남긴다
   const eligOk = (b) => { const e = eligibility(b); return e.ok && !(e.lic === 'unknown' && b.limTried); };
+  if(Live.byNo) return Live.items;   // 공고번호 검색은 다른 조건으로 거르지 않는다
   return Live.items.filter(b => b.ord === maxOrd[b.no] && !b.cancel && (!elig || eligOk(b)) && inSgg(b) && (!lic || liveHasLic(b, lic)));
 }
 /** 현재 구간의 다음 쪽 1번 호출 */
@@ -1620,8 +1623,20 @@ async function liveSearch(more=false){
     $('liveInfo').textContent = '조회 기간을 확인하세요.'; return;
   }
   const token = ++Live.token;
+  // 검색어가 공고번호(나라장터 R26BK… · 국방 판단번호)면 다른 조건 없이 그 공고만 (2026-09-29 요청)
+  const byNo = !more && parseNo($('lQuery').value);
+  if(byNo){
+    Object.assign(Live, {params: liveParams(), items: [], raw: 0, kind: $('lKind').value, fallback: false, wins: [], wi: 0, page: 0, totals: [], byNo: true});
+    list.innerHTML = loadingHtml(byNo.src === 'd2b' ? '국방 공고 찾는 중…' : '공고번호로 찾는 중…');
+    $('liveMore').hidden = true;
+    let got = [];
+    try{ got = await lookupNotices(byNo); }catch(e){ console.warn(e); }
+    if(token !== Live.token) return;
+    Live.items = got;
+    return renderLive();
+  }
   if(!more){
-    Object.assign(Live, {params: liveParams(), items: [], raw: 0, kind: $('lKind').value, fallback: false,
+    Object.assign(Live, {params: liveParams(), byNo: false, items: [], raw: 0, kind: $('lKind').value, fallback: false,
       wins: liveWindows($('lFrom').value, $('lTo').value), wi: 0, page: 0, totals: [], rows: liveClientFilter() ? 999 : LIVE_ROWS});
     if($('lLic').value || ($('lElig').checked && Company.isSet())) await Data.loadLicMap();
     list.innerHTML = loadingHtml('나라장터에서 조회 중…');
@@ -1651,7 +1666,7 @@ async function liveSearch(more=false){
 }
 async function renderLive(){
   const list = $('liveList'), sido = $('lRgn').value;
-  if(sido){
+  if(sido && !Live.byNo){
     Live.items.forEach(b => { if(!b.sido) b.sido = sido; });
     if(Data.hasScsbid(sido) && !Data.scsbid[sido]){ try{ await Data.loadScsbid(sido); }catch(e){ console.warn(e); } }
   }
@@ -1666,7 +1681,7 @@ async function renderLive(){
   const today = kstDay(new Date());
   const known = Live.totals.reduce((a, b) => a + (b || 0), 0);
   const nW = Live.wins.length, doneW = Math.min(Live.wi, nW);
-  $('liveInfo').innerHTML = document.body.classList.contains('simple') ? `${fmtNum(rows.length)}건${liveDone() ? '' : ' · 더 받는 중'}` : [`나라장터 실시간 ${esc(Live.kind)} ${fmtNum(Live.raw)}건 받음${liveDone() ? ` (전체 ${fmtNum(known)}건)` : ` · 전체 ${fmtNum(known)}건 이상`}${liveClientFilter() ? ` → 조건에 맞는 ${fmtNum(rows.length)}건` : ''}`,
+  $('liveInfo').innerHTML = Live.byNo ? `공고번호 검색 · ${fmtNum(rows.length)}건 <span class="faint">(다른 조건은 적용 안 함)</span>` : document.body.classList.contains('simple') ? `${fmtNum(rows.length)}건${liveDone() ? '' : ' · 더 받는 중'}` : [`나라장터 실시간 ${esc(Live.kind)} ${fmtNum(Live.raw)}건 받음${liveDone() ? ` (전체 ${fmtNum(known)}건)` : ` · 전체 ${fmtNum(known)}건 이상`}${liveClientFilter() ? ` → 조건에 맞는 ${fmtNum(rows.length)}건` : ''}`,
     nW > 1 ? `기간을 1개월씩 ${nW}구간으로 나눠 최신부터 조회 (${doneW}/${nW}구간 완료)` : '',
     sgg ? `시·군(${esc(sgg)})은 공사 현장·참가가능지역 기준으로 앱에서 거름` : '',
     $('lLic').value ? `업종(${esc($('lLic').value)})은 주공종·부대공종·면허제한 기준으로 앱에서 거름` : '',
@@ -1677,7 +1692,7 @@ async function renderLive(){
   const openRows = rows.filter(b => !isClosed(b)).sort((a, b) => (a.close || '9999').localeCompare(b.close || '9999'));
   const doneRows = rows.filter(isClosed).sort((a, b) => (b.open || b.close || '').localeCompare(a.open || a.close || ''));
   const shownRows = [...openRows, ...doneRows];
-  list.innerHTML = shownRows.length ? shownRows.map(b => bidCard(b, today)).join('') : `<div class="empty card">${liveDone() ? '조건에 맞는 공고가 없습니다.' : '아직 조건에 맞는 공고를 못 찾았습니다. "더 보기"로 이전 기간을 이어서 조회하세요.'}</div>`;
+  list.innerHTML = shownRows.length ? shownRows.map(b => bidCard(b, today)).join('') : `<div class="empty card">${Live.byNo ? `그 번호의 공고를 찾지 못했습니다.${parseNo($('lQuery').value)?.src === 'd2b' ? '<br><span class="faint">국방은 진행중 경쟁 공고와 최근 3개월 개찰 결과에서 찾습니다. 공개수의 진행 공고는 조회 API 를 아직 못 찾아 개찰 뒤에 나옵니다.</span>' : ''}` : liveDone() ? '조건에 맞는 공고가 없습니다.' : '아직 조건에 맞는 공고를 못 찾았습니다. "더 보기"로 이전 기간을 이어서 조회하세요.'}</div>`;
   $('liveMore').hidden = liveDone();
   $('liveMore').textContent = '더 보기 (이어서 조회)';
   const token = Live.token;
@@ -1716,7 +1731,7 @@ async function registerBid(b, amt, sr, by){
 }
 const regBtn = (id, label = '📝 이 금액으로 투찰 등록') => `<button class="btn sm reg" data-quickbid="${esc(id)}" type="button">${label}</button>`;
 const pickNotice = (b) => ({kind:b.kind, id:b.id, no:b.no, ord:b.ord, nm:b.nm, org:b.org, dmd:b.dmd, sido:b.sido, sgg:b.sgg,
-  lic:licOf(b).length ? licOf(b) : b.lic, rgn:b.rgn, base:b.base, est:b.est, a:b.a, floor:b.floor, net:b.net, rng:b.rng, close:b.close, open:b.open, url:b.url});
+  lic:licOf(b).length ? licOf(b) : b.lic, rgn:b.rgn, base:b.base, est:b.est, a:b.a, floor:b.floor, net:b.net, rng:b.rng, close:b.close, open:b.open, url:b.url, src:b.src, cm:b.cm, reg:b.reg});
 
 // ============================================================ 우리 업체 (소재지·보유 면허·사업자번호 — 이 기기에만 저장)
 const Company = {
@@ -3309,6 +3324,18 @@ function bindHistory(el){
   el.querySelector('#histClear')?.addEventListener('click', () => { if(confirm('가져온 과거 투찰 이력을 이 기기에서 지울까요?')){ History.clear(); renderWatch(); } });
 }
 
+/** mine.json · d2b/mine.json 한 항목 → 내 투찰 항목(개찰 결과 포함) */
+function mineItem(m, biz){
+  const [rank, amt, rate, note, est] = m.mine;
+  const top = (m.top || []).map(x => ({rank: x[0], name: x[1], biz: '', amt: x[2], rate: x[3], note: x[4] || ''}));
+  const cut = m.src === '국방' ? -1 : m.id.lastIndexOf('-');
+  return {id: m.id, no: cut > 0 ? m.id.slice(0, cut) : m.id, ord: cut > 0 ? m.id.slice(cut + 1) : '', nm: m.nm, org: m.org, dmd: m.dmd, sido: m.sido, sgg: m.sgg,
+    lic: m.lic, base: m.base, a: m.a ?? (m.kind === '공사' && m.src !== '국방' ? undefined : 0), floor: m.floor, rng: m.rng, open: m.date, close: m.date,
+    kind: m.kind, src: m.src, joined: true, auto: true, myBid: amt || null,
+    res: {n: m.n, plan: m.plan, base: m.base, win: top[0] || null, mine: {rank, amt, biz, name: Company.get().name || '우리', note: note || '', est: !!est}, top,
+          xs: [...top.map(x => x.amt), ...(amt && !top.some(x => x.amt === amt) ? [amt] : [])].filter(Boolean)}};
+}
+
 /** 수집된 개찰 상세(전체 순위)에서 우리 사업자번호가 있는 공고를 찾는다 (regions.json 지역만) */
 async function findMyBidsInOpening(skipIds){
   const biz = String(Company.get().biz || '').replace(/\D/g, '');
@@ -3340,29 +3367,108 @@ async function findMyBidsInOpening(skipIds){
     for(const m of j.items || []){
       if(skipIds.has(m.id) || have.has(m.id)) continue;
       have.add(m.id);
-      const [rank, amt, rate, note, est] = m.mine;
-      const top = (m.top || []).map(x => ({rank: x[0], name: x[1], biz: '', amt: x[2], rate: x[3], note: x[4] || ''}));
-      const cut = m.src === '국방' ? -1 : m.id.lastIndexOf('-');
-      out.push({id: m.id, no: cut > 0 ? m.id.slice(0, cut) : m.id, ord: cut > 0 ? m.id.slice(cut + 1) : '', nm: m.nm, org: m.org, dmd: m.dmd, sido: m.sido, sgg: m.sgg,
-        lic: m.lic, base: m.base, a: m.a ?? (m.kind === '공사' && m.src !== '국방' ? undefined : 0), floor: m.floor, rng: m.rng, open: m.date, close: m.date,
-        kind: m.kind, src: m.src, joined: true, auto: true, myBid: amt || null,
-        res: {n: m.n, plan: m.plan, base: m.base, win: top[0] || null, mine: {rank, amt, biz, name: Company.get().name || '우리', note: note || '', est: !!est}, top,
-              xs: [...top.map(x => x.amt), ...(amt && !top.some(x => x.amt === amt) ? [amt] : [])].filter(Boolean)}});
+      out.push(mineItem(m, biz));
     }
   }
   return out.sort((x, y) => (y.open || '').localeCompare(x.open || '')).slice(0, 2000);   // 예전 200 제한 때문에 개찰 결과·진단이 업체 보기(전체)와 숫자가 달랐음
 }
 
-/** 공고번호로 참여 공고 추가: 진행중·실시간·수집 데이터에서 정보를 찾고, 개찰됐으면 결과까지 조회 */
-async function addJoinedByNo(text){
-  const m = String(text).trim().toUpperCase().match(/^([A-Z0-9]+?)(?:-(\d{1,3}))?$/);
-  if(!m) throw new Error('공고번호 형식을 확인하세요 (예: R26BK01735101-000)');
-  const no = m[1], ord = (m[2] || '000').padStart(3, '0'), id = `${no}-${ord}`;
-  let info = Data.bids?.find(b => b.no === no) || Live.items.find(b => b.no === no);
-  if(!info) for(const s of Object.values(Data.scsbid)){ const r = s.byId.get(id) || s.recs.find(r => r.no === no); if(r){ info = r; break; } }
-  const w = {...(info ? pickNotice(info) : {}), id, no, ord, nm: info?.nm || id, joined: true, savedAt: new Date().toISOString()};
-  if(info?.date && !w.open) w.open = info.date;
-  if(apiKey()){
+/** 국방 공고 ID 의 판단번호(국방전자조달 화면의 5자리 번호) — DB-2026-LCM-37805-…, N-2026-SFD-38392-…, FB-DSS-2026-15322-… */
+function d2bNum(id){
+  const ps = String(id || '').split('-').slice(1), yi = ps.findIndex(p => /^20\d\d$/.test(p));
+  return ps.find((p, i) => i !== yi && /^\d{3,6}[A-Z]?$/.test(p)) || '';
+}
+/** 공고번호 입력 해석: 나라장터 R26BK01735101(-000) · 옛 11자리 / 국방 판단번호(3~6자리 숫자) · 국방 공고 ID · 국방의 나라장터식 번호(2026LCM004537805) */
+function parseNo(text){
+  const t = String(text || '').trim().toUpperCase().replace(/\s+/g, '').replace(/^국방/, '');
+  let m = t.match(/^([A-Z]\d{2}[A-Z]{2}\d{8}|\d{11})(?:-(\d{1,3}))?$/);
+  if(m) return {src: 'g2b', no: m[1], ord: m[2] ? m[2].padStart(3, '0') : null};
+  if(/^\d{3,6}[A-Z]?$/.test(t) && !/^20\d\d$/.test(t)) return {src: 'd2b', q: t};   // 4자리 연도는 공고명 검색어로
+  if(/^(DB|FB|D|N|F|NF)-/.test(t)) return {src: 'd2b', q: d2bNum(t), id: t};
+  if(/^20\d\d[A-Z0-9]{3}\d{4,}[A-Z0-9]*$/.test(t)) return {src: 'd2b', g2b: t};
+  return null;
+}
+/** 국방 결과 월 파일 항목 → 개찰 끝난 공고(상위 10곳) */
+function d2bResultItem(it, corps){
+  const top = (it.r || []).slice(0, 10).map(r => ({rank: r[0], name: corps?.[r[1]]?.[0] || '', biz: '', amt: r[2], rate: it.plan ? Math.round(r[2] / it.plan * 1e5) / 1e3 : null, note: r[3] || ''}));
+  return {id: it.id, no: d2bNum(it.id), ord: '', src: '국방', kind: it.kind === '시설' ? '공사' : it.kind, nm: it.nm, org: it.org, cm: it.cm, base: it.base, floor: it.floor, rng: it.rng,
+    open: it.date, close: it.date, a: 0, res: {n: it.cnt || (it.c || []).length || (it.r || []).length, plan: it.plan, base: it.base, win: top[0] || (it.win ? {rank: 1, name: it.win, amt: it.amt} : null), top, xs: top.map(x => x.amt)}};
+}
+/** 공고번호로 공고 찾기 (공고 검색·공고번호로 추가 공용). 나라장터: 진행중 공사·물품 → 실시간 목록 → 조달청 조회(공사·물품·용역) → 수집된 낙찰 기록.
+ *  국방: 진행중 국방 공고 → 우리 투찰(d2b/mine.json) → 최근 3개월 국방 결과. 국방 공개수의 진행 공고는 조회 API 를 아직 못 찾아(2026-09) 개찰 뒤에야 나온다 */
+async function lookupNotices(p){
+  if(!p) return [];
+  if(p.src === 'g2b'){
+    try{ await Promise.all([Data.loadBids?.(), Data.loadGoods()]); }catch(e){}
+    const pick = (arr) => {
+      const hit = arr.filter(b => b.no === p.no && (!p.ord || b.ord === p.ord));
+      const max = hit.reduce((a, b) => (b.ord > a ? b.ord : a), '');
+      return hit.filter(b => b.ord === max && !b.cancel).slice(0, 1);
+    };
+    let got = pick([...(Data.bids || []), ...(Data.goods || []), ...Live.items]);
+    if(!got.length && apiKey()){
+      const res = await Promise.all(['공사', '물품', '용역'].map(k => liveCall(LIVE_KINDS[k][1], {inqryDiv: '2', bidNtceNo: p.no, numOfRows: 20, pageNo: 1})
+        .then(r => r.items.map(it => ({...liveNotice(it), kind: k}))).catch(() => [])));
+      got = pick(res.flat());
+    }
+    if(!got.length){
+      const id = `${p.no}-${p.ord || '000'}`;
+      for(const s of Object.values(Data.scsbid)){ const r = s.byId.get(id) || s.recs.find(r => r.no === p.no); if(r){ got = [{...r, kind: '공사', close: r.close || r.date, open: r.open || r.date}]; break; } }
+    }
+    return got;
+  }
+  const match = (id, g2b) => p.id ? id === p.id : p.g2b ? g2b === p.g2b : d2bNum(id) === p.q;
+  const open = (await Data.loadD2bBids()).filter(b => match(b.id, b.g2b));
+  if(open.length) return open;
+  const biz = String(Company.get().biz || '').replace(/\D/g, '');
+  try{
+    const j = await Data.once('mine:d2b/mine.json', () => Data.fetchJson('d2b/mine.json'));
+    const mine = (j.items || []).filter(m => match(m.id));
+    if(mine.length) return mine.map(m => mineItem(m, biz));
+  }catch(e){}
+  try{
+    const meta = await Data.once('d2bMeta', () => Data.fetchJson('d2b/meta.json'));
+    const months = Object.keys(meta.files || {}).sort().reverse().slice(0, 3);
+    for(const mo of months){
+      for(const f of meta.files[mo]){
+        const it = ((await Data.fetchJson(f.replace(/^data\//, ''))).items || []).find(x => match(x.id));
+        if(it){
+          let corps = null;
+          try{ corps = (await Data.once('d2bCorps', () => Data.fetchJson('d2b/corps.json'))).corps; }catch(e){}
+          return [d2bResultItem(it, corps)];
+        }
+      }
+    }
+  }catch(e){ console.warn(e); }
+  return [];
+}
+
+/** 공고번호로 관심·참여 공고 추가: 나라장터·국방 공고를 찾아 정보를 채우고, 개찰됐으면 결과까지 조회.
+ *  못 찾은 국방 번호(공개수의 진행 공고)는 번호만 저장해 두었다가 개찰 결과가 수집되면 renderWatch 가 채운다 */
+async function addJoinedByNo(text, joined = true){
+  const p = parseNo(text);
+  if(!p) throw new Error('공고번호 형식을 확인하세요 (나라장터 R26BK01735101-000 · 국방 판단번호 38392)');
+  const found = (await lookupNotices(p))[0];
+  const now = new Date().toISOString();
+  let w;
+  if(p.src === 'd2b'){
+    if(!found){
+      if(!p.q) throw new Error('국방 공고를 찾지 못했습니다. 판단번호(5자리 숫자)로 넣어 보세요.');
+      w = {id: `D2B-${p.q}`, no: p.q, ord: '', src: '국방', d2bNo: p.q, nm: `국방 ${p.q} (공고 정보 기다리는 중)`, joined: joined || undefined, savedAt: now};
+      await WatchStore.save(w);
+      w.pending = true;
+      return w;
+    }
+    const {auto, ...rest} = found;
+    w = {...(found.res ? rest : pickNotice(found)), joined: joined || undefined, savedAt: now};
+    if(!joined && w.res) w.joined = true;   // 개찰 끝난 우리 투찰은 참여로
+    await WatchStore.save(w);
+    return w;
+  }
+  const no = p.no, ord = found?.ord || p.ord || '000', id = `${no}-${ord}`;
+  w = {...(found ? pickNotice(found) : {}), id, no, ord, nm: found?.nm || id, joined: joined || undefined, savedAt: now};
+  if(found?.date && !w.open) w.open = found.date;
+  if(joined && apiKey() && (!w.kind || w.kind === '공사') && (!w.open || opened(w))){
     try{
       const res = await fetchOpeningResult(w);
       if(res){ w.res = res; w.myBid = res.mine?.amt || null; if(!w.open) w.open = new Date().toISOString().slice(0, 10); }
@@ -3370,14 +3476,28 @@ async function addJoinedByNo(text){
     }catch(e){ console.warn(e); }
   }
   await WatchStore.save(w);
+  w.notFound = !found;
   return w;
 }
 
+const d2bTried = new Set();
 async function renderWatch(){
   const el = $('watchList');
   let items = await WatchStore.list();
   const sdNew = items.filter(w => !w.sd && sdOf(w));   // 사전단속 표시는 개찰 뒤 bids.json 에서 빠지므로 항목에 남긴다
   if(sdNew.length){ for(const w of sdNew) await WatchStore.save({...w, sd: 1}); items = await WatchStore.list(); }
+  // 국방 번호만 저장한 항목(공개수의 진행 공고 등, 예전 '38392-000' 형식 포함) → 진행 공고·개찰 결과가 수집되면 채운다(앱을 연 동안 번호당 한 번)
+  const pend = items.filter(w => !w.res && (w.d2bNo || (/^\d{3,6}[A-Z]?-000$/.test(w.id) && w.nm === w.id)) && !d2bTried.has(w.id + (Data.meta?.updated_at || '')));
+  for(const w of pend){
+    d2bTried.add(w.id + (Data.meta?.updated_at || ''));
+    const q = w.d2bNo || w.id.slice(0, -4);
+    const found = (await lookupNotices({src: 'd2b', q}).catch(() => []))[0];
+    if(!found){ if(!w.d2bNo) await WatchStore.save({...w, d2bNo: q, src: '국방', no: q, ord: '', nm: `국방 ${q} (공고 정보 기다리는 중)`}); continue; }
+    const {auto, ...rest} = found;
+    await WatchStore.remove(w.id);
+    await WatchStore.save({...(found.res ? rest : pickNotice(found)), joined: w.joined || !!found.res || undefined, myBid: w.myBid || rest.myBid || null, savedAt: w.savedAt});
+  }
+  if(pend.length) items = await WatchStore.list();
   el.innerHTML = loadingHtml();
   const sidos = [...new Set(items.map(i => i.sido).filter(s => s && Data.hasScsbid(s)))];
   try{
@@ -3388,7 +3508,7 @@ async function renderWatch(){
   if(apiKey()){
     // 개찰 뒤 이틀 안은 10분마다, 그 뒤엔 1시간마다(개찰이 예정보다 늦거나 조달청 API 반영이 늦을 때 — 예전엔 1시간 기다려 '결과 대기'로 남음). 예정가격을 추정만 했으면 다시
     const gap = (w) => Date.now() - (parseKst(w.open || w.close)?.getTime() || 0) < 2 * 86400000 ? 600000 : 3600000;
-    const due = items.filter(w => opened(w) && (!w.res?.n || (w.res.planEst && gap(w) < 3600000)) && (!w.resTried || Date.now() - Date.parse(w.resTried) > gap(w))).slice(0, 5);
+    const due = items.filter(w => w.src !== '국방' && opened(w) && (!w.res?.n || (w.res.planEst && gap(w) < 3600000)) && (!w.resTried || Date.now() - Date.parse(w.resTried) > gap(w))).slice(0, 5);
     if(due.length){
       el.innerHTML = loadingHtml(`개찰 결과 조회 중… (${due.length}건)`);
       for(const w of due){
@@ -3421,14 +3541,14 @@ async function renderWatch(){
       <button data-v="diag" class="${watchMode === 'diag' ? 'on' : ''}" type="button">🩺 진단</button>
     </div>`;
   const hasBiz = !!Company.get().biz;
-  const joinForm = joinedMode || resultMode ? `<div class="join-add">
-      <input type="text" id="joinNo" placeholder="공고번호로 추가 (예: R26BK01735101-000)" autocomplete="off">
-      <button class="btn sm" id="joinAdd" type="button">참여 공고 추가</button>
+  const joinForm = watchMode !== 'diag' ? `<div class="join-add">
+      <input type="text" id="joinNo" placeholder="공고번호 (R26BK01735101 · 국방 38392)" autocomplete="off">
+      <button class="btn sm" id="joinAdd" type="button">${watchMode === 'watch' ? '관심 공고 추가' : '참여 공고 추가'}</button>
       <span class="meta-line" id="joinMsg" style="margin:0;"></span>
     </div>
-    <div class="meta-line" style="margin:0 0 12px;">${joinedMode ? '넣은 공고를 공고번호로 추가하거나, 관심에서 "참여 표시"를 누르세요. 개찰 시각이 지나면 <b>🏁 개찰 결과</b>로 옮겨지고 조달청에서 순위·금액을 바로 가져옵니다.'
+    ${watchMode === 'watch' ? '' : `<div class="meta-line" style="margin:0 0 12px;">${joinedMode ? '넣은 공고를 공고번호로 추가하거나, 관심에서 "참여 표시"를 누르세요. 개찰 시각이 지나면 <b>🏁 개찰 결과</b>로 옮겨지고 조달청에서 순위·금액을 바로 가져옵니다.'
       : hasBiz ? `수집된 개찰 결과(강원 공사 전부 · 다른 시·도는 관심 면허 공사 · 강원 물품 · 국방)에서 우리 투찰을 자동으로 찾습니다(${fmtNum(auto.length)}건, 하루 몇 번 수집 때 갱신). 방금 개찰한 공고는 관심·투찰 등록해 두면 개찰 직후 조달청에서 바로 조회합니다. 그 밖은 공고번호로 추가하거나 맨 아래에서 더비스 투찰 이력 엑셀을 가져오세요.`
-      : '설정 → 우리 업체에 <b>사업자번호</b>를 넣으면 수집된 개찰 상세에서 우리 순위·금액을 자동으로 찾습니다.'}</div>` : '';
+      : '설정 → 우리 업체에 <b>사업자번호</b>를 넣으면 수집된 개찰 상세에서 우리 순위·금액을 자동으로 찾습니다.'}</div>`}` : '';
   if(resultMode) return renderResults(el, list, pseudo, modeSeg + joinForm);
   if(watchMode === 'diag') return renderDiag(el, lists.result, pseudo, modeSeg);
   if(!list.length){
@@ -3486,7 +3606,7 @@ async function renderWatch(){
     return `<div class="bid${w.id === flashId ? ' flash' : ''}">
       <div class="bid-top"><div>
         <div class="bid-title">${isJoined(w) ? '<span class="badge blue" style="margin-right:4px;">참여</span>' : ''}${esc(w.nm)} ${sdTag(w)}</div>
-        <div class="bid-sub">${esc(w.org || '')}${w.sido ? ' · ' + esc([w.sido, w.sgg].filter(Boolean).join(' ')) : ''} · ${esc(w.no ? `${w.no}-${w.ord}` : '')}${w.close ? ` · <span class="dday ${dd.urgent ? 'urgent' : ''}">${esc(dd.text)}</span>` : ''}</div>
+        <div class="bid-sub">${esc(w.org || '')}${w.sido ? ' · ' + esc([w.sido, w.sgg].filter(Boolean).join(' ')) : ''} · ${esc(w.src === '국방' ? `국방 ${w.no || d2bNum(w.id)}` : w.no ? `${w.no}-${w.ord}` : '')}${w.close ? ` · <span class="dday ${dd.urgent ? 'urgent' : ''}">${esc(dd.text)}</span>` : ''}</div>
       </div>${star}</div>
       ${body}
       ${resultMode && w.myBid && r ? '<details class="b-more res-edit"><summary>투찰금액 고치기 · 다시 조회</summary>' : ''}
@@ -3496,7 +3616,7 @@ async function renderWatch(){
         ${resultMode || w.auto ? `<button class="btn sm ghost" data-mybid-save="${esc(w.id)}" type="button">기록</button>`
           : isJoined(w) ? `<button class="btn sm ghost" data-mybid-save="${esc(w.id)}" type="button">금액 고치기</button><button class="btn sm line" data-unjoin="${esc(w.id)}" type="button">↩ 관심으로 되돌리기</button>`
           : `<button class="btn sm reg" data-joined="${esc(w.id)}" type="button">📝 투찰 완료</button>`}
-        ${opened(w) && apiKey() ? `<button class="btn sm line" data-res-fetch="${esc(w.id)}" type="button">개찰 결과 조회</button>` : ''}
+        ${opened(w) && apiKey() && w.src !== '국방' ? `<button class="btn sm line" data-res-fetch="${esc(w.id)}" type="button">개찰 결과 조회</button>` : ''}
       </div>
       ${resultMode && w.myBid && r ? '</details>' : ''}
       ${resultMode ? '' : `<div class="bid-actions">${findNotice(w.id) ? `<button class="btn sm" data-predict="${esc(w.id)}" type="button">이 공고로 예측</button>` : ''}
@@ -3539,9 +3659,13 @@ function bindWatch(el, pseudo){
     const msg = $('joinMsg');
     msg.innerHTML = loadingHtml('추가하고 결과 조회 중…');
     try{
-      const w = await addJoinedByNo($('joinNo').value);
-      msg.textContent = w.res ? '추가됨 · 개찰 결과를 가져왔습니다' : `추가됨${apiKey() ? ' · 아직 개찰 결과가 없습니다' : ' · 서비스키를 넣으면 결과를 조회합니다'}`;
-      setTimeout(renderWatch, 600);
+      const toWatch = watchMode === 'watch';
+      const w = await addJoinedByNo($('joinNo').value, !toWatch);
+      msg.textContent = w.pending ? '번호만 저장했습니다 — 국방 공개수의 진행 공고는 아직 받지 못해, 개찰 결과가 수집되면(하루 몇 번) 공고명·순위가 채워집니다'
+        : w.notFound ? `추가됨 · 공고 정보를 찾지 못했습니다${apiKey() ? ' (번호 확인)' : ' · 서비스키를 넣으면 조달청에서 찾습니다'}`
+        : w.res ? '추가됨 · 개찰 결과를 가져왔습니다' : toWatch ? `추가됨 · ${w.nm}` : `추가됨 · ${w.nm}${w.src === '국방' || !apiKey() ? '' : ' · 개찰되면 결과를 조회합니다'}`;
+      if(w.res && toWatch){ watchMode = 'result'; LS.set('watchMode', watchMode); }
+      setTimeout(renderWatch, w.pending ? 2500 : 900);
     }catch(e){ msg.textContent = e.message; }
   });
   // 버튼을 누른 뒤 다시 그려도 그 카드 자리에 그대로 (2026-09-27: 매번 맨 위로 올라가던 문제)
