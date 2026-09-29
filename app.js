@@ -3077,7 +3077,7 @@ async function renderPaperThng(el){
 }
 
 // ---------- 🏁 개찰 결과 (더비스식 한 줄 카드): 앱 기록 + 개찰 상세 자동 찾기 + 가져온 엑셀 이력을 한 목록으로
-const Res = {kind: LS.get('resKind', 'all'), period: LS.get('resPeriod', 3), top: false, shown: 50};
+const Res = {kind: LS.get('resKind', 'all'), period: LS.get('resPeriod', 1), top: false, shown: 50};
 const normNm = (s) => String(s || '').replace(/[\s()\[\]·,.\-_'"]/g, '');
 /** 개찰 결과 한 목록: 앱 기록(관심·투찰·개찰 상세 자동 찾기) + 가져온 엑셀 이력 → 같은 모양의 행 */
 function buildResultRows(appItems){
