@@ -340,6 +340,13 @@ const Data = {
       return Model.m;
     });
   },
+  /** 물품 추천 투찰 사정률(data/thng_rec.json, scripts/thng_rec.py — 추첨 평균 곡선, 2026-09-29) */
+  loadThngRec(){
+    return this.once('thngRec', async () => {
+      try{ ThngRec = await this.fetchJson('thng_rec.json'); }catch(e){ ThngRec = null; }
+      return ThngRec;
+    });
+  },
   /** 진행중 물품 공고(data/goods.json, 수집기 물품최근 단계) — kind '물품' 을 붙여 공사 공고와 같은 카드로 */
   /** 진행중 국방 공고(data/d2b/bids.json, collect_d2b.py) — 물품·공사(시설), 용역은 뺌 */
   loadD2bBids(){
@@ -688,6 +695,17 @@ function valWinP(random, nExp){
 /** 공고 목록용 간단 예측. 평균 사정율: 같은 시도 최근 24개월 → 면허 겹침(10건↑) → 예가범위 같음(30건↑).
  *  낙찰확률 곡선: 같은 시도 최근 24개월 → 예가범위 같음(30건↑) (면허로는 쪼개지 않음). 조건별 결과는 재사용 */
 /** 공고 목록용 예측: 전국 모델이 있으면 그걸로(지역 파일 없이도 됨), 없으면 이 지역 곡선 */
+/** 물품 추천(나라장터·국방): 추첨 평균 곡선의 한 위치 x — 투찰금액 = 기초금액 × x% × 하한율%(A값 없음).
+ *  나라장터는 참가 50곳↑ 공고로 검증(×2.2) → 50곳 미만 예상이면 small_x(101.0, 강원 물품 역검증). 국방은 규모 상관없이 한 위치 */
+let ThngRec = null;
+function goodsRec(b){
+  if(b.kind !== '물품') return null;
+  const r = b.src === '국방' ? ThngRec?.d2b : ThngRec?.g2b;
+  if(!r?.x) return null;
+  const amt = (x) => b.base && b.floor ? bidAmount(b.base, x, 0, b.floor) : null;
+  const v = r.val || {};
+  return {x: r.x, bid: amt(r.x), small: r.small_x ? {x: r.small_x, bid: amt(r.small_x)} : null, lift: v.fair ? v.exp / v.fair : null, n: v.n, src: b.src === '국방' ? '국방' : '나라장터'};
+}
 function quickPredict(notice){
   if((notice.kind && notice.kind !== '공사') || notice.src === '국방') return null;   // 국방은 규칙이 달라(사정률 ±2·복수예가) 국방 데이터로 따로 검증 뒤
   const mp = modelPredict(notice);
@@ -1116,6 +1134,14 @@ function bidCard(b, today, opts = {}){
       </div>${qp.area ? `<div class="b-area">🎯 ${esc(qp.area.label)} 전용 추천</div>` : ''}`;
     more = `<div class="b-kv"><span>추천 투찰 사정률 <b>${qp.bestSr != null ? pct(qp.bestSr, 3) : '-'}</b></span><span>예상 사정율 <b>${pct(qp.sr, 3)}</b></span>${qp.value ? `<span>기대 수주액 <b>${eok(qp.value)}</b></span>` : ''}</div>
       <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.area ? ` · ${esc(areaText(qp.area))}` : ''}${qp.model ? (qp.area ? ' · ×는 공정 기대(1÷(참가+1)) 대비' : ' · 추천값·낙찰확률은 전국의 경쟁 규모가 비슷한 공고 기준 · ×는 공정 기대(1÷(참가+1)) 대비') : qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}</div>`;
+  }else if(goodsRec(b)){
+    const g = goodsRec(b);
+    pred = `<div class="b-pred">
+        <div class="pv hl big"><span>추천 투찰가${g.bid ? ` <button type="button" class="copy-btn" data-copy="${g.bid}" title="붙여넣기용 숫자">📋 복사</button>` : ''}</span><b>${g.bid ? won(g.bid) : '기초금액 공개 후'}</b></div>
+        <div class="pv"><span>투찰 사정률</span><b>${pct(g.x, 2)}</b></div>
+        ${g.lift ? `<div class="pv"><span>역검증</span><b>×${g.lift.toFixed(1)} <small class="faint">${fmtNum(g.n)}건</small></b></div>` : ''}
+      </div>${g.small ? `<div class="g-small">참가 50곳 미만 예상 공고는 ${pct(g.small.x, 1)}${g.small.bid ? ` → <b>${won(g.small.bid)}</b>` : ''} (${g.src} 물품 규칙은 참가 50곳↑ 공고로 검증)</div>` : ''}`;
+    more = `<div class="b-note">${g.src} 물품 과거 공고의 복수예가 추첨 경우를 모두 따져 1순위 확률이 가장 높던 위치(표본외 역검증 ×는 공정 기대 대비, 1순위 기준 — 적격심사 탈락·포기는 반영 안 됨). 참고용이며 낙찰을 보장하지 않음.</div>`;
   }else if(b.src === '국방'){
     pred = `<div class="b-note">국방 추천 투찰가는 국방 낙찰 데이터(복수예가·전체 순위)로 역검증을 통과하면 추가됩니다${b.rng ? ` · 사정률 ${esc(rngText(b.rng))}` : ''}${b.floor ? ` · 하한 ${b.floor}%` : ''}</div>`;
   }else if(b.kind === '물품'){
@@ -1144,7 +1170,7 @@ function bidCard(b, today, opts = {}){
     <details class="b-more"><summary>자세히</summary><div class="b-tags">${moreTags}</div>${more}</details>
     <div class="b-actions">
       ${b.kind === '물품' || b.src === '국방' ? '' : `<button class="btn sm" data-predict="${esc(b.id)}" type="button">💰 투찰금액 분석</button>`}
-      ${qp?.bid && !myAmt ? `<button class="btn sm reg" data-quickbid="${esc(b.id)}" type="button" title="추천 투찰가 ${won(qp.bid)}을 내 투찰에 기록">📝 추천가로 투찰 등록</button>` : ''}
+      ${(qp?.bid || goodsRec(b)?.bid) && !myAmt ? `<button class="btn sm reg" data-quickbid="${esc(b.id)}" type="button" title="추천 투찰가 ${won(qp?.bid || goodsRec(b)?.bid)}을 내 투찰에 기록">📝 추천가로 투찰 등록</button>` : ''}
       ${b.url ? `<a class="btn line sm" href="${esc(b.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}
       ${opts.hide ? `<button class="btn line sm" data-hide="${esc(b.id)}" type="button" title="우리가 못 하는 공고면 빼 두세요. 이 기기에만 저장">목록에서 빼기</button>` : ''}
       ${opts.unhide ? `<button class="btn line sm" data-unhide="${esc(b.id)}" type="button">되돌리기</button>` : ''}
@@ -4192,7 +4218,7 @@ async function init(){
   prevVisit = lv ? new Date(lv) : null;
   initServiceWorker();
   await Data.loadMeta();
-  await Data.loadModel();
+  await Promise.all([Data.loadModel(), Data.loadThngRec()]);
 
   document.querySelectorAll('.nav-item').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab, true, {nav: true})));
   window.addEventListener('popstate', () => {
@@ -4221,7 +4247,7 @@ async function init(){
     const cp = e.target.closest('[data-corp]');
     if(cp){ e.preventDefault(); openCorp(cp.dataset.corp); return; }
     const qb = e.target.closest('[data-quickbid]');
-    if(qb){ const b = findNotice(qb.dataset.quickbid), q = b && quickPredict(b); if(q?.bid) registerBid(b, q.bid, q.bestSr, '추천'); return; }
+    if(qb){ const b = findNotice(qb.dataset.quickbid), q = b && quickPredict(b), g = b && !q && goodsRec(b); if(q?.bid) registerBid(b, q.bid, q.bestSr, '추천'); else if(g?.bid) registerBid(b, g.bid, g.x, '추천'); return; }
     const h = e.target.closest('[data-hide]'), uh = e.target.closest('[data-unhide]');
     if(h || uh){ Hidden.toggle((h || uh).dataset[h ? 'hide' : 'unhide'], !!h); renderMine(); return; }
     const g = e.target.closest('[data-goto]');

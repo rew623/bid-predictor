@@ -104,6 +104,11 @@ jobs:
         continue-on-error: true
         run: python scripts/corp_index.py
 
+      - name: 물품 추천 투찰 사정률 (나라장터·국방 추첨 평균 곡선 → data/thng_rec.json)
+        if: always()
+        continue-on-error: true
+        run: python scripts/thng_rec.py
+
       - name: 우리 투찰 뽑기 (다른 시·도 개찰 상세·물품 개찰 순위 → data/mine.json, 앱 개찰 결과)
         if: always()
         continue-on-error: true

@@ -885,3 +885,5 @@ main{overflow-x:hidden;}
 /* 다크: 주 버튼 흰 글자 대비(#5B8DEF 위 3.3:1 → 5.2:1) */
 @media (prefers-color-scheme: dark){ :root:not([data-theme]) .btn:not(.ghost):not(.line):not(.reg){background:#3566D6;} }
 :root[data-theme="dark"] .btn:not(.ghost):not(.line):not(.reg){background:#3566D6;}
+
+.g-small{grid-column:1 / -1; font-size:12px; color:var(--text-sub); margin-top:2px;}   /* 물품: 참가 50곳 미만 예상 공고 위치(간단 모드에서도 보임) */
