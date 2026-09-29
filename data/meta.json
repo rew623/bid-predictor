@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 824,
+   "bid": 1149,
    "date": "20260929",
-   "scsbid": 7923
+   "scsbid": 27448
   }
  },
  "backfill": {
@@ -17,13 +17,13 @@
   "target_start": "20230926"
  },
  "bsis_fill": {
-  "cursor": "20240527",
-  "filled": 34159
+  "cursor": "20230828",
+  "filled": 46320
  },
  "counts": {
   "bids": 1943,
   "opening": {
-   "강원": 19199,
+   "강원": 26457,
    "경기": 2212,
    "경남": 3914,
    "경북": 2503,
@@ -43,18 +43,21 @@
   },
   "opening_thng": {
    "강원": 2640,
-   "경기": 10,
+   "경기": 18,
    "경남": 2,
    "경북": 1,
    "광주": 5,
-   "기타": 98,
+   "기타": 127,
    "대구": 2,
-   "대전": 7,
-   "서울": 14,
-   "인천": 13,
+   "대전": 8,
+   "부산": 2,
+   "서울": 15,
+   "울산": 1,
+   "인천": 18,
    "전남": 2,
+   "전북": 1,
    "제주": 7,
-   "충남": 1,
+   "충남": 2,
    "충북": 3
   },
   "scsbid": {
@@ -85,11 +88,11 @@
    "경북": 8483,
    "광주": 3375,
    "기타": 47051,
-   "대구": 6937,
+   "대구": 6939,
    "대전": 2669,
    "부산": 4465,
-   "서울": 13315,
-   "세종": 704,
+   "서울": 13316,
+   "세종": 705,
    "울산": 6635,
    "인천": 3726,
    "전남": 6766,
@@ -98,16 +101,16 @@
    "충남": 5491,
    "충북": 8883
   },
-  "thng_total": 149649
+  "thng_total": 149653
  },
  "detail": {
-  "eta_days": 0,
+  "eta_days": 1,
   "history": [
    421,
    5022,
    14534,
    20826,
-   1846
+   9104
   ],
   "history_date": "20260929",
   "per_day": 20826,
@@ -130,99 +133,103 @@
    "경남",
    "제주"
   ],
-  "remaining": 0,
+  "remaining": 13214,
   "강원": {
-   "done": 19198,
+   "done": 26456,
    "failed": 0,
-   "total": 19198
+   "total": 26565
   },
   "경기": {
    "done": 2212,
    "failed": 0,
-   "total": 2212
+   "total": 4226
   },
   "경남": {
    "done": 3914,
    "failed": 0,
-   "total": 3914
+   "total": 5353
   },
   "경북": {
    "done": 2503,
    "failed": 0,
-   "total": 2503
+   "total": 3712
   },
   "광주": {
    "done": 396,
    "failed": 0,
-   "total": 396
+   "total": 805
   },
   "대구": {
    "done": 531,
    "failed": 0,
-   "total": 531
+   "total": 752
   },
   "대전": {
    "done": 305,
    "failed": 0,
-   "total": 305
+   "total": 602
   },
   "부산": {
    "done": 632,
    "failed": 0,
-   "total": 632
+   "total": 1019
   },
   "서울": {
    "done": 1823,
    "failed": 0,
-   "total": 1823
+   "total": 2766
   },
   "세종": {
    "done": 112,
    "failed": 0,
-   "total": 112
+   "total": 178
   },
   "울산": {
    "done": 528,
    "failed": 0,
-   "total": 528
+   "total": 813
   },
   "인천": {
    "done": 655,
    "failed": 0,
-   "total": 655
+   "total": 934
   },
   "전남": {
    "done": 3095,
    "failed": 0,
-   "total": 3095
+   "total": 4796
   },
   "전북": {
    "done": 2313,
    "failed": 0,
-   "total": 2313
+   "total": 3600
   },
   "제주": {
    "done": 383,
    "failed": 0,
-   "total": 383
+   "total": 593
   },
   "충남": {
    "done": 2893,
    "failed": 0,
-   "total": 2893
+   "total": 4478
   },
   "충북": {
    "done": 1547,
    "failed": 0,
-   "total": 1547
+   "total": 2320
   }
  },
  "doc_scan": true,
  "files": {
   "opening": {
    "강원": {
+    "2023": [
+     "opening/강원/2023.json"
+    ],
     "2024": [
-     "opening/강원/2024.json"
+     "opening/강원/2024.json",
+     "opening/강원/2024_2.json"
     ],
     "2025": [
      "opening/강원/2025.json",
@@ -423,6 +430,9 @@
     ]
    },
    "경기": {
+    "2025": [
+     "opening_thng/경기/2025.json"
+    ],
     "2026": [
      "opening_thng/경기/2026.json"
     ]
@@ -443,6 +453,9 @@
     ]
    },
    "기타": {
+    "2025": [
+     "opening_thng/기타/2025.json"
+    ],
     "2026": [
      "opening_thng/기타/2026.json"
     ]
@@ -453,8 +466,16 @@
     ]
    },
    "대전": {
+    "2025": [
+     "opening_thng/대전/2025.json"
+    ],
     "2026": [
      "opening_thng/대전/2026.json"
+    ]
+   },
+   "부산": {
+    "2025": [
+     "opening_thng/부산/2025.json"
     ]
    },
    "서울": {
@@ -462,7 +483,15 @@
      "opening_thng/서울/2026.json"
     ]
    },
+   "울산": {
+    "2026": [
+     "opening_thng/울산/2026.json"
+    ]
+   },
    "인천": {
+    "2025": [
+     "opening_thng/인천/2025.json"
+    ],
     "2026": [
      "opening_thng/인천/2026.json"
     ]
@@ -472,12 +501,20 @@
      "opening_thng/전남/2026.json"
     ]
    },
+   "전북": {
+    "2025": [
+     "opening_thng/전북/2025.json"
+    ]
+   },
    "제주": {
     "2026": [
      "opening_thng/제주/2026.json"
     ]
    },
    "충남": {
+    "2025": [
+     "opening_thng/충남/2025.json"
+    ],
     "2026": [
      "opening_thng/충남/2026.json"
     ]
@@ -603,23 +640,25 @@
   }
  },
  "info_fill": {
-  "cursor": "202405"
+  "cursor": "202401"
  },
  "last_run": {
-  "at": "2026-09-29T08:11:31+09:00",
+  "at": "2026-09-29T12:33:35+09:00",
   "calls": {
-   "bid": 824,
+   "bid": 1149,
    "date": "20260929",
-   "scsbid": 7923
+   "scsbid": 27448
   },
-  "errors": [],
-  "minutes": 1.6
+  "errors": [
+   "업체정보: 한도 소진 (time)"
+  ],
+  "minutes": 260.2
  },
  "lim_scan": true,
  "mf_scan": true,
  "model": {
   "rows": 191402,
-  "updated_at": "2026-09-29T08:11:40+09:00"
+  "updated_at": "2026-09-29T12:33:44+09:00"
  },
  "notice_last": "2026-09-29T08:09+09:00",
  "refill": [],
@@ -633,7 +672,7 @@
   "oldest": "20240901"
  },
  "thng_curve": {
-  "done": 5506,
+  "done": 7771,
   "months": 12,
   "total": 9184
  },
@@ -645,6 +684,6 @@
   }
  },
  "thng_mine_fix": true,
- "updated_at": "2026-09-29T08:11:40+09:00",
+ "updated_at": "2026-09-29T12:33:44+09:00",
  "v": 1
 }
