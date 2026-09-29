@@ -1431,7 +1431,7 @@ async function renderMine(){
     const n = shown.filter(b => closeDay(b) === d).length, o = shown.filter(b => (b.open || '').slice(0, 10) === d).length;
     const w = new Date(Date.parse(d + 'T12:00:00Z')).getUTCDay();
     return `<button type="button" data-day="${d}" class="${w === 0 ? 'sun' : w === 6 ? 'sat' : ''} ${d === today ? 'today' : ''} ${Mine.day === d ? 'on' : ''}">
-      <span class="d">${+d.slice(8)}일 ${WEEK[w]}</span><span class="n ${n ? '' : 'zero'}">${n}</span><span class="o">${o ? `개찰 ${o}` : '&nbsp;'}</span></button>`;
+      <span class="d"><b>${+d.slice(8)}일</b><small>${WEEK[w]}</small></span><span class="n ${n ? '' : 'zero'}">${n}</span><span class="o">${o ? `개찰 ${o}` : '&nbsp;'}</span></button>`;
   }).join('');
 
   // 목록: 마감일별로 묶기

@@ -259,7 +259,9 @@ tr.click:hover td{background:var(--bg);}
 .cal{display:grid; grid-template-columns:repeat(14, minmax(0, 1fr)); gap:4px;}
 @media (max-width: 760px){ .cal{grid-template-columns:repeat(7, minmax(0, 1fr));} }   /* 폰: 7칸 × 2줄 */
 .cal button{display:flex; flex-direction:column; align-items:center; gap:2px; padding:6px 2px; border:1px solid var(--border); border-radius:10px; background:var(--surface); color:var(--text); cursor:pointer; font:inherit; font-size:12px;}
-.cal button .d{color:var(--text-sub);}
+.cal button .d{color:var(--text-sub); display:flex; flex-direction:column; align-items:center; line-height:1.25; white-space:nowrap;}
+.cal button .d b{font-weight:600;}
+.cal button .d small{font-size:11px;}   /* 날짜·요일 두 줄 고정 — 칸 너비에 따라 한 줄/두 줄로 섞여 높이가 들쭉날쭉하던 문제(2026-09-29) */
 .cal button.sun .d{color:var(--target);}
 .cal button.sat .d{color:var(--primary);}
 .cal button .n{font-size:17px; font-weight:700; font-variant-numeric:tabular-nums;}
