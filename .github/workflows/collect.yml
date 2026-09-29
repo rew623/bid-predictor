@@ -51,7 +51,7 @@ jobs:
       - name: 빠른 수집 (공고·최근 낙찰)
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
-          STEPS: "공고,최근낙찰,공고문"
+          STEPS: "공고,최근낙찰,공고문,물품최근"   # 물품최근 = 진행중 물품 공고(goods.json) — 전체 수집에선 상세 뒤라 몇 시간 늦음(2026-09-30)
           MAX_MINUTES: "40"
           API_DAILY_LIMIT: ${{ vars.API_DAILY_LIMIT || '95000' }}   # 운영계정: 오퍼레이션마다 하루 10만(2026-09-27 확인). 서비스 합계로 세므로 95000이면 어느 오퍼레이션도 안 넘음. 실제 한도가 더 낮으면 조달청 '요청 제한' 응답에서 그날은 멈춤
         run: python scripts/collect.py
