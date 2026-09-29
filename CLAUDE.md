@@ -13,7 +13,7 @@ GitHub Pages(main 브랜치 루트)로 배포하고, 공공 데이터는 GitHub 
   예외: reference/, scripts/, .github/ 워크플로, data/, stable/ 은 버전 올릴 필요 없음.
 - **되돌리기**: 사용자가 'x.y.z 로 되돌려줘' 하면 그 버전 커밋의 앱 파일로 되돌리는 새 커밋(데이터는 그대로). 급할 땐 사용자가 설정의 '안정판으로 열기'로 직접 피할 수 있다(stable/, 현재 1.7.5).
 - **간단 모드 / 운영자 모드**(2026-09-27): 기능은 똑같고(통계·모의 투찰·도구·고급 모두), 간단 모드(기본, `body.simple`)는 설명 문구만 숨김 — `.sub`·`p.faint`·summary 안 설명·`.ops`·사용법(`#pGuide`)·카드 설명(`.bcard > .b-note`). 운영자 모드 = 설정 '앱' 카드 체크(누구나), `bp.admin`(Cloud 동기화). **새 설명 문구는 `.ops`(또는 `.sub`)로 달 것.** '참고용이며 낙찰을 보장하지 않음' 문구는 간단 모드에서도 유지.
-- **디자인 유지**: 흰 배경, 파랑 #2F6FED, 카드형, Noto Sans KR, 다크모드(`prefers-color-scheme` + `data-theme`).
+- **디자인 유지**: 흰 배경, 파랑 #2F6FED, 카드형, Noto Sans KR, 다크모드(`prefers-color-scheme` + `data-theme`). 2026-09-29 요청으로 테마 2개 추가(설정 '화면 테마' `bp.theme` = auto·light·dark·**glass**·**mesh**): glass = 아이스 블루·라벤더 반투명 카드(backdrop-filter, 못 쓰면 불투명 흰색), mesh = 흰 카드 + 첫 화면 머리(`.home-hero`)·주 버튼(`.btn`)에만 코랄·퍼플·블루 그라디언트. 기본(시스템)은 그대로. 같은 날 가시성: 흐린 글자 `--text-faint` #6B7482·`--text-sub` #566170, `--ok` #067647·`--target` #D92D20(흰 배경 4.5:1↑) — 새 색도 글자에 쓰면 4.5:1 이상으로.
 - **data JSON 형식을 바꾸면 app.js 와 scripts/collect.py 를 함께 수정**하고 아래 구조 설명도 고친다.
 - **비밀값(API 키 등)은 코드에 넣지 않는다.** GitHub 시크릿(`DATA_GO_KR_KEY`)만 사용.
 - 모든 확률·예측 옆에 표본 수 표시, 30건 미만이면 "참고 부족". 예측 화면에 "참고용이며 낙찰을 보장하지 않음" 문구 유지.

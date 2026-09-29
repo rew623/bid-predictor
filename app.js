@@ -4126,6 +4126,9 @@ function applyTheme(){
   const t = LS.get('theme', 'auto');
   if(t === 'auto') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', t);
+  // 글래스(아이스 블루·라벤더) · 메시(코랄·퍼플·블루) 테마는 폰 상단 바 색도 맞춘다 (2026-09-29)
+  const bar = {glass: '#3566D6', mesh: '#6D3FE0', dark: '#12151C'}[t] || '#2F6FED';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bar);
 }
 
 async function getAppVersion(){
