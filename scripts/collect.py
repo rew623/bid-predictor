@@ -1493,6 +1493,8 @@ def write_goods(notices, bsis, cache, now):
             "est": to_int(pick(it, F_EST)), "floor": to_rate(pick(it, F_FLOOR), 3), "cm": (pick(it, F_CNTRCT) or "").strip() or None,
             "mnf": 1 if it.get("mnfctYn") == "Y" else None, "plim": 1 if it.get("prdctClsfcLmtYn") == "Y" else None,
             "prd": (it.get("dtilPrdctClsfcNoNm") or "").strip() or None,
+            "bdg": to_int(it.get("asignBdgtAmt")), "qty": to_int(it.get("prdctQty")), "unp": to_int(it.get("prdctUprc")),
+            "np": len(re.findall(r"\[", it.get("purchsObjPrdctList") or "")) or None,   # 기초금액이 안 올 때 추정 근거(배정예산·수량·단가·품목 수) — 아직 검증 중, 앱은 안 씀
             "ntce": norm_dt(pick(it, F_NTCE_DT)), "close": close, "open": norm_dt(pick(it, F_OPEN_DT)), "url": pick(it, F_URL),
             **base.get(id_, {}),
         })
