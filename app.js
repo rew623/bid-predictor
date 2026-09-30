@@ -1295,7 +1295,7 @@ function normLic(raw){
   return [hit || String(raw).split('/')[0].trim()];
 }
 const NEGO_KINDS = [['시담', '수의시담'], ['협상', '협상에 의한 계약'], ['2단계', '2단계 경쟁'], ['규격가격동시', '규격가격 동시입찰'],
-  ['제안', '제안서 평가'], ['종합평가', '종합평가'], ['종합낙찰', '종합낙찰']];   // scripts/collect.py NEGO_KINDS 와 같게
+  ['제안', '제안서 평가'], ['종합평가', '종합평가'], ['종합낙찰', '종합낙찰'], ['최저가낙찰', '최저가 낙찰']];   // scripts/collect.py NEGO_KINDS 와 같게
 function negoOf(it){
   const t = [it.bidMethdNm, it.sucsfbidMthdNm, it.sucsfbidMthdAppStd, it.cntrctCnclsMthdNm].join(' ');
   const k = NEGO_KINDS.find(([kw]) => t.includes(kw));
@@ -1980,7 +1980,7 @@ function goodsEligibility(g){
   return out;
 }
 function negoTag(n){
-  return `<span class="tag bad" title="금액만 투찰해 바로 계약하는 공고가 아님 — 수의시담(계약 대상자만)·협상에 의한 계약·2단계 경쟁·규격가격 동시입찰(제안·규격 심사) 등">참가 불가 · ${esc(n)}</span>`;
+  return `<span class="tag bad" title="금액만 투찰해 바로 계약하는 공고가 아님 — 수의시담(계약 대상자만)·협상에 의한 계약·2단계 경쟁·규격가격 동시입찰(제안·규격 심사)·최저가 낙찰 등">참가 불가 · ${esc(n)}</span>`;
 }
 function eligTag(b){
   if(!Company.isSet()) return '';
@@ -3119,7 +3119,7 @@ function buildResultRows(appItems){
         let rows2 = op?.r || null;
         if(rows2 && w.myBid){ const i = rows2.findIndex(row => row[2] === w.myBid); if(i >= 0) rows2 = rows2.filter((_, k) => k !== i); }
         const j = judgeBid(amt, r, rows2 ? {...op, r: rows2} : op);
-        if(j) app = {amt, cls: j.cls, rank: j.cls === 'below' ? -1 : j.rank || (j.cls === 'win' ? 1 : null), now: !frozen};
+        if(j) app = {amt, x: bidToSr(amt, r.base, w.a ?? r.a, w.floor || r.floor), cls: j.cls, rank: j.cls === 'below' ? -1 : j.rank || (j.cls === 'win' ? 1 : null), now: !frozen};
       }
     }
     const fin = !!(r0?.winBiz && r0.winBiz === String(Company.get().biz || ''));   // 최종 낙찰(1순위 포기로 올라온 경우 포함)
@@ -3146,6 +3146,12 @@ const ResHidden = {
   get(){ return new Set(LS.get('resHidden', [])); },
   set(key, on){ const s = this.get(); on ? s.add(key) : s.delete(key); LS.set('resHidden', [...s]); },
 };
+/** 개찰 결과 카드의 '차이 (… − 1순위)' 칸 — 모의 투찰과 같은 색(1순위보다 낮음 = 초록, 하한 미달 = 빨강, 높음 = 회색) */
+function rcDiff(amt, win, cls){
+  if(!amt || !win) return '<b>-</b>';
+  const c = cls === 'below' ? 'below' : amt <= win ? 'win-t' : 'high-t';
+  return `<b class="${c}">${amt === win ? '0원' : (amt > win ? '+' : '−') + won(Math.abs(amt - win))}</b>`;
+}
 async function renderResults(el, appItems, pseudo, head){
   const allRows = buildResultRows(appItems), hid = ResHidden.get();
   const rows = allRows.filter(x => !hid.has(x.key)), hiddenRows = allRows.filter(x => hid.has(x.key));
@@ -3205,13 +3211,21 @@ async function renderResults(el, appItems, pseudo, head){
       <div class="rc-plot" data-rc-plot-box="${esc(x.key)}" hidden></div>
       <div class="rc-line"><span class="rc-tags">${x.rgn ? `<span class="tag">${esc(x.rgn)}</span>` : ''}${x.lic ? `<span class="tag">${esc(x.lic.split('|').join('·'))}</span>` : ''}<span class="tag">${esc(x.kind)}</span>${x.w?.src === '국방' ? '<span class="tag">🎖 국방</span>' : ''}</span><b class="rc-base">${x.base ? won(x.base) : ''}</b></div>
       <div class="rc-grid">
-        <div><span>사정율</span><b>${x.S ? x.S.toFixed(3) : '비공개'}</b></div>
+        <div><span>추천 투찰률</span><b>${x.app?.x != null ? x.app.x.toFixed(3) : '-'}</b></div>
+        <div><span>실제 사정율</span><b>${x.S ? x.S.toFixed(3) : '비공개'}</b></div>
         <div><span>내 투찰률</span><b>${x.x != null ? x.x.toFixed(3) : '-'}</b></div>
-        <div><span>기초대비</span><b>${ratio ? ratio.toFixed(3) : '-'}</b></div>
       </div>
+      ${x.app || x.winAmt ? `<div class="rc-grid paper-cmp">
+        <div><span>추천 투찰가</span><b>${x.app ? won(x.app.amt) : '-'}</b></div>
+        <div><span>1순위 금액</span><b>${x.winAmt ? won(x.winAmt) : '-'}</b></div>
+        <div><span>내 투찰가</span><b>${x.amt ? won(x.amt) : '-'}</b></div>
+        <div><span>차이 (추천 − 1순위)</span>${rcDiff(x.app?.amt, x.winAmt, x.app?.cls)}</div>
+        <div><span>차이 (내 투찰 − 1순위)</span>${rcDiff(x.amt, x.winAmt, x.cls)}</div>
+        <div><span>기초대비</span><b>${ratio ? ratio.toFixed(3) : '-'}</b></div>
+      </div>` : `<div class="rc-grid"><div><span>기초대비</span><b>${ratio ? ratio.toFixed(3) : '-'}</b></div></div>`}
       ${x.src === 'app' ? sdAlert(x.w, x.rank === 1 || x.fin, x.date) : ''}
       <div class="rc-foot"><span class="rc-rank ${x.cls}"><b>${rk}${x.rank > 0 ? '위' : ''}</b> / ${x.n ? fmtNum(x.n) + '곳' : '-'}</span><span class="rc-amt">${x.amt ? '<small class="faint">내 투찰</small> ' + won(x.amt) + (x.w?.res?.mine?.est && x.amt === x.w.res.mine.amt ? '<small class="faint" title="투찰률 × 예정가격으로 계산한 금액"> (추정)</small>' : '') : '금액 기록 없음'}</span><span class="rc-v ${x.cls}">${esc(x.label)}</span></div>
-      ${x.app ? `<div class="rc-app ${x.app.cls}">📱 앱 추천가 ${won(x.app.amt)}이었다면 → <b>${x.app.cls === 'win' ? '🏆 1순위' : x.app.cls === 'below' ? '하한 미달' : x.app.rank ? fmtNum(x.app.rank) + '위' : '1위보다 높음'}</b>${x.app.now ? '<span class="ops"> (개찰 전 추천 기록이 없어 지금 모델로 계산 — 참고용)</span>' : ''}</div>` : ''}
+      ${x.app ? `<div class="rc-app ${x.app.cls}">📱 추천 투찰가였다면 → <b>${x.app.cls === 'win' ? '🏆 1순위' : x.app.cls === 'below' ? '하한 미달' : x.app.rank ? fmtNum(x.app.rank) + '위' : '1위보다 높음'}</b>${x.app.now ? '<span class="ops"> (개찰 전 추천 기록이 없어 지금 모델로 계산 — 참고용)</span>' : ''}</div>` : ''}
       ${more}
     </div>`;
   }

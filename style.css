@@ -792,11 +792,11 @@ main{overflow-x:hidden;}
     -webkit-backdrop-filter:var(--frost); backdrop-filter:var(--frost);
     display:flex; flex-direction:column; align-items:stretch; gap:4px; z-index:2;
   }
-  :root[data-theme="glass"] .brand{display:flex; flex-direction:column; align-items:center; padding:0 0 16px; gap:10px;}
+  :root[data-theme="glass"] .brand{display:flex; flex-direction:column; align-items:center; padding:0 0 14px; margin:0 6px 10px; gap:8px; border-bottom:1px solid rgba(106,79,208,.14);}
   :root[data-theme="glass"] .brand .dot{transform:none; border:none; width:34px; height:34px; border-radius:50%; background:radial-gradient(circle at 32% 28%, #fff 0 12%, #9CC7FF 30%, #8E77EE 100%); box-shadow:0 4px 14px rgba(106,79,208,.35);}
   :root[data-theme="glass"] .brand .dot::after{content:'';}
   :root[data-theme="glass"] .brand-t{display:none;}
-  :root[data-theme="glass"] .brand::after{content:'낙찰예측'; writing-mode:vertical-rl; font-size:11.5px; font-weight:500; letter-spacing:.4em; color:var(--text-sub);}
+  :root[data-theme="glass"] .brand::after{content:'낙찰\A예측'; white-space:pre; text-align:center; font-size:12px; line-height:1.3; font-weight:700; letter-spacing:.08em; color:var(--text);}
   :root[data-theme="glass"] .brand-s{display:none;}
   :root[data-theme="glass"] .nav-item{flex-direction:column; gap:4px; padding:10px 2px; border-radius:18px; font-size:11.5px; text-align:center; margin:0; box-shadow:none;}
   :root[data-theme="glass"] .nav-item::before, :root[data-theme="glass"] .nav-item::after{display:none;}
