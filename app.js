@@ -2978,19 +2978,19 @@ async function renderPaper(){
     return `<div class="rc ${st.cls}">
       <div class="rc-nm">${esc(it.nm)}</div>
       <div class="rc-sub">${esc(String(it.open || '').slice(0, 16))} 개찰 · ${esc(it.org || '')}${it.sgg ? ' · ' + esc(it.sgg) : ''}</div>
-      <div class="rc-line"><span class="rc-tags"><span class="tag">예상 ~${fmtNum(it.n)}곳</span>${it.area ? `<span class="tag lic mine">${esc(it.area)} 전용</span>` : ''}</span><b class="rc-base">${won(it.base)}</b></div>
+      <div class="rc-line"><span class="rc-tags"><span class="tag">예상 ~${fmtNum(it.n)}곳</span>${it.area ? `<span class="tag lic mine">${esc(it.area)} 전용</span>` : ''}</span>${rcBase(it.base, r?.S && it.floor ? bidAmount(it.base, r.S, it.a, it.floor) : null)}</div>
       <div class="rc-grid">
         <div><span>추천 투찰률</span><b>${it.x.toFixed(3)}</b></div>
         <div><span>실제 사정율</span><b>${r?.S ? r.S.toFixed(3) : '-'}</b></div>
         <div><span>평균 방식</span><b>${it.xm ? it.xm.toFixed(3) : '-'}${r && r.mwin != null ? (r.mwin ? ' 🏆' : '') : ''}</b></div>
       </div>
       ${r ? `<div class="rc-grid paper-cmp">
-        <div><span>낙찰하한선</span><b>${r.S ? won(bidAmount(it.base, r.S, it.a, it.floor)) : '-'}</b></div>
         <div><span>추천 투찰가</span><b>${won(it.bid)}</b></div>
         <div><span>실제 1위 금액</span><b>${r.amt ? won(r.amt) : '-'}</b></div>
         <div><span>차이 (추천 − 실제 1위)</span><b class="${r.amt ? (it.bid < r.amt ? (r.below ? 'below' : 'win-t') : 'high-t') : ''}">${r.amt ? (it.bid >= r.amt ? '+' : '−') + won(Math.abs(it.bid - r.amt)) : '-'}</b></div>
-        <div><span>실제 참가 (예상)</span><b>${r.cnt ? fmtNum(r.cnt) + '곳' : '-'} <small class="faint">~${fmtNum(it.n)}</small></b></div>
-        <div><span>예정가격</span><b>${r.S ? won(Math.round(it.base * r.S / 100)) : '-'}</b></div>
+        <div><span>예상 참가</span><b>~${fmtNum(it.n)}곳</b></div>
+        <div><span>실제 참가</span><b>${r.cnt ? fmtNum(r.cnt) + '곳' : '-'}</b></div>
+        <div><span>예상 대비</span><b>${r.cnt && it.n ? (r.cnt >= it.n ? '+' : '') + fmtNum(r.cnt - it.n) + '곳' : '-'}</b></div>
       </div>` : ''}
       <div class="rc-foot"><span class="rc-rank ${st.cls}">${r ? `<b>${r.win ? 1 : r.rank ? fmtNum(r.rank) : r.below ? '미달' : '-'}</b> / ${r.cnt ? fmtNum(r.cnt) : '-'}` : '<b>대기</b>'}</span><span class="rc-amt"><small class="faint">추천가</small> ${won(it.bid)}</span><span class="rc-v ${st.cls}">${st.t}</span></div>
       ${r?.winner ? `<div class="rc-sub" style="margin-top:4px;">실제 1위 ${esc(r.winner)}${r.amt ? ` ${won(r.amt)}` : ''}${r.win ? ' — 추천가가 더 낮아 앞섬' : ''}${r.src === 'list' ? ' · 순위는 개찰 상세 수집 뒤' : ''}</div>` : ''}
@@ -3044,19 +3044,16 @@ async function renderPaperThng(el){
     return `<div class="rc ${st.cls}">
       <div class="rc-nm">${esc(it.nm)}</div>
       <div class="rc-sub">${esc(String(it.open || '').slice(0, 16))} 개찰 · ${esc(it.org || '')}</div>
-      <div class="rc-line"><span class="rc-tags">${it.src === '국방' ? '<span class="tag d2b">🎖 국방</span>' : '<span class="tag">나라장터</span>'}<span class="tag goods">📦 물품</span></span><b class="rc-base">${won(it.base)}</b></div>
+      <div class="rc-line"><span class="rc-tags">${it.src === '국방' ? '<span class="tag d2b">🎖 국방</span>' : '<span class="tag">나라장터</span>'}<span class="tag goods">📦 물품</span></span>${rcBase(it.base, r?.S && it.floor ? bidAmount(it.base, r.S, 0, it.floor) : null)}</div>
       <div class="rc-grid">
         <div><span>추천 투찰 사정률</span><b>${it.x.toFixed(2)}</b></div>
         <div><span>실제 사정율</span><b>${r?.S ? r.S.toFixed(3) : '-'}</b></div>
         <div><span>${it.xs ? `${it.xs.toFixed(1)}였다면` : '하한율'}</span><b>${it.xs ? (r ? (r.wins ? '🏆 1순위' : '-') : won(it.bids)) : it.floor + '%'}</b></div>
       </div>
       ${r ? `<div class="rc-grid paper-cmp">
-        <div><span>낙찰하한선</span><b>${r.S ? won(bidAmount(it.base, r.S, 0, it.floor)) : '-'}</b></div>
         <div><span>추천 투찰가</span><b>${won(it.bid)}</b></div>
         <div><span>실제 1위 금액</span><b>${r.amt ? won(r.amt) : '-'}</b></div>
         <div><span>차이 (추천 − 실제 1위)</span><b class="${r.amt ? (it.bid < r.amt ? (r.below ? 'below' : 'win-t') : 'high-t') : ''}">${r.amt ? (it.bid >= r.amt ? '+' : '−') + won(Math.abs(it.bid - r.amt)) : '-'}</b></div>
-        <div><span>실제 참가</span><b>${r.cnt ? fmtNum(r.cnt) + '곳' : '-'}</b></div>
-        <div><span>예정가격</span><b>${r.S ? won(Math.round(it.base * r.S / 100)) : '-'}</b></div>
       </div>` : ''}
       <div class="rc-foot"><span class="rc-rank ${st.cls}">${r ? `<b>${r.win ? 1 : r.below ? '미달' : '-'}</b> / ${r.cnt ? fmtNum(r.cnt) : '-'}곳` : '<b>대기</b>'}</span><span class="rc-amt"><small class="faint">추천가</small> ${won(it.bid)}</span><span class="rc-v ${st.cls}">${st.t}</span></div>
       ${r?.winner ? `<div class="rc-sub" style="margin-top:4px;">실제 낙찰 ${esc(r.winner)}${r.amt ? ` ${won(r.amt)}` : ''}${r.win ? ' — 추천가가 더 낮아 앞섬' : ''}</div>` : ''}
@@ -3128,7 +3125,7 @@ function buildResultRows(appItems){
     const fin = !!(r0?.winBiz && r0.winBiz === String(Company.get().biz || ''));   // 최종 낙찰(1순위 포기로 올라온 경우 포함)
     const date = (w.open || r0?.date || w.close || '').slice(0, 16);
     return {src: 'app', w, r, id: w.id, nm: w.nm, org: w.org || w.dmd, rgn: [w.sido, w.sgg].filter(Boolean).join(' '), lic: (w.lic || []).map(l => LIC_SHORT[l] || l).join('·'),
-      line: !noFloor && r?.base && r?.plan ? Math.ceil((r.plan - (w.a ?? r.a ?? 0)) * (w.floor || r.floor) / 100 + (w.a ?? r.a ?? 0)) : null,   // 낙찰하한선 = (예정가격 − A값) × 하한율 + A값 (2026-10-01)
+      line: !noFloor && r?.base && r?.plan ? Math.ceil((r.plan - (w.a ?? r.a ?? 0)) * (w.floor || r.floor) / 100 + (w.a ?? r.a ?? 0)) : null,   // 낙찰하한가 = (예정가격 − A값) × 하한율 + A값 (2026-10-01)
       date, base: r?.base || w.base, amt: w.myBid, S: r?.base && r?.plan ? r.plan / r.base * 100 : null, x: noFloor ? null : mine?.x ?? (w.myBid && r?.base ? bidToSr(w.myBid, r.base, w.a ?? r.a, w.floor || r.floor) : null),   // 하한율 모르면 투찰률도 모름(진단 '제외'로)   // 승리 구간이 1%p 넘게 벌어진 공고(참가 적음)는 judgeBid 가 null 이라 진단에서 빠졌음(2026-09-28, 1순위 1건 누락)
       rank: offBelow || (mine?.cls === 'below' && !offOk) ? -1 : rank, n: r?.cnt || w.res?.n || null, kind: w.kind || '공사', src2: w.src, winner: r?.win, winAmt: r?.amt, app,
       cls: fin || rank === 1 ? 'win' : offBelow ? 'below' : offOk && mine?.cls === 'below' ? 'high' : mine?.cls || '', label: fin ? '🏆 최종 낙찰' : rank === 1 ? '🏆 1순위' : offBelow ? '하한 미달' : offOk && mine?.cls === 'below' ? '1위보다 높음' : mine?.label?.replace(' (1순위)', '') || (r ? '금액 기록 없음' : '결과 대기'), fin};
@@ -3150,6 +3147,10 @@ const ResHidden = {
   get(){ return new Set(LS.get('resHidden', [])); },
   set(key, on){ const s = this.get(); on ? s.add(key) : s.delete(key); LS.set('resHidden', [...s]); },
 };
+/** 개찰 결과·모의 투찰 카드 오른쪽 위: 기초금액 + 그 아래 낙찰하한가(개찰 뒤, 2026-10-01 — 1위가 되려면 하한가와 1위 금액 사이) */
+function rcBase(base, line){
+  return `<b class="rc-base">${won(base)}${line ? `<small class="rc-floor">하한가 ${won(line)}</small>` : ''}</b>`;
+}
 /** 개찰 결과 카드의 '차이 (… − 1순위)' 칸 — 모의 투찰과 같은 색(1순위보다 낮음 = 초록, 하한 미달 = 빨강, 높음 = 회색) */
 function rcDiff(amt, win, cls){
   if(!amt || !win) return '<b>-</b>';
@@ -3198,7 +3199,7 @@ async function renderResults(el, appItems, pseudo, head){
     const rk = x.rank == null ? '-' : x.rank < 0 ? '미달' : fmtNum(x.rank);
     const ratio = x.amt && x.base ? x.amt / x.base * 100 : null;
     const more = x.src === 'app' ? `<details class="rc-more"><summary>자세히 · 금액 고치기</summary>
-        <div class="b-kv"><span>1위 <b>${esc(x.winner || '-')}</b> ${x.winAmt ? won(x.winAmt) : ''}</span>${x.r?.plan ? `<span>예정가격 <b>${won(x.r.plan)}</b></span>` : ''}${ratio ? `<span>기초대비 <b>${ratio.toFixed(3)}</b></span>` : ''}</div>
+        <div class="b-kv"><span>1위 <b>${esc(x.winner || '-')}</b> ${x.winAmt ? won(x.winAmt) : ''}</span>${x.r?.plan ? `<span>예정가격 <b>${won(x.r.plan)}</b></span>` : ''}</div>
         ${x.w.res?.top?.length ? `<div class="table-wrap" style="max-height:none;margin-top:6px;"><table><thead><tr><th>순위</th><th>업체</th><th class="num">투찰금액</th></tr></thead>
           <tbody>${x.w.res.top.map(t => `<tr${x.w.res.mine && t.biz === x.w.res.mine.biz ? ' class="hl-row"' : ''}><td>${t.rank || '-'}</td><td>${t.biz ? `<a href="#" class="corp-link" data-corp="${esc(t.biz)}">${esc(t.name)}</a>` : esc(t.name)}</td><td class="num">${won(t.amt)}</td></tr>`).join('')}</tbody></table></div>` : ''}
         <div class="mybid-row"><label>내가 넣은 투찰금액</label>
@@ -3213,19 +3214,19 @@ async function renderResults(el, appItems, pseudo, head){
       <div class="rc-nm">${x.src === 'app' && rcPoints(x) ? `<button type="button" class="rc-title" data-rc-plot="${esc(x.key)}" title="업체들 투찰 위치 그래프">${esc(x.nm)} <span class="rc-plot-ico">📊 업체 투찰 위치</span></button>` : esc(x.nm)} ${x.src === 'app' ? sdTag(x.w) : ''}</div>
       <div class="rc-sub">${esc(x.date.slice(11, 16) ? x.date.slice(0, 16) + ' 개찰' : x.date.slice(0, 10))} · ${esc(x.org || '')}${x.src === 'app' && resLink(x.w) ? ` · <a href="${esc(resLink(x.w))}" target="_blank" rel="noopener" class="rc-link">${x.w.src === '국방' ? '국방전자조달' : '나라장터'}에서 보기 ↗</a>${x.w.src !== '국방' && x.w.no ? ` <button type="button" class="copy-btn" data-copy-text="${esc(x.w.no)}" data-copy-msg="공고번호 복사됨 — 나라장터 입찰 → 개찰결과분류조회의 '입찰공고번호' 칸에 붙여 넣고 검색" title="나라장터 개찰결과분류조회에 붙여 넣을 공고번호">📋 공고번호</button>` : ''}` : ''}</div>
       <div class="rc-plot" data-rc-plot-box="${esc(x.key)}" hidden></div>
-      <div class="rc-line"><span class="rc-tags">${x.rgn ? `<span class="tag">${esc(x.rgn)}</span>` : ''}${x.lic ? `<span class="tag">${esc(x.lic.split('|').join('·'))}</span>` : ''}<span class="tag">${esc(x.kind)}</span>${x.w?.src === '국방' ? '<span class="tag">🎖 국방</span>' : ''}</span><b class="rc-base">${x.base ? won(x.base) : ''}</b></div>
+      <div class="rc-line"><span class="rc-tags">${x.rgn ? `<span class="tag">${esc(x.rgn)}</span>` : ''}${x.lic ? `<span class="tag">${esc(x.lic.split('|').join('·'))}</span>` : ''}<span class="tag">${esc(x.kind)}</span>${x.w?.src === '국방' ? '<span class="tag">🎖 국방</span>' : ''}</span>${x.base ? rcBase(x.base, x.line) : ''}</div>
       <div class="rc-grid">
         <div><span>추천 투찰률</span><b>${x.app?.x != null ? x.app.x.toFixed(3) : '-'}</b></div>
         <div><span>실제 사정율</span><b>${x.S ? x.S.toFixed(3) : '비공개'}</b></div>
         <div><span>내 투찰률</span><b>${x.x != null ? x.x.toFixed(3) : '-'}</b></div>
       </div>
-      ${x.app || x.winAmt || x.line ? `<div class="rc-grid paper-cmp">
-        <div><span>낙찰하한선</span><b>${x.line ? won(x.line) : '-'}</b></div>
+      ${x.app || x.winAmt ? `<div class="rc-grid paper-cmp">
         <div><span>추천 투찰가</span><b>${x.app ? won(x.app.amt) : '-'}</b></div>
         <div><span>1순위 금액</span><b>${x.winAmt ? won(x.winAmt) : '-'}</b></div>
         <div><span>내 투찰가</span><b>${x.amt ? won(x.amt) : '-'}</b></div>
         <div><span>차이 (추천 − 1순위)</span>${rcDiff(x.app?.amt, x.winAmt, x.app?.cls)}</div>
         <div><span>차이 (내 투찰 − 1순위)</span>${rcDiff(x.amt, x.winAmt, x.cls)}</div>
+        <div><span>기초대비</span><b>${ratio ? ratio.toFixed(3) : '-'}</b></div>
       </div>` : `<div class="rc-grid"><div><span>기초대비</span><b>${ratio ? ratio.toFixed(3) : '-'}</b></div></div>`}
       ${x.src === 'app' ? sdAlert(x.w, x.rank === 1 || x.fin, x.date) : ''}
       <div class="rc-foot"><span class="rc-rank ${x.cls}"><b>${rk}${x.rank > 0 ? '위' : ''}</b> / ${x.n ? fmtNum(x.n) + '곳' : '-'}</span><span class="rc-amt">${x.amt ? '<small class="faint">내 투찰</small> ' + won(x.amt) + (x.w?.res?.mine?.est && x.amt === x.w.res.mine.amt ? '<small class="faint" title="투찰률 × 예정가격으로 계산한 금액"> (추정)</small>' : '') : '금액 기록 없음'}</span><span class="rc-v ${x.cls}">${esc(x.label)}</span></div>

@@ -580,7 +580,8 @@ td.nowrap{white-space:nowrap;}
 .rc-sub{font-size:12px; color:var(--text-faint); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 .rc-line{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:8px;}
 .rc-tags{display:flex; flex-wrap:wrap; gap:4px; min-width:0;}
-.rc-base{color:#7A3FE0; font-size:15px; font-variant-numeric:tabular-nums; white-space:nowrap;}
+.rc-base{color:#7A3FE0; font-size:15px; font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right;}
+.rc-floor{display:block; font-size:12px; font-weight:500; color:var(--text-sub); margin-top:2px;}
 .rc-grid{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:6px; margin-top:8px;}
 .rc-grid > div{background:var(--bg); border-radius:8px; padding:6px 8px; display:flex; flex-direction:column;}
 .rc-grid span{font-size:11px; color:var(--text-sub);}
