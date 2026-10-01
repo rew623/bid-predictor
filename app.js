@@ -2986,14 +2986,14 @@ async function renderPaper(){
       </div>
       ${r ? `<div class="rc-grid paper-cmp">
         <div><span>추천 투찰가</span><b>${won(it.bid)}</b></div>
-        <div><span>실제 낙찰금액</span><b>${r.amt ? won(r.amt) : '-'}</b></div>
-        <div><span>차이 (추천 − 낙찰)</span><b class="${r.amt ? (it.bid < r.amt ? (r.below ? 'below' : 'win-t') : 'high-t') : ''}">${r.amt ? (it.bid >= r.amt ? '+' : '−') + won(Math.abs(it.bid - r.amt)) : '-'}</b></div>
+        <div><span>실제 1위 금액</span><b>${r.amt ? won(r.amt) : '-'}</b></div>
+        <div><span>차이 (추천 − 실제 1위)</span><b class="${r.amt ? (it.bid < r.amt ? (r.below ? 'below' : 'win-t') : 'high-t') : ''}">${r.amt ? (it.bid >= r.amt ? '+' : '−') + won(Math.abs(it.bid - r.amt)) : '-'}</b></div>
         <div><span>예상 참가</span><b>~${fmtNum(it.n)}곳</b></div>
         <div><span>실제 참가</span><b>${r.cnt ? fmtNum(r.cnt) + '곳' : '-'}</b></div>
         <div><span>예상 대비</span><b>${r.cnt && it.n ? (r.cnt >= it.n ? '+' : '') + fmtNum(r.cnt - it.n) + '곳' : '-'}</b></div>
       </div>` : ''}
-      <div class="rc-foot"><span class="rc-rank ${st.cls}">${r ? `<b>${r.win ? 1 : r.rank ? fmtNum(r.rank) : r.below ? '미달' : '-'}</b> / ${r.cnt ? fmtNum(r.cnt) : '-'}` : '<b>대기</b>'}</span><span class="rc-amt">${won(it.bid)}</span><span class="rc-v ${st.cls}">${st.t}</span></div>
-      ${r?.winner ? `<div class="rc-sub" style="margin-top:4px;">1위 ${esc(r.winner)}${r.src === 'list' ? ' · 순위는 개찰 상세 수집 뒤' : ''}</div>` : ''}
+      <div class="rc-foot"><span class="rc-rank ${st.cls}">${r ? `<b>${r.win ? 1 : r.rank ? fmtNum(r.rank) : r.below ? '미달' : '-'}</b> / ${r.cnt ? fmtNum(r.cnt) : '-'}` : '<b>대기</b>'}</span><span class="rc-amt"><small class="faint">추천가</small> ${won(it.bid)}</span><span class="rc-v ${st.cls}">${st.t}</span></div>
+      ${r?.winner ? `<div class="rc-sub" style="margin-top:4px;">실제 1위 ${esc(r.winner)}${r.amt ? ` ${won(r.amt)}` : ''}${r.win ? ' — 추천가가 더 낮아 앞섬' : ''}${r.src === 'list' ? ' · 순위는 개찰 상세 수집 뒤' : ''}</div>` : ''}
     </div>`;
   };
   let html = '', last = null;
@@ -3052,11 +3052,11 @@ async function renderPaperThng(el){
       </div>
       ${r ? `<div class="rc-grid paper-cmp">
         <div><span>추천 투찰가</span><b>${won(it.bid)}</b></div>
-        <div><span>1순위 금액</span><b>${r.amt ? won(r.amt) : '-'}</b></div>
-        <div><span>차이 (추천 − 1순위)</span><b class="${r.amt ? (it.bid < r.amt ? (r.below ? 'below' : 'win-t') : 'high-t') : ''}">${r.amt ? (it.bid >= r.amt ? '+' : '−') + won(Math.abs(it.bid - r.amt)) : '-'}</b></div>
+        <div><span>실제 1위 금액</span><b>${r.amt ? won(r.amt) : '-'}</b></div>
+        <div><span>차이 (추천 − 실제 1위)</span><b class="${r.amt ? (it.bid < r.amt ? (r.below ? 'below' : 'win-t') : 'high-t') : ''}">${r.amt ? (it.bid >= r.amt ? '+' : '−') + won(Math.abs(it.bid - r.amt)) : '-'}</b></div>
       </div>` : ''}
-      <div class="rc-foot"><span class="rc-rank ${st.cls}">${r ? `<b>${r.win ? 1 : r.below ? '미달' : '-'}</b> / ${r.cnt ? fmtNum(r.cnt) : '-'}곳` : '<b>대기</b>'}</span><span class="rc-amt">${won(it.bid)}</span><span class="rc-v ${st.cls}">${st.t}</span></div>
-      ${r?.winner ? `<div class="rc-sub" style="margin-top:4px;">낙찰 ${esc(r.winner)}</div>` : ''}
+      <div class="rc-foot"><span class="rc-rank ${st.cls}">${r ? `<b>${r.win ? 1 : r.below ? '미달' : '-'}</b> / ${r.cnt ? fmtNum(r.cnt) : '-'}곳` : '<b>대기</b>'}</span><span class="rc-amt"><small class="faint">추천가</small> ${won(it.bid)}</span><span class="rc-v ${st.cls}">${st.t}</span></div>
+      ${r?.winner ? `<div class="rc-sub" style="margin-top:4px;">실제 낙찰 ${esc(r.winner)}${r.amt ? ` ${won(r.amt)}` : ''}${r.win ? ' — 추천가가 더 낮아 앞섬' : ''}</div>` : ''}
     </div>`;
   };
   const doneSorted = [...done].sort((a, b) => (b.res.win || 0) - (a.res.win || 0) || String(b.open || '').localeCompare(String(a.open || '')));
