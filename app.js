@@ -234,9 +234,9 @@ const Cloud = {
       box.innerHTML = this.user
         ? `<div class="cloud-on"><span class="badge ok">연결됨</span> <b>${esc(this.user.email || this.user.displayName || '')}</b>${this.lastSync ? ` <span class="faint">· 마지막 맞춤 ${this.lastSync.toLocaleTimeString('ko-KR', {hour: '2-digit', minute: '2-digit'})}</span>` : ''}
            <button class="btn sm line" id="cloudOut" type="button">로그아웃</button></div>
-           <div class="meta-line">이 기기와 같은 구글 계정으로 로그인한 기기는 관심공고·투찰 기록·우리 업체·뺀 공고·가져온 이력·서비스키가 자동으로 같아집니다.</div>`
+           <div class="meta-line ops">이 기기와 같은 구글 계정으로 로그인한 기기는 관심공고·투찰 기록·우리 업체·뺀 공고·가져온 이력·서비스키가 자동으로 같아집니다.</div>`
         : `<button class="btn" id="cloudIn" type="button">G 구글 계정으로 로그인</button>
-           <div class="meta-line">PC와 폰에서 <b>같은 구글 계정</b>으로 한 번씩 로그인하면 끝입니다. 처음 로그인할 때 두 기기의 관심공고는 합쳐지고, 다른 설정은 나중에 바꾼 쪽이 남습니다.</div>`;
+           <div class="meta-line ops">PC와 폰에서 <b>같은 구글 계정</b>으로 한 번씩 로그인하면 끝입니다. 처음 로그인할 때 두 기기의 관심공고는 합쳐지고, 다른 설정은 나중에 바꾼 쪽이 남습니다.</div>`;
       if(this.status) box.innerHTML += `<div class="meta-line">${esc(this.status)}</div>`;
       $('cloudIn')?.addEventListener('click', () => this.signIn());
       $('cloudOut')?.addEventListener('click', () => this.signOut());
@@ -1140,7 +1140,7 @@ function bidCard(b, today, opts = {}){
         <div class="pv hl big"><span>추천 투찰가${g.bid ? ` <button type="button" class="copy-btn" data-copy="${g.bid}" title="붙여넣기용 숫자">📋 복사</button>` : ''}</span><b>${g.bid ? won(g.bid) : b.base ? '<span title="기초금액은 있지만 낙찰하한율이 없음 — 금액만 투찰하는 적격심사 공고가 아닐 수 있으니 공고문 확인">하한율 없음</span>' : '기초금액 공개 후'}</b></div>
         <div class="pv"><span>투찰 사정률</span><b>${pct(g.x, 2)}</b></div>
         ${g.lift ? `<div class="pv"><span>역검증</span><b>×${g.lift.toFixed(1)} <small class="faint">${fmtNum(g.n)}건</small></b></div>` : ''}
-      </div>${g.small ? `<div class="g-small">참가 50곳 미만 예상 공고는 ${pct(g.small.x, 1)}${g.small.bid ? ` → <b>${won(g.small.bid)}</b>` : ''} (${g.src} 물품 규칙은 참가 50곳↑ 공고로 검증)</div>` : ''}`;
+      </div>${g.small ? `<div class="g-small">참가 50곳 미만 예상 공고는 ${pct(g.small.x, 1)}${g.small.bid ? ` → <b>${won(g.small.bid)}</b>` : ''}<span class="ops"> (${g.src} 물품 규칙은 참가 50곳↑ 공고로 검증)</span></div>` : ''}`;
     more = `<div class="b-note">${g.src} 물품 과거 공고의 복수예가 추첨 경우를 모두 따져 1순위 확률이 가장 높던 위치(표본외 역검증 ×는 공정 기대 대비, 1순위 기준 — 적격심사 탈락·포기는 반영 안 됨). 참고용이며 낙찰을 보장하지 않음.</div>`;
   }else if(b.src === '국방'){
     pred = `<div class="b-note">국방 추천 투찰가는 국방 낙찰 데이터(복수예가·전체 순위)로 역검증을 통과하면 추가됩니다${b.rng ? ` · 사정률 ${esc(rngText(b.rng))}` : ''}${b.floor ? ` · 하한 ${b.floor}%` : ''}</div>`;
@@ -2988,6 +2988,8 @@ async function renderPaper(){
         <div><span>추천 투찰가</span><b>${won(it.bid)}</b></div>
         <div><span>실제 1위 금액</span><b>${r.amt ? won(r.amt) : '-'}</b></div>
         <div><span>차이 (추천 − 실제 1위)</span><b class="${r.amt ? (it.bid < r.amt ? (r.below ? 'below' : 'win-t') : 'high-t') : ''}">${r.amt ? (it.bid >= r.amt ? '+' : '−') + won(Math.abs(it.bid - r.amt)) : '-'}</b></div>
+      </div>
+      <div class="rc-grid paper-cmp ops">
         <div><span>예상 참가</span><b>~${fmtNum(it.n)}곳</b></div>
         <div><span>실제 참가</span><b>${r.cnt ? fmtNum(r.cnt) + '곳' : '-'}</b></div>
         <div><span>예상 대비</span><b>${r.cnt && it.n ? (r.cnt >= it.n ? '+' : '') + fmtNum(r.cnt - it.n) + '곳' : '-'}</b></div>
@@ -3017,7 +3019,7 @@ async function renderPaper(){
         <div><span>평균 업체(공정 기대)</span><b>${fmtNum(fair, 2)}</b></div>
         <div><span>하한 미달</span><b class="below">${done.length ? Math.round(nBelow / done.length * 100) : 0}%</b></div>
       </div>
-      <div class="meta-line">기록 ${fmtNum(all.length)}건 · 마감 전 ${fmtNum(wait.length - closed)} · 개찰 대기 ${fmtNum(closed)}. 추천값 낙찰이 "평균 업체"보다 많으면 우위가 있는 것 — 건수가 적을 땐 운이 크게 작용하니 ${MIN_SAMPLE}건 이상 모인 뒤 판단하세요${done.length < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}.</div>
+      <div class="meta-line">기록 ${fmtNum(all.length)}건 · 마감 전 ${fmtNum(wait.length - closed)} · 개찰 대기 ${fmtNum(closed)}<span class="ops">. 추천값 낙찰이 "평균 업체"보다 많으면 우위가 있는 것 — 건수가 적을 땐 운이 크게 작용하니 ${MIN_SAMPLE}건 이상 모인 뒤 판단하세요</span>${done.length < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}.</div>
     </div>
     ${html ? `<div class="rc-list">${html}</div>` : '<div class="card empty">이 지역 기록이 아직 없습니다.</div>'}
     ${list.length > Paper.shown ? `<div class="more"><button class="btn sm line" id="paperMore" type="button">더 보기</button></div>` : ''}`;
@@ -3079,7 +3081,7 @@ async function renderPaperThng(el){
         <div><span>평균 업체(공정 기대)</span><b>${fmtNum(fair, 2)}</b></div>
         <div><span>하한 미달</span><b class="below">${done.length ? Math.round(nBelow / done.length * 100) : 0}%</b></div>
       </div>
-      <div class="meta-line">기록 ${fmtNum(all.length)}건 · 마감 전 ${fmtNum(wait.filter(it => !closedP(it)).length)} · 개찰 대기 ${fmtNum(wait.filter(closedP).length)}. 참가 수백~수천 곳 공고가 많아 1순위가 드뭅니다 — "평균 업체"와 비교하세요${done.length < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}.</div>
+      <div class="meta-line">기록 ${fmtNum(all.length)}건 · 마감 전 ${fmtNum(wait.filter(it => !closedP(it)).length)} · 개찰 대기 ${fmtNum(wait.filter(closedP).length)}<span class="ops">. 참가 수백~수천 곳 공고가 많아 1순위가 드뭅니다 — "평균 업체"와 비교하세요</span>${done.length < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}.</div>
     </div>
     ${html ? `<div class="rc-list">${html}</div>` : '<div class="card empty">기록이 아직 없습니다.</div>'}
     ${ord.length > Paper.shown ? `<div class="more"><button class="btn sm line" id="paperMore" type="button">더 보기</button></div>` : ''}`;
@@ -3673,7 +3675,7 @@ async function renderWatch(){
       <button class="btn sm" id="joinAdd" type="button">${watchMode === 'watch' ? '관심 공고 추가' : '참여 공고 추가'}</button>
       <span class="meta-line" id="joinMsg" style="margin:0;"></span>
     </div>
-    ${watchMode === 'watch' ? '' : `<div class="meta-line" style="margin:0 0 12px;">${joinedMode ? '넣은 공고를 공고번호로 추가하거나, 관심에서 "참여 표시"를 누르세요. 개찰 시각이 지나면 <b>🏁 개찰 결과</b>로 옮겨지고 조달청에서 순위·금액을 바로 가져옵니다.'
+    ${watchMode === 'watch' ? '' : `<div class="meta-line ops" style="margin:0 0 12px;">${joinedMode ? '넣은 공고를 공고번호로 추가하거나, 관심에서 "참여 표시"를 누르세요. 개찰 시각이 지나면 <b>🏁 개찰 결과</b>로 옮겨지고 조달청에서 순위·금액을 바로 가져옵니다.'
       : hasBiz ? `수집된 개찰 결과(강원 공사 전부 · 다른 시·도는 관심 면허 공사 · 강원 물품 · 국방)에서 우리 투찰을 자동으로 찾습니다(${fmtNum(auto.length)}건, 하루 몇 번 수집 때 갱신). 방금 개찰한 공고는 관심·투찰 등록해 두면 개찰 직후 조달청에서 바로 조회합니다. 그 밖은 공고번호로 추가하거나 맨 아래에서 더비스 투찰 이력 엑셀을 가져오세요.`
       : '설정 → 우리 업체에 <b>사업자번호</b>를 넣으면 수집된 개찰 상세에서 우리 순위·금액을 자동으로 찾습니다.'}</div>`}` : '';
   if(resultMode) return renderResults(el, list, pseudo, modeSeg + joinForm);
