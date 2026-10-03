@@ -742,89 +742,38 @@
   "done": true
  },
  "last_run": {
-  "at": "2026-10-03T14:26:55+09:00",
+  "at": "2026-10-03T17:27:31+09:00",
   "calls": {
    "bid": 291,
    "date": "20261003",
    "scsbid": 105
   },
-  "errors": [],
-  "minutes": 10.1,
+  "errors": [
+   "공고: ApiError: NET: getBidPblancListInfoCnstwk: HTTPSConnectionPool(host='apis.data.go.kr', port=443): Max retries exceeded with url: /1230000/BidPublicInfoService04/getBidPblancListInfoCnstwk?serviceKey=***&type=json&inqryDiv=1&inqryBgnDt=202610011704&inqryEndDt=202610031704&pageNo=1&numOfRows=100 (Caused by ConnectTimeoutError(<HTTPSConnection(host='apis.data.go.kr', port=443) at 0x7f25a2f915b0>, 'Connection to apis.data.go.kr timed out. (connect timeout=15)'))",
+   "최근낙찰: 한도 소진 (network)",
+   "물품최근: 한도 소진 (network)"
+  ],
+  "minutes": 22.8,
   "steps": [
+   [
+    "공고",
+    16.8,
+    "오류"
+   ],
+   [
+    "최근낙찰",
+    5.6,
+    "한도"
+   ],
    [
     "공고문",
     0.0,
     "ok"
    ],
    [
-    "상세",
-    0.0,
-    "ok"
-   ],
-   [
     "물품최근",
-    9.8,
-    "ok"
-   ],
-   [
-    "빈달",
     0.0,
-    "ok"
-   ],
-   [
-    "물품과거",
-    0.0,
-    "ok"
-   ],
-   [
-    "물품상세",
-    0.0,
-    "ok"
-   ],
-   [
-    "물품곡선",
-    0.0,
-    "ok"
-   ],
-   [
-    "지역보강",
-    0.0,
-    "ok"
-   ],
-   [
-    "A값보강",
-    0.0,
-    "ok"
-   ],
-   [
-    "과거낙찰",
-    0.0,
-    "ok"
-   ],
-   [
-    "상세",
-    0.0,
-    "ok"
-   ],
-   [
-    "과거낙찰",
-    0.0,
-    "ok"
-   ],
-   [
-    "옛낙찰",
-    0.0,
-    "ok"
-   ],
-   [
-    "옛상세",
-    0.0,
-    "ok"
-   ],
-   [
-    "업체정보",
-    0.0,
-    "ok"
+    "한도"
    ]
   ]
  },
@@ -832,7 +781,7 @@
  "mf_scan": true,
  "model": {
   "rows": 192326,
-  "updated_at": "2026-10-03T14:15:23+09:00"
+  "updated_at": "2026-10-03T17:27:43+09:00"
  },
  "nego_scan": true,
  "nego_scan2": true,
@@ -860,6 +809,6 @@
   }
  },
  "thng_mine_fix": true,
- "updated_at": "2026-10-03T14:26:55+09:00",
+ "updated_at": "2026-10-03T17:27:43+09:00",
  "v": 1
 }
