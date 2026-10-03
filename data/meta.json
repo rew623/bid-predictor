@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 194,
+   "bid": 248,
    "date": "20261003",
-   "scsbid": 72
+   "scsbid": 94
   }
  },
  "backfill": {
@@ -27,7 +27,7 @@
   "filled": 46496
  },
  "counts": {
-  "bids": 1938,
+  "bids": 1939,
   "opening": {
    "강원": 28454,
    "경기": 5017,
@@ -81,12 +81,12 @@
    "울산": 7096,
    "인천": 10602,
    "전남": 36623,
-   "전북": 27166,
+   "전북": 27167,
    "제주": 6129,
    "충남": 34577,
    "충북": 26037
   },
-  "scsbid_total": 373436,
+  "scsbid_total": 373437,
   "thng": {
    "강원": 5234,
    "경기": 12342,
@@ -103,11 +103,11 @@
    "인천": 3770,
    "전남": 6791,
    "전북": 4535,
-   "제주": 1924,
+   "제주": 1925,
    "충남": 5517,
    "충북": 8918
   },
-  "thng_total": 150726
+  "thng_total": 150727
  },
  "detail": {
   "eta_days": 0,
@@ -742,28 +742,24 @@
   "done": true
  },
  "last_run": {
-  "at": "2026-10-03T13:32:45+09:00",
+  "at": "2026-10-03T14:15:16+09:00",
   "calls": {
-   "bid": 194,
+   "bid": 248,
    "date": "20261003",
-   "scsbid": 72
+   "scsbid": 94
   },
-  "errors": [
-   "공고: ApiError: NET: getBidPblancListInfoCnstwk: HTTPSConnectionPool(host='apis.data.go.kr', port=443): Max retries exceeded with url: /1230000/BidPublicInfoService04/getBidPblancListInfoCnstwk?serviceKey=***&type=json&inqryDiv=1&inqryBgnDt=202610011309&inqryEndDt=202610031309&pageNo=1&numOfRows=100 (Caused by ConnectTimeoutError(<HTTPSConnection(host='apis.data.go.kr', port=443) at 0x7f085be8bb30>, 'Connection to apis.data.go.kr timed out. (connect timeout=15)'))",
-   "최근낙찰: 한도 소진 (network)",
-   "물품최근: 한도 소진 (network)"
-  ],
-  "minutes": 22.9,
+  "errors": [],
+  "minutes": 12.0,
   "steps": [
    [
     "공고",
-    17.0,
-    "오류"
+    0.6,
+    "ok"
    ],
    [
     "최근낙찰",
-    5.7,
-    "한도"
+    0.8,
+    "ok"
    ],
    [
     "공고문",
@@ -772,20 +768,20 @@
    ],
    [
     "물품최근",
-    0.0,
-    "한도"
+    10.4,
+    "ok"
    ]
   ]
  },
  "lim_scan": true,
  "mf_scan": true,
  "model": {
-  "rows": 192325,
-  "updated_at": "2026-10-03T08:22:35+09:00"
+  "rows": 192326,
+  "updated_at": "2026-10-03T14:15:23+09:00"
  },
  "nego_scan": true,
  "nego_scan2": true,
- "notice_last": "2026-10-03T08:08+09:00",
+ "notice_last": "2026-10-03T14:03+09:00",
  "refill": [],
  "rgn_fill": {
   "cursor": null,
@@ -809,6 +805,6 @@
   }
  },
  "thng_mine_fix": true,
- "updated_at": "2026-10-03T08:35:40+09:00",
+ "updated_at": "2026-10-03T14:15:23+09:00",
  "v": 1
 }
