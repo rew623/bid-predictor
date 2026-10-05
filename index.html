@@ -66,8 +66,8 @@
   <!-- ===================== 공고 검색 ===================== -->
   <section id="view-bids" hidden>
     <div class="seg mode-seg" id="bMode" hidden>
-      <button data-v="live" type="button">🔎 실시간 검색 (나라장터)</button>
-      <button data-v="saved" type="button">📋 진행중 공고 (자동 수집)</button>
+      <button data-v="live" type="button">실시간 검색 (나라장터)</button>
+      <button data-v="saved" type="button">진행중 공고 (자동 수집)</button>
     </div>
 
     <!-- 실시간 검색: 조달청 API 직접 조회 -->
@@ -75,7 +75,7 @@
       <div class="alert warn" id="liveKeyHint" hidden>실시간 검색을 쓰려면 설정 탭에서 조달청 API 서비스키를 한 번 넣어 주세요. <button class="btn sm line" data-goto="settings" type="button">설정으로</button></div>
       <div class="card filter-card">
         <div class="search-box">
-          <span class="search-ico" aria-hidden="true">🔎</span>
+          <span class="search-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg></span>
           <input type="search" id="lQuery" placeholder="공고명 또는 공고번호 (예: 배수로, R26BK01735101, 국방 38392)" aria-label="공고명 또는 공고번호">
         </div>
         <div class="period-row">
@@ -98,7 +98,7 @@
         <div class="search-foot">
           <select id="lAmt" aria-label="추정가격"></select>
           <label class="check"><input type="checkbox" id="lOpen"> 마감 전 공고만</label>
-          <label class="check"><input type="checkbox" id="lElig"> 🏢 참가 가능한 공고만</label>
+          <label class="check"><input type="checkbox" id="lElig"> 참가 가능한 공고만</label>
           <button class="btn" id="lSearch" type="button">검색</button>
         </div>
       </div>
@@ -112,7 +112,7 @@
     <div class="kpis" id="bidsKpis"></div>
     <div class="card filter-card">
       <div class="search-box">
-        <span class="search-ico" aria-hidden="true">🔎</span>
+        <span class="search-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg></span>
         <input type="search" id="bQuery" placeholder="공고명·기관 검색 (예: 도로, 배수로, 춘천시)" aria-label="공고명·기관 검색">
       </div>
       <div class="filter-row">
@@ -121,7 +121,7 @@
         <select id="bLic" aria-label="면허"></select>
         <select id="bAmt" aria-label="금액"></select>
       </div>
-      <label class="check" style="margin-top:10px;"><input type="checkbox" id="bElig"> 🏢 우리 업체가 참가할 수 있는 공고만 <span class="faint ops">(설정 → 우리 업체)</span></label>
+      <label class="check" style="margin-top:10px;"><input type="checkbox" id="bElig"> 우리 업체가 참가할 수 있는 공고만 <span class="faint ops">(설정 → 우리 업체)</span></label>
     </div>
     <div class="list-head">
       <div class="meta-line" id="bidsInfo"></div>
@@ -136,36 +136,36 @@
   <!-- ===================== 예측분석 ===================== -->
   <section id="view-predict" hidden>
     <div class="seg mode-seg">
-      <button data-goto="predict" type="button" class="on">💰 금액 분석</button>
-      <button data-goto="paper" type="button">🧪 모의 투찰</button>
-      <button data-goto="stats" type="button">📈 통계</button>
+      <button data-goto="predict" type="button" class="on">금액 분석</button>
+      <button data-goto="paper" type="button">모의 투찰</button>
+      <button data-goto="stats" type="button">통계</button>
     </div>
     <details class="card guide fold" id="pGuide">
-      <summary><h2>📖 사용법 — 3단계면 끝</h2><span class="meta-line" style="margin:0;">눌러서 열고 닫기</span></summary>
+      <summary><h2>사용법, 3단계면 끝</h2><span class="meta-line" style="margin:0;">눌러서 열고 닫기</span></summary>
       <ol class="steps">
         <li>
-          <b>공고 고르기</b> — <b>입찰공고</b> 탭에서 공고 카드의 <span class="kbd">이 공고로 예측</span>을 누르세요.
+          <b>공고 고르기</b>, <b>입찰공고</b> 탭에서 공고 카드의 <span class="kbd">이 공고로 예측</span>을 누르세요.
           지역·예가범위·기초금액·A값·하한율이 <b>자동으로 채워지고 바로 계산</b>됩니다. (직접 넣으려면 아래 ①②를 채우고 <span class="kbd">예측 실행</span>)
         </li>
         <li>
-          <b>맨 위 파란 카드의 "추천 투찰금액"을 보세요</b> — 과거 공고를 하나하나 다시 따져 봤을 때 <b>가장 자주 1순위였을 금액</b>입니다.
+          <b>맨 위 파란 카드의 "추천 투찰금액"을 보세요</b>, 과거 공고를 하나하나 다시 따져 봤을 때 <b>가장 자주 1순위였을 금액</b>입니다.
           <b>원 단위까지 그대로</b> 넣는 게 기본이고, <b>안전 범위</b> 안이면 확률이 거의 같습니다.
         </li>
         <li>
-          <b>넣은 금액을 기록하세요</b> — 공고에 ☆를 눌러 <b>관심공고</b>에 저장하고 "내가 넣은 투찰금액"을 적어 두면,
+          <b>넣은 금액을 기록하세요</b>, 공고에 ☆를 눌러 <b>관심공고</b>에 저장하고 "내가 넣은 투찰금액"을 적어 두면,
           개찰 뒤 낙찰권/하한 미달/1위보다 높음을 판정하고 <b>다음엔 얼마나 올리거나 내릴지</b> 알려 줍니다.
         </li>
       </ol>
       <h3>무엇이 유리한가요? (실제 데이터 역검증 기준)</h3>
       <ul class="tips">
         <li><b>금액은 추천값으로.</b> 추천값은 이 공고와 <b>경쟁 규모(예상 참가 수)가 비슷한 전국 과거 공고</b>에서 가장 자주 1순위였던 위치입니다. 경쟁이 많은 공고는 경쟁사가 덜 몰리는 가장자리, 적은 공고는 가운데 쪽으로 달라집니다. 매일 새 달 공고로 역검증해서 평균 사정율로 넣는 방식보다 몇 건 더 낙찰됐는지 파란 카드 배지와 <b>설정 → 역검증</b>에 보여줍니다.</li>
-        <li><b>파란 카드의 "✅ 추천 체크"를 위에서부터 확인하세요.</b> 경쟁 규모, 추천 위치, 금액·안전 범위, 기초금액·예가범위 입력, 순공사원가 98% 확인까지 한눈에 봅니다.</li>
+        <li><b>파란 카드의 "추천 체크"를 위에서부터 확인하세요.</b> 경쟁 규모, 추천 위치, 금액·안전 범위, 기초금액·예가범위 입력, 순공사원가 98% 확인까지 한눈에 봅니다.</li>
         <li><b>빨간 경고가 뜨면 금액을 다시 보세요.</b> 낙찰하한가 미만이거나 순공사원가 98% 미만이면 무효·탈락 위험입니다.</li>
         <li><b>꾸준히, 그리고 기록하기.</b> 낙찰확률은 공고당 보통 1~10%입니다. 유리한 공고에 여러 번 넣고, 넣은 금액을 관심공고에 기록하면 내 성적으로 다음 금액을 보정해 줍니다.</li>
       </ul>
     </details>
 
-    <p class="disclaimer">⚠️ 모든 예측은 과거 데이터 통계에 따른 <b>참고용이며 낙찰을 보장하지 않습니다.</b> 표본이 30건 미만이면 "참고 부족"으로 표시합니다.</p>
+    <p class="disclaimer">모든 예측은 과거 데이터 통계에 따른 <b>참고용이며 낙찰을 보장하지 않습니다.</b> 표본이 30건 미만이면 "참고 부족"으로 표시합니다.</p>
 
     <div class="card" id="pBidCard" hidden></div>
 
@@ -246,7 +246,7 @@
 
     <details class="card fold">
       <summary><h2>예가 분석 도구</h2><span class="meta-line" style="margin:0;">발주기관 예가 구간확률 · 복수예가 시뮬레이터 (참고용)</span></summary>
-      <p class="sub" style="margin-top:12px;">예정가격이 만들어지는 방식을 살펴보는 참고 도구입니다. 추천 투찰금액과는 따로 계산됩니다. 발주기관 예가 구간확률은 <b>개찰 상세(복수예가)</b>가 수집된 지역에서만 보입니다 — 강원은 수집기가 매일 최신 공고부터 모으는 중입니다.</p>
+      <p class="sub" style="margin-top:12px;">예정가격이 만들어지는 방식을 살펴보는 참고 도구입니다. 추천 투찰금액과는 따로 계산됩니다. 발주기관 예가 구간확률은 <b>개찰 상세(복수예가)</b>가 수집된 지역에서만 보입니다, 강원은 수집기가 매일 최신 공고부터 모으는 중입니다.</p>
     <div class="tool">
       <div class="card-head">
         <div>
@@ -278,7 +278,7 @@
   <section id="view-watch" hidden>
     <div class="card">
       <h2>내 투찰</h2>
-      <p class="sub"><b>⭐ 관심</b> = ☆로 저장한 공고 · <b>📝 투찰 중</b> = 넣고 개찰을 기다리는 공고 · <b>🏁 개찰 결과</b> = 개찰이 끝난 공고의 순위·1위·예정가격과 과거 투찰 이력.</p>
+      <p class="sub"><b>관심</b> = ☆로 저장한 공고 · <b>투찰 중</b> = 넣고 개찰을 기다리는 공고 · <b>개찰 결과</b> = 개찰이 끝난 공고의 순위·1위·예정가격과 과거 투찰 이력.</p>
       <div id="watchList"></div>
     </div>
   </section>
@@ -289,7 +289,7 @@
     <div id="bidsCorp">
       <div class="card filter-card">
         <div class="search-box">
-          <span class="search-ico" aria-hidden="true">🏢</span>
+          <span class="search-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg></span>
           <input type="search" id="cQuery" placeholder="업체명 · 대표자 · 사업자번호 (예: ○○건설, 123-45-67890)" aria-label="업체 검색" autocomplete="off">
         </div>
         <div class="corp-filter">
@@ -307,9 +307,9 @@
   <!-- ===================== 모의 투찰 (분석 탭 안) ===================== -->
   <section id="view-paper" hidden>
     <div class="seg mode-seg">
-      <button data-goto="predict" type="button">💰 금액 분석</button>
-      <button data-goto="paper" type="button" class="on">🧪 모의 투찰</button>
-      <button data-goto="stats" type="button">📈 통계</button>
+      <button data-goto="predict" type="button">금액 분석</button>
+      <button data-goto="paper" type="button" class="on">모의 투찰</button>
+      <button data-goto="stats" type="button">통계</button>
     </div>
     <div id="paperBody"></div>
   </section>
@@ -317,9 +317,9 @@
   <!-- ===================== 통계 ===================== -->
   <section id="view-stats" hidden>
     <div class="seg mode-seg">
-      <button data-goto="predict" type="button">💰 금액 분석</button>
-      <button data-goto="paper" type="button">🧪 모의 투찰</button>
-      <button data-goto="stats" type="button" class="on">📈 통계</button>
+      <button data-goto="predict" type="button">금액 분석</button>
+      <button data-goto="paper" type="button">모의 투찰</button>
+      <button data-goto="stats" type="button" class="on">통계</button>
     </div>
     <div class="card">
       <h2>조회 조건</h2>
@@ -337,12 +337,12 @@
   <!-- ===================== 설정 ===================== -->
   <section id="view-settings" hidden>
     <div class="card" id="cloudCard">
-      <h2>☁️ PC·폰 같이 쓰기</h2>
+      <h2>PC·폰 같이 쓰기</h2>
       <p class="sub">구글 계정으로 로그인하면 관심공고·투찰 기록·우리 업체·뺀 공고·가져온 투찰 이력·서비스키가 모든 기기에서 같아집니다. 본인 계정에서만 읽을 수 있습니다.</p>
       <div id="cloudBox"></div>
     </div>
     <div class="card">
-      <h2>🏢 우리 업체</h2>
+      <h2>우리 업체</h2>
       <p class="sub">소재지와 보유 면허를 넣으면 입찰공고에서 <b>참가 자격이 되는 공고만</b> 골라 보여줍니다(공고의 참가가능지역·면허 제한 기준). 사업자번호를 넣으면 관심공고의 개찰 결과에서 <b>우리 순위와 투찰금액을 자동으로</b> 찾습니다. 이 기기에 저장되고, 위에서 구글 로그인하면 PC·폰에 같이 저장됩니다(본인만 볼 수 있음).</p>
       <div class="inline-inputs" style="margin-top:0;">
         <div><label for="coName">상호 (선택)</label><input type="text" id="coName" autocomplete="off" placeholder="예: ○○건설"></div>
@@ -368,7 +368,7 @@
       </div>
       <label for="coInds" style="margin-top:8px;">등록 업종 (쉼표로 구분, 예: 동물용 의료기기 판매업, 옥외광고업)</label>
       <input type="text" id="coInds" autocomplete="off" placeholder="나라장터 경쟁입찰참가자격에 등록한 업종">
-      <p class="faint" style="margin:6px 0 4px;">업종 제한이 걸린 물품 공고는 드뭅니다 — 비워 두면 그런 공고만 '업종 제한'으로 빠집니다. 아래는 지금 공고에 나온 업종(누르면 추가).</p>
+      <p class="faint" style="margin:6px 0 4px;">업종 제한이 걸린 물품 공고는 드뭅니다, 비워 두면 그런 공고만 '업종 제한'으로 빠집니다. 아래는 지금 공고에 나온 업종(누르면 추가).</p>
       <details class="ind-sug"><summary>＋ 지금 공고에 나온 업종에서 고르기</summary><div class="chip-group" id="coIndSug"></div></details>
       <div class="btn-row" style="margin-top:14px;"><button class="btn sm" id="coSave" type="button">저장</button><span class="meta-line" id="coMsg" style="margin:0;"></span></div>
     </div>
@@ -381,24 +381,24 @@
       <div class="btn-row" style="margin-top:12px;">
         <button class="btn sm" id="keySave" type="button">저장 후 연결 확인</button>
         <button class="btn sm line" id="keyDel" type="button">지우기</button>
-        <button class="btn sm ghost" id="keyQr" type="button">📱 폰으로 보내기 (QR)</button>
+        <button class="btn sm ghost" id="keyQr" type="button">폰으로 보내기 (QR)</button>
         <span class="meta-line" id="keyMsg" style="margin:0;"></span>
       </div>
       <div id="keyQrBox" class="qr-box" hidden></div>
     </div>
     <details class="adv">
-    <summary>🔧 고급 — 데이터 현황 · 수집 · 역검증 <span class="faint">(평소엔 안 봐도 됩니다)</span></summary>
+    <summary>고급, 데이터 현황 · 수집 · 역검증 <span class="faint">(평소엔 안 봐도 됩니다)</span></summary>
     <div class="card">
       <h2>데이터 현황</h2>
       <div id="setData"></div>
     </div>
     <div class="card">
-      <h2>수집 현황 — 지금 받는 것 · 남은 것</h2>
+      <h2>수집 현황, 지금 받는 것 · 남은 것</h2>
       <p class="sub">공사·물품·국방별로 어디까지 받았고 얼마나 남았는지. 개찰 상세처럼 공고 1건마다 조달청을 불러야 하는 것은 하루 한도 안에서 나눠 받습니다.</p>
       <div id="setDetail"></div>
     </div>
     <div class="card">
-      <h2>조달청 대조 점검 — 앱 데이터가 조달청과 맞나</h2>
+      <h2>조달청 대조 점검, 앱 데이터가 조달청과 맞나</h2>
       <p class="sub">앱이 모은 과거 낙찰 중 최근 1개월 공고를 무작위로 10건 골라, 조달청에서 <b>개찰 순위·예정가격을 다시 조회</b>해 낙찰금액·예정가격·참가 업체 수가 같은지 비교합니다. (서비스키 필요, 조달청 호출 20회)</p>
       <div class="inline-inputs" style="margin-top:0;">
         <div><label for="vSido">시·도</label><select id="vSido"></select></div>
@@ -407,7 +407,7 @@
       <div id="verifyResult" style="margin-top:12px;"></div>
     </div>
     <div class="card">
-      <h2>역검증 — 추천값으로 넣었으면 실제로 낙찰됐나 (매일 자동, 전국)</h2>
+      <h2>역검증, 추천값으로 넣었으면 실제로 낙찰됐나 (매일 자동, 전국)</h2>
       <p class="sub">수집기가 매일 전국 데이터로, 최근 각 달의 공고를 <b>그 이전 데이터만으로</b> 추천해 실제 결과와 대조합니다. 미래 데이터를 보지 않으므로 앞으로 새 공고에서 기대할 수 있는 성적에 가깝습니다.</p>
       <div id="setVal"></div>
     </div>
@@ -426,9 +426,9 @@
       <h2>앱</h2>
       <dl class="kv">
         <dt>앱 버전</dt><dd id="appVersion">-</dd>
-        <dt>문제가 생기면</dt><dd><a class="btn line sm" href="stable/" id="stableLink">🛟 안정판으로 열기</a> <span class="faint" id="stableVer"></span></dd>
+        <dt>문제가 생기면</dt><dd><a class="btn line sm" href="stable/" id="stableLink">안정판으로 열기</a> <span class="faint" id="stableVer"></span></dd>
         <dt>운영자 모드</dt>
-        <dd><label class="check"><input type="checkbox" id="adminMode"> 🔧 자세한 설명 모두 보기</label></dd>
+        <dd><label class="check"><input type="checkbox" id="adminMode"> 자세한 설명 모두 보기</label></dd>
         <dt>화면 테마</dt>
         <dd><div class="seg" id="themeSeg"><button data-v="auto" type="button">시스템</button><button data-v="light" type="button">라이트</button><button data-v="dark" type="button">다크</button><button data-v="glass" type="button">글래스</button><button data-v="mesh" type="button">메시</button></div></dd>
       </dl>

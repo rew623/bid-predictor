@@ -1,5 +1,5 @@
 'use strict';
-/* 낙찰가 예측 도우미 — 1단계 (정적 PWA)
+/* 낙찰가 예측 도우미, 1단계 (정적 PWA)
  * 데이터: data/*.json (GitHub Actions 가 매일 갱신). 형식은 CLAUDE.md 참고.
  * 개인 데이터(관심공고)는 WatchStore 한 곳에서만 저장한다 → 2단계에서 Firestore 로 교체.
  */
@@ -48,7 +48,7 @@ function ddayLabel(close){
   const d = parseKst(close);
   if(!d) return {text:'마감 미정', urgent:false};
   const diff = d - Date.now();
-  // 달력 날짜(KST) 차이 — 남은 시간 ÷ 24시간으로 세면 '내일 10시 마감'이 오늘로, D-2 가 D-1 로 나왔다(2026-09-27)
+  // 달력 날짜(KST) 차이, 남은 시간 ÷ 24시간으로 세면 '내일 10시 마감'이 오늘로, D-2 가 D-1 로 나왔다(2026-09-27)
   const days = Math.round((Date.parse(close.slice(0, 10)) - Date.parse(new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10))) / 86400000);
   const hh = close.length > 10 ? close.slice(11,16) : '';
   const md = close.slice(5,10).replace('-','/');
@@ -86,7 +86,7 @@ const LS = {
   get(k, d){ try{ const v = localStorage.getItem('bp.'+k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } },
   set(k, v){ try{ localStorage.setItem('bp.'+k, JSON.stringify(v)); }catch(e){} if(Cloud.keys.includes(k)) Cloud.touch(k); },
 };
-// 화면 조건(검색·필터·보던 칸)은 이번에 앱을 연 동안만 기억한다 — 앱을 새로 열거나 새로고침하면 모든 탭이 기본(우리 업체 시·도·시·군 등)으로 (2026-09-27 요청).
+// 화면 조건(검색·필터·보던 칸)은 이번에 앱을 연 동안만 기억한다, 앱을 새로 열거나 새로고침하면 모든 탭이 기본(우리 업체 시·도·시·군 등)으로 (2026-09-27 요청).
 // 탭을 오가는 동안은 그대로(탭 상태 유지). 그래서 동기화(Cloud.keys)에도 넣지 않는다.
 const VIEW_KEYS = ['bidsFilter', 'bidsMode', 'mineKind', 'mineArea', 'mineSort', 'watchMode', 'statsFilter', 'pSidos', 'pLics', 'paperArea', 'resKind', 'resPeriod', 'diagPeriod', 'diagKind', 'corpF2'];
 try{ VIEW_KEYS.forEach(k => localStorage.removeItem('bp.' + k)); }catch(e){}
@@ -95,11 +95,11 @@ try{ VIEW_KEYS.forEach(k => localStorage.removeItem('bp.' + k)); }catch(e){}
 // 개인 데이터(관심공고·투찰 기록·우리 업체·뺀 공고·가져온 이력·서비스키·화면 설정)를 users/{uid}/kv/{키} 문서 하나씩에
 // {v: JSON 문자열, at: 바꾼 시각(ms), dev: 기기 id} 로 둔다. 같은 키는 나중에 바꾼 쪽이 이긴다.
 // 처음 로그인할 때만 관심공고·뺀 공고는 두 기기 것을 합친다. Firestore 는 배열 안 배열을 못 넣어 값은 문자열로.
-// 보안 규칙: users/{uid}/** 는 본인(request.auth.uid == uid)만 읽고 쓴다 — Firebase 콘솔에 설정.
+// 보안 규칙: users/{uid}/** 는 본인(request.auth.uid == uid)만 읽고 쓴다, Firebase 콘솔에 설정.
 const FIREBASE_CONFIG = {
   apiKey: 'AIzaSyD3jJD98w4FP8FDKFkvmA2K54ophlqyws0', authDomain: 'bidproject-452e5.firebaseapp.com', projectId: 'bidproject-452e5',
   storageBucket: 'bidproject-452e5.firebasestorage.app', messagingSenderId: '220864509888', appId: '1:220864509888:web:420d8926f699090f9fba25',
-};   // 웹 앱 설정값은 공개돼도 되는 값(비밀 아님) — 데이터는 보안 규칙이 지킨다
+};   // 웹 앱 설정값은 공개돼도 되는 값(비밀 아님), 데이터는 보안 규칙이 지킨다
 const FB_VER = '10.12.2';
 const Cloud = {
   keys: ['admin', 'company', 'watch', 'hiddenBids', 'resHidden', 'history', 'corpWatch', 'corpSeen', 'apiKey', 'theme', 'myCal', 'curveSmooth', 'guideClosed'],
@@ -139,7 +139,7 @@ const Cloud = {
         if(this.unsub){ this.unsub(); this.unsub = null; }
         if(user){
           this.status = '';
-          // 이 기기에 마지막으로 로그인한 계정과 다르면(다른 사람) 이 기기의 개인 데이터를 비우고 그 계정 데이터만 받는다 — 앞사람 관심공고·업체·서비스키가 섞이지 않게
+          // 이 기기에 마지막으로 로그인한 계정과 다르면(다른 사람) 이 기기의 개인 데이터를 비우고 그 계정 데이터만 받는다, 앞사람 관심공고·업체·서비스키가 섞이지 않게
           const prev = localStorage.getItem('bp._uid');
           const switched = prev && prev !== user.uid;
           if(switched) this.clearLocal();
@@ -340,15 +340,15 @@ const Data = {
       return Model.m;
     });
   },
-  /** 물품 추천 투찰 사정률(data/thng_rec.json, scripts/thng_rec.py — 추첨 평균 곡선, 2026-09-29) */
+  /** 물품 추천 투찰 사정률(data/thng_rec.json, scripts/thng_rec.py, 추첨 평균 곡선, 2026-09-29) */
   loadThngRec(){
     return this.once('thngRec', async () => {
       try{ ThngRec = await this.fetchJson('thng_rec.json'); }catch(e){ ThngRec = null; }
       return ThngRec;
     });
   },
-  /** 진행중 물품 공고(data/goods.json, 수집기 물품최근 단계) — kind '물품' 을 붙여 공사 공고와 같은 카드로 */
-  /** 진행중 국방 공고(data/d2b/bids.json, collect_d2b.py) — 물품·공사(시설), 용역은 뺌 */
+  /** 진행중 물품 공고(data/goods.json, 수집기 물품최근 단계), kind '물품' 을 붙여 공사 공고와 같은 카드로 */
+  /** 진행중 국방 공고(data/d2b/bids.json, collect_d2b.py), 물품·공사(시설), 용역은 뺌 */
   loadD2bBids(){
     return this.once('d2bbids', async () => {
       try{ this.d2bBids = ((await this.fetchJson('d2b/bids.json')).items || []).filter(b => b.kind !== '용역'); }
@@ -388,7 +388,7 @@ const Data = {
     return out;
   },
   /** 개찰 상세: {bids: Map(id → {date, plan, base, p:[[번호,가격,추첨,횟수]], r:[[순위,업체idx,금액,투찰률,비고]], corps})} */
-  /** 3년보다 옛 강원 개찰 상세(압축: 상위 30곳 r + 전원 c·x, nm·org 포함) — 업체 보기에서만 */
+  /** 3년보다 옛 강원 개찰 상세(압축: 상위 30곳 r + 전원 c·x, nm·org 포함), 업체 보기에서만 */
   loadOpeningOld(sido){
     return this.once('oo:' + sido, async () => {
       const paths = Object.values(this.meta.files.opening_old?.[sido] || {}).flat();
@@ -456,7 +456,7 @@ function predictFrom(rows){
   };
 }
 
-// ---------- 낙찰확률 (투찰 사정률 기준) — 설계: CLAUDE.md "낙찰확률 곡선"
+// ---------- 낙찰확률 (투찰 사정률 기준), 설계: CLAUDE.md "낙찰확률 곡선"
 /** 투찰금액 → 투찰 사정률 x = ((투찰금액 − A) ÷ 낙찰하한율 + A) ÷ 기초금액 × 100.
  *  x ≥ 실제 사정율 S ⟺ 투찰금액 ≥ 낙찰하한가. bidAmount 의 역함수. */
 function bidToSr(amt, base, a, floor){
@@ -477,7 +477,7 @@ function winWindow(r, op){
   let W = null;
   if(op?.r?.length){
     for(const row of op.r){
-      if(/미달/.test(row[4] || '')) continue;   // 조달청 공식 판정이 하한 미달이면 1위 후보가 아님(100억↑ 공사의 순공사원가 98% 미달 등 — 계산으론 하한 위, 2026-09-28 점검 26건)
+      if(/미달/.test(row[4] || '')) continue;   // 조달청 공식 판정이 하한 미달이면 1위 후보가 아님(100억↑ 공사의 순공사원가 98% 미달 등, 계산으론 하한 위, 2026-09-28 점검 26건)
       const x = bidToSr(row[2], base, a, floor);
       if(x != null && x >= S && (W == null || x < W)) W = x;
     }
@@ -570,7 +570,7 @@ function expectedCnt(pool, notice){
   return null;
 }
 
-// ---------- 전국 추천 모델 (data/model.json — scripts/model.py 가 매일 계산, 설계·근거는 CLAUDE.md)
+// ---------- 전국 추천 모델 (data/model.json, scripts/model.py 가 매일 계산, 설계·근거는 CLAUDE.md)
 const Model = {m: null};
 const rngKeyOf = (rng) => rng ? rng.map(v => +v).join(',') : '';
 /** 예상 참가업체 수(로그). 금액대×예가범위 → 시도×금액대 → 시도×금액대×하한율 → 면허 → 시도×면허 → 기관 순으로 수축해 섞는다 (model.py 와 같은 계산) */
@@ -623,13 +623,13 @@ function rgnOf(n){
   if(!bidRgn || bidRgn.src !== Data.bids) bidRgn = {src: Data.bids, map: new Map(Data.bids.map(b => [b.id, b.rgn]))};
   return bidRgn.map.get(n.id) || null;
 }
-/** 사실조사(사전단속) 공사인지 — 수집기가 공고문 첨부에서 찾은 표시(bids.json sd). 실시간 검색 공고는 같은 공고번호의 bids.json 값 */
-const SD_TIP = '사실조사(사전단속)가 실시되는 공사입니다. 개찰 최고 순위 업체는 개찰 다음 날부터 사실조사 — 준비 자료를 본사에 갖추고 요청 기한 안에 제출(공고문 참고).';
+/** 사실조사(사전단속) 공사인지, 수집기가 공고문 첨부에서 찾은 표시(bids.json sd). 실시간 검색 공고는 같은 공고번호의 bids.json 값 */
+const SD_TIP = '사실조사(사전단속)가 실시되는 공사입니다. 개찰 최고 순위 업체는 개찰 다음 날부터 사실조사, 준비 자료를 본사에 갖추고 요청 기한 안에 제출(공고문 참고).';
 let bidSd = null;
 const sdTag = (n) => (n.sd || sdOf(n)) ? `<span class="tag warn tip" data-tip="${esc(SD_TIP)}" title="${esc(SD_TIP)}">사전단속</span>` : '';
-/** 우리가 1순위인 사전단속 공사 — 개찰 다음 날부터 사실조사라 할 일이 된다(개찰 2주 안만) */
+/** 우리가 1순위인 사전단속 공사, 개찰 다음 날부터 사실조사라 할 일이 된다(개찰 2주 안만) */
 const sdAlert = (n, first, date) => first && (n.sd || sdOf(n)) && date && (Date.now() - Date.parse(date.slice(0, 10))) < 14 * 86400000
-  ? '<div class="alert danger sd-alert">🔍 <b>사실조사(사전단속) 대상</b> — 개찰 다음 날부터 조사합니다. 준비 자료를 본사 사무실에 갖추고, 발주처가 요구하면 <b>기한 안에 제출</b>하세요(안 되면 낙찰에서 제외). 공고문 \'기타 참고사항\' 확인.</div>' : '';
+  ? '<div class="alert danger sd-alert"><b>사실조사(사전단속) 대상</b>, 개찰 다음 날부터 조사합니다. 준비 자료를 본사 사무실에 갖추고, 발주처가 요구하면 <b>기한 안에 제출</b>하세요(안 되면 낙찰에서 제외). 공고문 \'기타 참고사항\' 확인.</div>' : '';
 function sdOf(n){
   if(n.sd) return true;
   if(!Data.bids?.length) return false;
@@ -639,7 +639,7 @@ function sdOf(n){
 /** 공고 → 모델 추천. cnt 를 주면 예상 참가수 대신 그 값을 쓴다 */
 function modelPredict(n, cnt){
   if(!Model.m || (n.kind && n.kind !== '공사')) return null;
-  if(n.live && licOf(n).length) n = {...n, lic: licOf(n)};   // 모델은 면허제한으로 학습 — 실시간 공고의 lic 는 주공종
+  if(n.live && licOf(n).length) n = {...n, lic: licOf(n)};   // 모델은 면허제한으로 학습, 실시간 공고의 lic 는 주공종
   const rngKnown = rngKeyOf(n.rng) in Model.m.curves;
   const rng = rngKnown ? n.rng : [-3, 3];
   const ln = cnt ? Math.log(cnt) : predictLnN(n);
@@ -659,7 +659,7 @@ function modelPredict(n, cnt){
 }
 /** 지역 전용 추천의 역검증 배수 (공정 기대 대비) */
 const areaLift = (a) => a?.val?.fair ? a.val[a.use] / a.val.fair : null;
-const areaText = (a) => a ? `🎯 ${a.label} 전용 추천 (${a.use === 'sgg' ? a.label : '같은 도'} ${a.seg === 'small' ? '소규모' : '대규모'} 공고 기준 · 역검증 ${fmtNum(a.val.n)}건 ${a.val[a.use]}건 낙찰, 전국 모델 ${a.val.national}건)` : '';
+const areaText = (a) => a ? `${a.label} 전용 추천 (${a.use === 'sgg' ? a.label : '같은 도'} ${a.seg === 'small' ? '소규모' : '대규모'} 공고 기준 · 역검증 ${fmtNum(a.val.n)}건 ${a.val[a.use]}건 낙찰, 전국 모델 ${a.val.national}건)` : '';
 /** 추천 결과를 한 모양으로: 전국 모델(mp) 또는 이 지역 곡선(wc) */
 function recFromModel(mp){
   const e = mp.e, g = Model.m.grid;
@@ -683,7 +683,7 @@ function valBadge(){
 }
 /** 예상 참가수가 속한 역검증 구간 */
 const valSegment = (nExp) => Model.m?.validation?.segments?.find(s => nExp >= s.k[0] && (s.k[1] == null || nExp < s.k[1]));
-/** 역검증(표본외) 기준 낙찰확률 = 비슷한 공고의 공정 기대(1/(참가수+1) 평균 — 우리가 들어가면 참가자가 하나 늘어난다) × 그 경쟁 규모 구간의 역검증 배수.
+/** 역검증(표본외) 기준 낙찰확률 = 비슷한 공고의 공정 기대(1/(참가수+1) 평균, 우리가 들어가면 참가자가 하나 늘어난다) × 그 경쟁 규모 구간의 역검증 배수.
  *  곡선 최대값(e.p)은 과거 데이터에 맞춘 값이라 새 공고에서는 부풀려져 있다 */
 function valWinP(random, nExp){
   const s = nExp ? valSegment(nExp) : null;
@@ -695,7 +695,7 @@ function valWinP(random, nExp){
 /** 공고 목록용 간단 예측. 평균 사정율: 같은 시도 최근 24개월 → 면허 겹침(10건↑) → 예가범위 같음(30건↑).
  *  낙찰확률 곡선: 같은 시도 최근 24개월 → 예가범위 같음(30건↑) (면허로는 쪼개지 않음). 조건별 결과는 재사용 */
 /** 공고 목록용 예측: 전국 모델이 있으면 그걸로(지역 파일 없이도 됨), 없으면 이 지역 곡선 */
-/** 물품 추천(나라장터·국방): 추첨 평균 곡선의 한 위치 x — 투찰금액 = 기초금액 × x% × 하한율%(A값 없음).
+/** 물품 추천(나라장터·국방): 추첨 평균 곡선의 한 위치 x, 투찰금액 = 기초금액 × x% × 하한율%(A값 없음).
  *  나라장터는 참가 50곳↑ 공고로 검증(×2.2) → 50곳 미만 예상이면 small_x(101.0, 강원 물품 역검증). 국방은 규모 상관없이 한 위치 */
 let ThngRec = null;
 function goodsRec(b){
@@ -858,12 +858,12 @@ const noDetailHtml = (sido) => `<div class="empty">이 지역(${esc(sido)})은 �
 let currentTab = null;
 let prevVisit = null;       // 이번 세션 시작 전 마지막 방문 시각 (NEW 판정 기준)
 
-/** 간단 모드(기본) / 운영자 모드(bp.admin, 동기화, 누구나 설정에서 켬): 기능은 같고, 간단 모드는 설명 문구만 CSS 로 숨긴다(body.simple — style.css '간단 모드') */
+/** 간단 모드(기본) / 운영자 모드(bp.admin, 동기화, 누구나 설정에서 켬): 기능은 같고, 간단 모드는 설명 문구만 CSS 로 숨긴다(body.simple, style.css '간단 모드') */
 const applyMode = () => document.body.classList.toggle('simple', !LS.get('admin', false));
 /** 탭을 옮겨 다녀도 하던 화면 그대로(2026-09-27 요청): 조건·펼침·결과는 DOM·변수에 남기고, 하단 탭·뒤로 버튼으로 돌아오면 스크롤도 되돌린다.
- *  분석 탭은 마지막으로 보던 화면(금액 분석·모의 투찰·통계). 내 투찰 탭도 보던 칸 그대로, 앱을 열고 처음 들어갈 때만 🏁 개찰 결과부터(요청). */
+ *  분석 탭은 마지막으로 보던 화면(금액 분석·모의 투찰·통계). 내 투찰 탭도 보던 칸 그대로, 앱을 열고 처음 들어갈 때만 개찰 결과부터(요청). */
 const ANA_TABS = ['predict', 'paper', 'stats'];
-let lastAna = 'paper';   // 분석 탭을 처음 열면 🧪 모의 투찰부터 (2026-09-29 요청)
+let lastAna = 'paper';   // 분석 탭을 처음 열면 모의 투찰부터 (2026-09-29 요청)
 const tabY = {}, tabSeen = {};   // 탭별 스크롤 위치, 마지막으로 그렸을 때의 데이터 갱신 시각
 function switchTab(tab, push=true, opt={}){
   if(!TAB_TITLES[tab]) tab = 'home';
@@ -874,7 +874,7 @@ function switchTab(tab, push=true, opt={}){
   if(currentTab) tabY[currentTab] = window.scrollY;
   const first = !tabSeen[tab];
   if(tab === 'home' && first){ Mine.kind = '공사'; Mine.area = 'sido'; Mine.shown = 60; }
-  if(tab === 'watch' && first && opt.nav){ watchMode = 'result'; LS.set('watchMode', watchMode); }   // 카드의 '내 투찰'·투찰 등록으로 들어올 땐 그 칸(투찰 중) 그대로   // 앱을 열면 '공사 · 우리 시·도'부터 (2026-09-26 요청) — 다른 탭 다녀올 땐 보던 그대로
+  if(tab === 'watch' && first && opt.nav){ watchMode = 'result'; LS.set('watchMode', watchMode); }   // 카드의 '내 투찰'·투찰 등록으로 들어올 땐 그 칸(투찰 중) 그대로   // 앱을 열면 '공사 · 우리 시·도'부터 (2026-09-26 요청), 다른 탭 다녀올 땐 보던 그대로
   const keep = opt.refresh || ((opt.nav || opt.back) && !first);
   currentTab = tab;
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'view-' + tab);
@@ -899,7 +899,7 @@ const isNew = (b) => prevVisit && b.seen && new Date(b.seen) > prevVisit;
 /** 탭 배지: 입찰공고 탭을 마지막으로 본 뒤 새로 수집된 공고 수 */
 /** 공고 검색 탭 NEW 배지는 없앴다(2026-09-27): 실시간 검색이 기본이 된 뒤 지워질 때가 없었고, 새 공고는 우리 공고 카드의 NEW 로 보인다 */
 function updateNewBadge(){ $('newBadge').hidden = true; }
-/** 내 투찰 탭 배지 = ⭐ 관심에 넣고 아직 투찰 안 한, 개찰 전 공고 수 (할 일) */
+/** 내 투찰 탭 배지 = 관심에 넣고 아직 투찰 안 한, 개찰 전 공고 수 (할 일) */
 async function updateWatchBadge(){
   const el = $('watchBadge'); if(!el) return;
   const n = (await WatchStore.list()).filter(w => !isJoined(w) && !isDone(w)).length;
@@ -960,7 +960,7 @@ function fillBidsSgg(value){
 let watchIds = new Set();
 let bidMap = new Map();   // 공고ID → 내가 등록한 투찰금액 (카드에 '✓ 투찰 등록함' 표시)
 /** 화면 아래 잠깐 뜨는 알림 */
-/** '더 보기'처럼 목록을 늘릴 때 보던 자리 그대로 — 다시 그려도 스크롤을 되돌린다 (2026-09-27: 누르면 맨 위로 올라가던 문제) */
+/** '더 보기'처럼 목록을 늘릴 때 보던 자리 그대로, 다시 그려도 스크롤을 되돌린다 (2026-09-27: 누르면 맨 위로 올라가던 문제) */
 async function keepY(fn){
   const y = window.scrollY;
   await fn();
@@ -1061,19 +1061,19 @@ async function renderBids(){
   $('bidsMore').textContent = `더 보기 (${fmtNum(rows.length - bidsShown)}건 남음)`;
 }
 
-// 더비스식 짧은 면허 이름 (대업종은 '(대)') — 카드 첫 줄에 바로
+// 더비스식 짧은 면허 이름 (대업종은 '(대)'), 카드 첫 줄에 바로
 const LIC_SHORT = {'금속창호·지붕건축물조성': '금속지붕(대)', '도장·습식·방수·석공': '도장습식석공(대)', '지반조성·포장': '지반조성포장(대)',
   '실내건축': '실내건축(대)', '철근·콘크리트': '철콘(대)', '구조물해체·비계': '비계구조(대)', '상하수도설비': '상하수도(대)', '철도·궤도': '철도궤도(대)',
   '철강구조물': '철강구조(대)', '수중·준설': '수중준설(대)', '승강기·삭도': '승강삭도(대)', '조경식재·시설물': '식재시설물(대)', '기계설비': '기계설비(대)',
   '가스시설시공': '가스(대)', '토목건축': '토건', '산업환경설비': '산업환경', '정보통신': '통신', '소방시설': '소방', '보링·그라우팅': '보링그라우팅'};
 /** 카드 첫 줄 면허: 요구 면허 짧은 이름(우리 면허는 ✓) + 요구 주력분야 */
 function goodsTags(b){
-  return ['<span class="tag goods">📦 물품</span>', b.cm && b.cm !== '일반경쟁' ? `<span class="tag">${esc(b.cm)}</span>` : '',
+  return ['<span class="tag goods">물품</span>', b.cm && b.cm !== '일반경쟁' ? `<span class="tag">${esc(b.cm)}</span>` : '',
     ...(b.inds || []).map(t => `<span class="tag" title="업종 제한">${esc(t)}</span>`), b.prd ? `<span class="tag" title="세부품명">${esc(b.prd)}</span>` : ''].filter(Boolean);
 }
 function d2bTags(b){
   const soon = b.reg && Date.parse(b.reg.replace(' ', 'T') + ':00+09:00') - Date.now() < 2 * 86400000;
-  return ['<span class="tag d2b">🎖 국방</span>', b.kind === '물품' ? '<span class="tag goods">📦 물품</span>' : '<span class="tag">🏗 시설공사</span>',
+  return ['<span class="tag d2b">국방</span>', b.kind === '물품' ? '<span class="tag goods">물품</span>' : '<span class="tag">시설공사</span>',
     b.reg ? `<span class="tag ${soon ? 'warn' : ''}" title="국방전자조달은 입찰서 제출 전에 입찰참가등록을 먼저 해야 합니다">참가등록 ${esc(b.reg.slice(5).replace('-', '/'))}까지</span>` : '',
     b.cm && b.cm !== '일반경쟁' ? `<span class="tag">${esc(b.cm)}</span>` : '',
     ...(b.inds || []).map(t => `<span class="tag" title="면허·업종 제한">${esc(LIC_SHORT[t.replace(/(공사)?업$/, '')] || t)}</span>`), b.prd ? `<span class="tag">${esc(b.prd)}</span>` : ''].filter(Boolean);
@@ -1082,7 +1082,7 @@ function licShortTags(b){
   if(b.src === '국방') return d2bTags(b);
   if(b.kind === '물품') return goodsTags(b);
   const lics = licOf(b);
-  if(!lics.length) return b.live && !b.limTried ? ['<span class="tag">면허 조회 중…</span>'] : ['<span class="tag warn" title="면허제한 정보가 아직 없음 — 공고문에서 참가 자격 확인">면허 정보 없음</span>'];
+  if(!lics.length) return b.live && !b.limTried ? ['<span class="tag">면허 조회 중…</span>'] : ['<span class="tag warn" title="면허제한 정보가 아직 없음, 공고문에서 참가 자격 확인">면허 정보 없음</span>'];
   const mine = new Set(Company.isSet() ? Company.get().lics : []);
   const mf = [...new Set(mfOf(b).flatMap(m => mfClean(m).split(/[·,]\s*|\],\s*\[/)).map(x => x.replace(/^\[?\d+\^?/, '').replace(/(석|토)공사$/, '$1공').replace(/공사$/, '').trim()).filter(Boolean))];   // '석공사'→'석공', '도장공사'→'도장'
   return [...lics.map(l => `<span class="tag${mine.has(l) ? ' lic mine' : ''}" title="${esc(l)}">${mine.has(l) ? '✓ ' : ''}${esc(LIC_SHORT[l] || l)}</span>`),
@@ -1098,7 +1098,7 @@ function licTags(b){
       ...(mf.length ? [`<span class="tag" title="면허제한의 주력분야">주력: ${esc(mf.map(mfClean).join(', '))}</span>`] : [])];
   }
   if(!b.live) return [];
-  if(b.limOk) return [(b.kind || '공사') === '공사' ? '<span class="tag warn" title="조달청에 면허제한이 아직 없음 — 공고문에서 참가 자격 확인">면허 정보 없음</span>' : '<span class="tag">면허 제한 없음</span>'];
+  if(b.limOk) return [(b.kind || '공사') === '공사' ? '<span class="tag warn" title="조달청에 면허제한이 아직 없음, 공고문에서 참가 자격 확인">면허 정보 없음</span>' : '<span class="tag">면허 제한 없음</span>'];
   return [b.limTried ? '<span class="tag">요구 면허 조회 실패</span>' : '<span class="tag">요구 면허 조회 중…</span>'];
 }
 function bidCard(b, today, opts = {}){
@@ -1116,8 +1116,8 @@ function bidCard(b, today, opts = {}){
   // 한눈에: 지역·수의·정정·참가 가능 여부만. 면허·예가·하한·사정률 같은 세부는 '자세히'로
   const tags = [
     `<span class="tag loc">${esc([b.sido, b.sgg].filter(Boolean).join(' ') || (b.src === '국방' ? (b.rgn?.length ? b.rgn.join('·') + ' 제한' : '전국') : '지역 미상'))}</span>`,
-    b.sui ? '<span class="tag warn" title="수의계약(견적) — 추천값은 경쟁입찰 과거 공고 기준">수의</span>' : '',
-    b.corr ? '<span class="tag warn" title="정정공고 — 바뀐 내용을 원문에서 확인">정정</span>' : '',
+    b.sui ? '<span class="tag warn" title="수의계약(견적), 추천값은 경쟁입찰 과거 공고 기준">수의</span>' : '',
+    b.corr ? '<span class="tag warn" title="정정공고, 바뀐 내용을 원문에서 확인">정정</span>' : '',
     sdTag(b),
     ...licShortTags(b),
     eligTag(b),
@@ -1126,22 +1126,22 @@ function bidCard(b, today, opts = {}){
   let pred = '', more = '';
   if(qp){
     pred = `<div class="b-pred">
-        <div class="pv hl big"><span>추천 투찰가${qp.bid ? ` <button type="button" class="copy-btn" data-copy="${qp.bid}" title="나라장터에 붙여넣기">📋 복사</button>` : ''}</span><b>${qp.bid ? won(qp.bid) : b.live && b.kind === '공사' && !b.bsisTried && apiKey() ? '<span class="faint">불러오는 중…</span>' : opened(b) ? '기초금액 없음' : '기초금액 공개 후'}</b></div>
+        <div class="pv hl big"><span>추천 투찰가${qp.bid ? ` <button type="button" class="copy-btn" data-copy="${qp.bid}" title="나라장터에 붙여넣기">복사</button>` : ''}</span><b>${qp.bid ? won(qp.bid) : b.live && b.kind === '공사' && !b.bsisTried && apiKey() ? '<span class="faint">불러오는 중…</span>' : opened(b) ? '기초금액 없음' : '기초금액 공개 후'}</b></div>
         ${qp.bestSr != null ? `<div class="pv"><span>낙찰확률</span><b>${(qp.winP * 100).toFixed(2)}%${qp.lift ? ` <small class="lift">×${qp.lift.toFixed(1)}</small>` : ''}</b></div>` : ''}
         ${qp.cnt ? `<div class="pv"><span>예상 참가</span><b>~${fmtNum(qp.cnt)}곳</b></div>` : ''}
         ${done.amt ? `<div class="pv"><span>낙찰가</span><b>${won(done.amt)}</b></div>` : ''}
         ${done.rec ? `<div class="pv if-rec ${done.rec.cls}"><span>추천가였다면</span><b>${done.rec.text}</b></div>` : ''}
-      </div>${qp.area ? `<div class="b-area">🎯 ${esc(qp.area.label)} 전용 추천</div>` : ''}`;
+      </div>${qp.area ? `<div class="b-area">${esc(qp.area.label)} 전용 추천</div>` : ''}`;
     more = `<div class="b-kv"><span>추천 투찰 사정률 <b>${qp.bestSr != null ? pct(qp.bestSr, 3) : '-'}</b></span><span>예상 사정율 <b>${pct(qp.sr, 3)}</b></span>${qp.value ? `<span>기대 수주액 <b>${eok(qp.value)}</b></span>` : ''}</div>
       <div class="b-note">${sampleText(qp.n)}${qp.note ? ` · ${esc(qp.note)}` : ''}${qp.area ? ` · ${esc(areaText(qp.area))}` : ''}${qp.model ? (qp.area ? ' · ×는 공정 기대(1÷(참가+1)) 대비' : ' · 추천값·낙찰확률은 전국의 경쟁 규모가 비슷한 공고 기준 · ×는 공정 기대(1÷(참가+1)) 대비') : qp.wc ? ` · 낙찰확률은 과거 ${fmtNum(qp.wc.n)}건 재생, 예상 참가 수 반영 · ×는 무작위 대비` : ''}</div>`;
   }else if(goodsRec(b)){
     const g = goodsRec(b);
     pred = `<div class="b-pred">
-        <div class="pv hl big"><span>추천 투찰가${g.bid ? ` <button type="button" class="copy-btn" data-copy="${g.bid}" title="붙여넣기용 숫자">📋 복사</button>` : ''}</span><b>${g.bid ? won(g.bid) : b.base ? '<span title="기초금액은 있지만 낙찰하한율이 없음 — 금액만 투찰하는 적격심사 공고가 아닐 수 있으니 공고문 확인">하한율 없음</span>' : '기초금액 공개 후'}</b></div>
+        <div class="pv hl big"><span>추천 투찰가${g.bid ? ` <button type="button" class="copy-btn" data-copy="${g.bid}" title="붙여넣기용 숫자">복사</button>` : ''}</span><b>${g.bid ? won(g.bid) : b.base ? '<span title="기초금액은 있지만 낙찰하한율이 없음, 금액만 투찰하는 적격심사 공고가 아닐 수 있으니 공고문 확인">하한율 없음</span>' : '기초금액 공개 후'}</b></div>
         <div class="pv"><span>투찰 사정률</span><b>${pct(g.x, 2)}</b></div>
         ${g.lift ? `<div class="pv"><span>역검증</span><b>×${g.lift.toFixed(1)} <small class="faint">${fmtNum(g.n)}건</small></b></div>` : ''}
       </div>${g.small ? `<div class="g-small">참가 50곳 미만 예상 공고는 ${pct(g.small.x, 1)}${g.small.bid ? ` → <b>${won(g.small.bid)}</b>` : ''}<span class="ops"> (${g.src} 물품 규칙은 참가 50곳↑ 공고로 검증)</span></div>` : ''}`;
-    more = `<div class="b-note">${g.src} 물품 과거 공고의 복수예가 추첨 경우를 모두 따져 1순위 확률이 가장 높던 위치(표본외 역검증 ×는 공정 기대 대비, 1순위 기준 — 적격심사 탈락·포기는 반영 안 됨). 참고용이며 낙찰을 보장하지 않음.</div>`;
+    more = `<div class="b-note">${g.src} 물품 과거 공고의 복수예가 추첨 경우를 모두 따져 1순위 확률이 가장 높던 위치(표본외 역검증 ×는 공정 기대 대비, 1순위 기준, 적격심사 탈락·포기는 반영 안 됨). 참고용이며 낙찰을 보장하지 않음.</div>`;
   }else if(b.src === '국방'){
     pred = `<div class="b-note">국방 추천 투찰가는 국방 낙찰 데이터(복수예가·전체 순위)로 역검증을 통과하면 추가됩니다${b.rng ? ` · 사정률 ${esc(rngText(b.rng))}` : ''}${b.floor ? ` · 하한 ${b.floor}%` : ''}</div>`;
   }else if(b.kind === '물품'){
@@ -1154,7 +1154,7 @@ function bidCard(b, today, opts = {}){
   const cardNo = b.src === '국방' ? d2bNum(b.id) : b.no ? `${b.no}-${b.ord}` : '';   // 국방은 판단번호(국방전자조달 화면 번호)
   if(b.src === '국방' && b.res?.win) pred = `<div class="b-note result">개찰 결과 · 1위 ${esc(b.res.win.name || '-')} ${won(b.res.win.amt)}${b.res.plan && b.base ? ` · 사정율 <b>${pct(b.res.plan / b.base * 100, 3)}</b>` : ''}${b.res.n ? ` · ${fmtNum(b.res.n)}곳 참가` : ''}${b.res.mine?.amt ? ` · 우리 ${b.res.mine.rank ? fmtNum(b.res.mine.rank) + '위' : '순위 없음'} ${won(b.res.mine.amt)}` : ''}</div>`;
   const myAmt = bidMap.get(b.id);
-  if(myAmt) pred = `<div class="b-mine">✓ 투찰 등록함 · <b>${won(myAmt)}</b> <button type="button" class="copy-btn" data-copy="${myAmt}">📋 복사</button></div>` + pred;
+  if(myAmt) pred = `<div class="b-mine">✓ 투찰 등록함 · <b>${won(myAmt)}</b> <button type="button" class="copy-btn" data-copy="${myAmt}">복사</button></div>` + pred;
   return `<article class="bcard ${dd.cls}${myAmt ? ' done' : ''}">
     <div class="b-dday"><b>${dd.big}</b><span>${esc(dd.small)}</span></div>
     <div class="b-main">
@@ -1169,18 +1169,18 @@ function bidCard(b, today, opts = {}){
     ${pred}
     <details class="b-more"><summary>자세히</summary><div class="b-tags">${moreTags}</div>${more}</details>
     <div class="b-actions">
-      ${b.kind === '물품' || b.src === '국방' ? '' : `<button class="btn sm" data-predict="${esc(b.id)}" type="button">💰 투찰금액 분석</button>`}
-      ${(qp?.bid || goodsRec(b)?.bid) && !myAmt ? `<button class="btn sm reg" data-quickbid="${esc(b.id)}" type="button" title="추천 투찰가 ${won(qp?.bid || goodsRec(b)?.bid)}을 내 투찰에 기록">📝 추천가로 투찰 등록</button>` : ''}
+      ${b.kind === '물품' || b.src === '국방' ? '' : `<button class="btn sm" data-predict="${esc(b.id)}" type="button">투찰금액 분석</button>`}
+      ${(qp?.bid || goodsRec(b)?.bid) && !myAmt ? `<button class="btn sm reg" data-quickbid="${esc(b.id)}" type="button" title="추천 투찰가 ${won(qp?.bid || goodsRec(b)?.bid)}을 내 투찰에 기록">추천가로 투찰 등록</button>` : ''}
       ${b.url ? `<a class="btn line sm" href="${esc(b.url)}" target="_blank" rel="noopener">공고 원문</a>` : ''}
       ${opts.hide ? `<button class="btn line sm" data-hide="${esc(b.id)}" type="button" title="우리가 못 하는 공고면 빼 두세요. 이 기기에만 저장">목록에서 빼기</button>` : ''}
       ${opts.unhide ? `<button class="btn line sm" data-unhide="${esc(b.id)}" type="button">되돌리기</button>` : ''}
-      <span class="b-meta">${cardNo ? `<button type="button" class="cp-no" data-copy-text="${esc(cardNo)}" data-copy-msg="공고번호 ${esc(cardNo)} 복사됨" title="누르면 공고번호 복사">${esc(cardNo)} 📋</button>` : ''}${esc(open ? (cardNo ? ' · ' : '') + open : '')}</span>
+      <span class="b-meta">${cardNo ? `<button type="button" class="cp-no" data-copy-text="${esc(cardNo)}" data-copy-msg="공고번호 ${esc(cardNo)} 복사됨" title="누르면 공고번호 복사">${esc(cardNo)}</button>` : ''}${esc(open ? (cardNo ? ' · ' : '') + open : '')}</span>
     </div>
   </article>`;
 }
 
 /** 개찰이 끝난 공고: '추천 투찰가로 넣었다면' 몇 위였나. 결과 = 조달청에서 받은 개찰 결과(b.openRes, 전체 투찰금액) → 수집된 낙찰 기록 + 개찰 상세.
- *  다른 업체 투찰은 그대로라고 가정. 추천값은 지금 모델로 계산 — 그 공고가 학습 기간에 들어 있을 수 있어 표본외 역검증과는 다르다 */
+ *  다른 업체 투찰은 그대로라고 가정. 추천값은 지금 모델로 계산, 그 공고가 학습 기간에 들어 있을 수 있어 표본외 역검증과는 다르다 */
 function recIfBid(b, amt, r0){
   if(!opened(b)) return null;
   const res = b.openRes?.plan ? b.openRes : null;
@@ -1192,7 +1192,7 @@ function recIfBid(b, amt, r0){
   if(!j) return null;
   const n = op?.r?.length || res?.n || r0?.cnt || null, of = n ? ` / ${fmtNum(n + 1)}곳` : '';
   if(j.cls === 'below') return {cls: 'below', text: '하한 미달'};
-  if(j.cls === 'win') return {cls: 'win', text: `🏆 1위${of}`};
+  if(j.cls === 'win') return {cls: 'win', text: `1위${of}`};
   return {cls: 'high', text: j.rank ? `${fmtNum(j.rank)}위${of}` : '1위보다 높음'};
 }
 /** 목록의 개찰 끝난 실시간 공사 공고의 개찰 결과를 조달청에서 받는다(한 번에 5건, 공고당 한 번) */
@@ -1222,14 +1222,14 @@ const LIVE_KINDS = {
   '기타': ['getBidPblancListInfoEtcPPSSrch', 'getBidPblancListInfoEtc', null],
 };
 const Live = {items: [], raw: 0, page: 0, params: null, token: 0, kind: '공사', fallback: false, wins: [], wi: 0, totals: []};
-let bidsMode = null;   // 공고 검색 탭은 늘 실시간 검색으로 시작(키 없으면 자동 수집 목록) — 탭 안에서 바꾼 건 앱을 닫을 때까지만
+let bidsMode = null;   // 공고 검색 탭은 늘 실시간 검색으로 시작(키 없으면 자동 수집 목록), 탭 안에서 바꾼 건 앱을 닫을 때까지만
 function apiKey(){
   const k = String(LS.get('apiKey', '') || '').trim();
   try{ return k.includes('%') ? decodeURIComponent(k) : k; }catch(e){ return k; }   // 인코딩 키를 넣어도 동작
 }
 const findNotice = (id) => Data.bids?.find(x => x.id === id) || Data.goods?.find(x => x.id === id) || Data.d2bBids?.find(x => x.id === id) || Live.items.find(x => x.id === id);
 
-/** 조달청 호출은 동시에 LIVE_MAX 건까지 — 한꺼번에 많이 보내면 '초당 서비스 요청제한 횟수 초과'로 거절된다(2026-09-27 확인). 그 오류면 잠깐 쉬고 다시 */
+/** 조달청 호출은 동시에 LIVE_MAX 건까지, 한꺼번에 많이 보내면 '초당 서비스 요청제한 횟수 초과'로 거절된다(2026-09-27 확인). 그 오류면 잠깐 쉬고 다시 */
 const LIVE_MAX = 5, LIVE_GAP = 80, LiveQ = {n: 0, wait: [], next: 0};   // 동시 5건, 요청 시작 간격 0.08초(초당 12건 이하)
 async function liveCall(op, params, base=LIVE_BASE){
   let last;
@@ -1337,14 +1337,14 @@ async function enrichLive(b){
 }
 
 function initLive(){
-  // 기본 조건(2026-09-27 요청, 같은 날 다시 바꿈): 공사 · 공고일 1개월 · 우리 시·도 · 시·군 전체 · 마감 전 공고만 · 참가 가능한 공고만 — 앱을 열면 이 조건으로 미리 조회해 둔다
+  // 기본 조건(2026-09-27 요청, 같은 날 다시 바꿈): 공사 · 공고일 1개월 · 우리 시·도 · 시·군 전체 · 마감 전 공고만 · 참가 가능한 공고만, 앱을 열면 이 조건으로 미리 조회해 둔다
   const co = Company.get();
   fillSelect($('lRgn'), SIDOS, {all:'시·도 전체', value: co.sido || ''});
   const fillLSgg = (value) => { fillSelect($('lSgg'), sggsOf($('lRgn').value), {all:'시·군 전체', value: typeof value === 'string' ? value : ''}); $('lSgg').disabled = !$('lRgn').value; };
   fillLSgg('');
   Data.loadBids().then(() => {
     if(!Live.params) fillLSgg('');
-    if(apiKey() && !Live.params) liveSearch();   // 미리 조회 — 공고 검색 탭을 열면 바로 보이게
+    if(apiKey() && !Live.params) liveSearch();   // 미리 조회, 공고 검색 탭을 열면 바로 보이게
   });
   $('lRgn').addEventListener('change', fillLSgg);
   $('lLic').addEventListener('change', async () => { if(!Live.params || $('lLic').disabled) return; await Data.loadLicMap(); renderLive(); if(liveRows().length < 30 && !liveDone()) await liveSearch(true); });
@@ -1352,7 +1352,7 @@ function initLive(){
   fillSelect($('lLic'), LICENSES, {all:'업종 전체'});
   fillSelect($('lAmt'), AMT_RANGES, {all:'추정가격 전체'});
   const setPeriod = (days) => { const t = new Date(); $('lTo').value = kstDay(t); $('lFrom').value = kstDay(new Date(t - days * 86400000)); };
-  setPeriod(30);   // 기본 1개월(2026-09-27 요청 — 3개월은 조회가 오래 걸림)
+  setPeriod(30);   // 기본 1개월(2026-09-27 요청, 3개월은 조회가 오래 걸림)
   $('lPeriod').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.d === '30'));
   $('lPeriod').addEventListener('click', (e) => {
     const d = e.target.dataset?.d; if(!d) return;
@@ -1374,9 +1374,9 @@ function initLive(){
   });
 }
 // ============================================================ 우리 업체 대시보드 (입찰공고 탭 첫 모드)
-// 설정의 업체 정보(소재지·면허·주력분야·참여가능금액)로 자동 수집된 진행중 공고 중 참가 가능한 것만 — 검색 없이 바로.
+// 설정의 업체 정보(소재지·면허·주력분야·참여가능금액)로 자동 수집된 진행중 공고 중 참가 가능한 것만, 검색 없이 바로.
 const Mine = {day: null, chip: 'all', small: false, showHidden: false, area: LS.get('mineArea', 'all'), kind: LS.get('mineKind', 'all'), shown: 60};
-/** 대시보드에서 뺀 공고 (우리가 못 하는 종목 등) — 이 기기에만 */
+/** 대시보드에서 뺀 공고 (우리가 못 하는 종목 등), 이 기기에만 */
 const Hidden = {
   ids(){ return new Set(LS.get('hiddenBids', [])); },
   toggle(id, on){ const s = this.ids(); on ? s.add(id) : s.delete(id); LS.set('hiddenBids', [...s].slice(-2000)); },
@@ -1412,8 +1412,8 @@ async function renderMine(){
   const okRows = gev.filter(([g, e]) => e.ok).map(([g]) => g);
   const gRows = okRows.filter(g => g.kind === '물품'), dcRows = okRows.filter(g => g.kind === '공사');   // 국방 시설공사는 공사로
   const gNo = {}; gev.forEach(([g, e]) => { if(!e.ok) gNo[e.why] = (gNo[e.why] || 0) + 1; });
-  // 업무는 공사·물품 둘만(2026-09-27): 국방은 업무 버튼이 아니라 지역 줄의 '🎖 국방'으로 — 국방 공고는 현장 시·도가 없어 지역 버튼과 같은 줄에서 고르는 게 맞다
-  const kinds = [['공사', '🏗 공사', cRows.length + dcRows.length], ['물품', '📦 물품', gRows.length]];
+  // 업무는 공사·물품 둘만(2026-09-27): 국방은 업무 버튼이 아니라 지역 줄의 '국방'으로, 국방 공고는 현장 시·도가 없어 지역 버튼과 같은 줄에서 고르는 게 맞다
+  const kinds = [['공사', '공사', cRows.length + dcRows.length], ['물품', '물품', gRows.length]];
   if(!kinds.some(k => k[0] === Mine.kind)) Mine.kind = '공사';
   $('mineKind').innerHTML = kinds.map(([k, t, n]) => `<button type="button" class="chip ${Mine.kind === k ? 'selected' : ''}" data-kind="${k}">${t}<span class="cnt">${fmtNum(n)}</span></button>`).join('');
   const rows = Mine.kind === '물품' ? gRows : [...cRows, ...dcRows];
@@ -1422,17 +1422,17 @@ async function renderMine(){
   const noCap = ev.filter(([b, e]) => e.cap === 'no').length, noMf = ev.filter(([b, e]) => e.lic === 'mf').length;
   const closeDay = (b) => (b.close || '').slice(0, 10);
 
-  // 필터 버튼 (면허·주력분야 / 뺀 공고) — 사용자는 참가 가능한 공고에 다 넣으므로 '경쟁 적은 공고' 거르기는 뺐다(2026-09-26)
+  // 필터 버튼 (면허·주력분야 / 뺀 공고), 사용자는 참가 가능한 공고에 다 넣으므로 '경쟁 적은 공고' 거르기는 뺐다(2026-09-26)
   const hidden = Hidden.ids();
   // 지역 버튼: 전체 / 우리 시·도 / 우리 시·군 (공사 현장 기준). 참가 제한이 없는 전국 공고는 다른 지역 현장도 나오므로
   const areas = [['all', '전체 지역', () => true]];
   if(c.sido) areas.push(['sido', c.sido, (b) => b.sido === c.sido]);
   if(c.sido && c.sgg) areas.push(['sgg', `${c.sido} ${c.sgg}`, (b) => b.sido === c.sido && b.sgg === c.sgg]);
-  areas.push(['d2b', '🎖 국방', (b) => b.src === '국방']);   // 국방(방위사업청) 공고만 — 현장 시·도가 없어 위 지역 버튼에는 안 잡힘
+  areas.push(['d2b', '국방', (b) => b.src === '국방']);   // 국방(방위사업청) 공고만, 현장 시·도가 없어 위 지역 버튼에는 안 잡힘
   if(!areas.some(a => a[0] === Mine.area)) Mine.area = 'all';
   const areaF = areas.find(a => a[0] === Mine.area)[2];
   const inArea = rows.filter(b => !hidden.has(b.id));
-  $('mineArea').innerHTML = areas.length > 1 ? areas.map(([k, label, f]) => `<button type="button" class="chip ${Mine.area === k ? 'selected' : ''}" data-area="${k}">${k === 'd2b' ? '' : '📍 '}${esc(label)}<span class="cnt">${inArea.filter(f).length}</span></button>`).join('') : '';
+  $('mineArea').innerHTML = areas.length > 1 ? areas.map(([k, label, f]) => `<button type="button" class="chip ${Mine.area === k ? 'selected' : ''}" data-area="${k}">${k === 'd2b' ? '' : ''}${esc(label)}<span class="cnt">${inArea.filter(f).length}</span></button>`).join('') : '';
   const visible = inArea.filter(areaF);
   const defs = mineChipDefs(c);
   if(!defs.some(d => d.k === Mine.chip)) Mine.chip = 'all';
@@ -1446,9 +1446,9 @@ async function renderMine(){
 
   // 업체 요약
   const licTxt = c.lics.map(l => `<span class="hero-lic">${esc(LIC_SHORT[l] || l)}${c.mf?.[l]?.length ? ` <small>${esc(c.mf[l].map(m => m.split('·')[0]).join('·'))}</small>` : ''}</span>`).join('');
-  $('mineHead').innerHTML = `<div class="hero-name">${esc(c.name || '우리 업체')}<span>📍 ${esc([c.sido, c.sgg].filter(Boolean).join(' ') || '소재지 미설정')}</span></div>
+  $('mineHead').innerHTML = `<div class="hero-name">${esc(c.name || '우리 업체')}<span>${esc([c.sido, c.sgg].filter(Boolean).join(' ') || '소재지 미설정')}</span></div>
     <div class="hero-lics">${licTxt || '<span class="hero-lic">면허 미설정</span>'}${Object.keys(c.caps || {}).length ? '' : '<span class="hero-lic dim">참여가능금액 미설정</span>'}</div>
-    <div class="hero-btns"><button class="hero-btn" id="heroCloud" data-goto="settings" type="button"${Cloud.user ? ' hidden' : ''}>☁️ PC·폰 같이 쓰기</button><button class="hero-btn" data-goto="settings" type="button">업체 정보 ›</button></div>`;
+    <div class="hero-btns"><button class="hero-btn" id="heroCloud" data-goto="settings" type="button"${Cloud.user ? ' hidden' : ''}>PC·폰 같이 쓰기</button><button class="hero-btn" data-goto="settings" type="button">업체 정보 ›</button></div>`;
 
   // 요약 숫자
   const watch = await WatchStore.list();
@@ -1487,8 +1487,8 @@ async function renderMine(){
     noCap ? `실적 한도 초과 ${fmtNum(noCap)}건` : '', mfCheck ? `면허 여러 개라 같이 필요한지 불확실 ${fmtNum(mfCheck)}건` : '',
     unknown ? `면허 정보 없음 ${fmtNum(unknown)}건` : '', ...Object.entries(gNo).map(([k, n]) => `물품·국방 ${k} ${fmtNum(n)}건`)].filter(Boolean);
   const nEx = (nHidden && !Mine.showHidden ? nHidden : 0) + noMf + noCap + mfCheck + unknown + Object.values(gNo).reduce((a, b) => a + b, 0);
-  $('mineInfo').innerHTML = [Mine.showHidden ? `뺀 공고 ${fmtNum(list.length)}건 — "되돌리기"로 다시 목록에` : `${Mine.day ? `${dayLabel(Mine.day)} 마감 ` : ''}${fmtNum(list.length)}건`,
-    nEx ? `<details class="excl"><summary>제외 ${fmtNum(nEx)}건</summary> — ${excl.join(' · ')} (의심되면 공고 검색에서 확인)</details>` : '',
+  $('mineInfo').innerHTML = [Mine.showHidden ? `뺀 공고 ${fmtNum(list.length)}건, "되돌리기"로 다시 목록에` : `${Mine.day ? `${dayLabel(Mine.day)} 마감 ` : ''}${fmtNum(list.length)}건`,
+    nEx ? `<details class="excl"><summary>제외 ${fmtNum(nEx)}건</summary>, ${excl.join(' · ')} (의심되면 공고 검색에서 확인)</details>` : '',
     Data.meta?.updated_at ? `<span class="faint">데이터 ${esc(Data.meta.updated_at.slice(5, 16).replace('T', ' '))}</span>` : ''].filter(Boolean).join(' · ');
   // 면허제한 그룹 정보가 없는 공고는 조달청에서 받아 다시 거른다(서비스키가 있을 때)
   // 그룹 정보가 없어 참가 가능(mf-check 포함, e.ok=true)으로 나온 공고는 실제 그룹 정보로 다시 확인
@@ -1527,7 +1527,7 @@ function initMine(){
 }
 
 function renderBidsTab(){
-  const mode = apiKey() ? 'live' : 'saved';   // 전환 버튼은 없앰(2026-09-27) — 키가 없을 때만 자동 수집 목록
+  const mode = apiKey() ? 'live' : 'saved';   // 전환 버튼은 없앰(2026-09-27), 키가 없을 때만 자동 수집 목록
   $('bMode').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === mode));
   $('bidsSaved').hidden = mode !== 'saved';
   $('bidsLive').hidden = mode !== 'live';
@@ -1567,7 +1567,7 @@ function liveWindows(from, to){
   return out;
 }
 const liveDone = () => Live.wi >= Live.wins.length;
-/** 앱에서 거르는 조건(시·군, 참가 가능, 기본 목록 대체 조회)이 있나 — 있으면 충분히 모일 때까지 더 받는다 */
+/** 앱에서 거르는 조건(시·군, 참가 가능, 기본 목록 대체 조회)이 있나, 있으면 충분히 모일 때까지 더 받는다 */
 const liveClientFilter = () => !!($('lSgg').value || $('lLic').value || ($('lElig').checked && Company.isSet()) || Live.fallback);
 /** 공고에 이 면허가 걸려 있나: 주공종·부대공종 또는 수집된 면허제한 */
 const liveHasLic = (b, lic) => (b.lic || []).includes(lic) || licOf(b).includes(lic);
@@ -1749,7 +1749,7 @@ async function toggleWatch(id, btn){
     btn.classList.add('on'); btn.textContent = '★';
   }
 }
-/** '📝 이 금액으로 투찰 등록': 관심공고에 넣고(참여 표시) 내 투찰 금액을 채운 뒤 내 투찰 → 투찰 중 으로 이동 */
+/** '이 금액으로 투찰 등록': 관심공고에 넣고(참여 표시) 내 투찰 금액을 채운 뒤 내 투찰 → 투찰 중 으로 이동 */
 let flashId = null;
 async function registerBid(b, amt, sr, by){
   if(!b || !amt) return;
@@ -1763,11 +1763,11 @@ async function registerBid(b, amt, sr, by){
   watchMode = 'joined'; LS.set('watchMode', watchMode);
   switchTab('watch');
 }
-const regBtn = (id, label = '📝 이 금액으로 투찰 등록') => `<button class="btn sm reg" data-quickbid="${esc(id)}" type="button">${label}</button>`;
+const regBtn = (id, label = '이 금액으로 투찰 등록') => `<button class="btn sm reg" data-quickbid="${esc(id)}" type="button">${label}</button>`;
 const pickNotice = (b) => ({kind:b.kind, id:b.id, no:b.no, ord:b.ord, nm:b.nm, org:b.org, dmd:b.dmd, sido:b.sido, sgg:b.sgg,
   lic:licOf(b).length ? licOf(b) : b.lic, rgn:b.rgn, base:b.base, est:b.est, a:b.a, floor:b.floor, net:b.net, rng:b.rng, close:b.close, open:b.open, url:b.url, src:b.src, cm:b.cm, reg:b.reg});
 
-// ============================================================ 우리 업체 (소재지·보유 면허·사업자번호 — 이 기기에만 저장)
+// ============================================================ 우리 업체 (소재지·보유 면허·사업자번호, 이 기기에만 저장)
 const Company = {
   get(){ return {sido: '', sgg: '', lics: [], biz: '', caps: {}, mf: {}, goods: {}, ...LS.get('company', {})}; },
   set(c){ LS.set('company', c); qpCache.clear(); },
@@ -1826,7 +1826,7 @@ async function fetchLiveLimits(rows){
     const c = Data.bids?.find(x => x.id === b.id) || (b.sido ? Data.scsbid[b.sido]?.byId.get(b.id) : null);
     if(c?.base) ['base', 'a', 'net', 'rng', 'floor'].forEach(k => { if(c[k] != null && b[k] == null) b[k] = c[k]; });
   });
-  // 면허제한 그룹(lmtGrpNo)이 없으면 조회 — 수집된 lic_map 에 그룹이 채워지기 전에도 '동시 요구' 공고를 거르도록
+  // 면허제한 그룹(lmtGrpNo)이 없으면 조회, 수집된 lic_map 에 그룹이 채워지기 전에도 '동시 요구' 공고를 거르도록
   const need = rows.filter(b => (b.live ? b.kind === '공사' : true) && !b.limTried && !Data.grpMap?.get(b.id)?.length).slice(0, 10);
   const todo = bsis.filter(b => !b.base);
   if(!need.length && !todo.length) return bsis.length > 0;
@@ -1980,26 +1980,26 @@ function goodsEligibility(g){
   return out;
 }
 function negoTag(n){
-  return `<span class="tag bad" title="금액만 투찰해 바로 계약하는 공고가 아님 — 수의시담(계약 대상자만)·협상에 의한 계약·2단계 경쟁·규격가격 동시입찰(제안·규격 심사)·최저가 낙찰 등">참가 불가 · ${esc(n)}</span>`;
+  return `<span class="tag bad" title="금액만 투찰해 바로 계약하는 공고가 아님, 수의시담(계약 대상자만)·협상에 의한 계약·2단계 경쟁·규격가격 동시입찰(제안·규격 심사)·최저가 낙찰 등">참가 불가 · ${esc(n)}</span>`;
 }
 function eligTag(b){
   if(!Company.isSet()) return '';
   if(b.kind === '물품' || b.src === '국방'){
     const e = goodsEligibility(b);
     if(e.nego) return negoTag(e.nego);
-    return e.ok ? '<span class="tag okc">참가 가능</span>' + e.warn.map(w => `<span class="tag warn" title="물품분류(세부품명) 제한 공고 — 나라장터 경쟁입찰참가자격에 이 품명이 등록돼 있어야 합니다(없으면 투찰 전 추가 등록)">${esc(w)}</span>`).join('')
+    return e.ok ? '<span class="tag okc">참가 가능</span>' + e.warn.map(w => `<span class="tag warn" title="물품분류(세부품명) 제한 공고, 나라장터 경쟁입찰참가자격에 이 품명이 등록돼 있어야 합니다(없으면 투찰 전 추가 등록)">${esc(w)}</span>`).join('')
       : `<span class="tag bad">참가 불가 · ${esc(e.why)}</span>`;
   }
   const e = eligibility(b);
   if(e.nego) return negoTag(e.nego);
   if(!e.ok) return `<span class="tag bad">참가 불가 · ${e.rgn === 'no' ? '지역 제한' : e.cap === 'no' ? '실적 한도 초과' : e.lic === 'mf' ? '주력분야 불일치' : '면허 불일치'}</span>`;
-  if(e.cap === 'check') return '<span class="tag warn" title="추정가격이 지자체 3년 실적 한도는 넘고 5년 한도 안 — 공고문의 실적 기간 확인">실적 확인 (지자체 5년 기준만 가능)</span>';
+  if(e.cap === 'check') return '<span class="tag warn" title="추정가격이 지자체 3년 실적 한도는 넘고 5년 한도 안, 공고문의 실적 기간 확인">실적 확인 (지자체 5년 기준만 가능)</span>';
   if(e.lic === 'unknown') return '<span class="tag warn">면허 확인 필요</span>';
-  if(e.lic === 'mf-check') return '<span class="tag warn" title="2개 이상의 면허를 요구하는데 그중 일부만 우리 주력분야와 맞습니다. 같이 요구하는 공고면 참가 불가일 수 있어 공고문에서 확인하세요">면허 여러 개 — 확인 필요</span>';
+  if(e.lic === 'mf-check') return '<span class="tag warn" title="2개 이상의 면허를 요구하는데 그중 일부만 우리 주력분야와 맞습니다. 같이 요구하는 공고면 참가 불가일 수 있어 공고문에서 확인하세요">면허 여러 개, 확인 필요</span>';
   return '<span class="tag okc">참가 가능</span>';
 }
 
-/** 이 시·도의 시·군 목록 — 진행중 공고의 현장 지역과 참가가능지역에서 모은다 */
+/** 이 시·도의 시·군 목록, 진행중 공고의 현장 지역과 참가가능지역에서 모은다 */
 function sggsOf(sido){
   const set = new Set();
   (Data.bids || []).forEach(b => {
@@ -2022,7 +2022,7 @@ function initCompany(){
   $('coName').value = c.name || '';
   $('coGoods').querySelectorAll('[data-g]').forEach(el => el.checked = !!c.goods?.[el.dataset.g]);
   $('coInds').value = (c.goods?.inds || []).join(', ');
-  // 등록 업종 고르기: 지금 물품 공고(나라장터·국방)에 걸린 업종 제한을 눌러서 추가 — 손으로 치기 번거로워서
+  // 등록 업종 고르기: 지금 물품 공고(나라장터·국방)에 걸린 업종 제한을 눌러서 추가, 손으로 치기 번거로워서
   const renderIndSug = async () => {
     const all = [...await Data.loadGoods(), ...(await Data.loadD2bBids()).filter(g => g.kind === '물품')];
     const cnt = {};
@@ -2093,7 +2093,7 @@ const P = {
 };
 
 function initPredict(){
-  if(!P.sidos.size && Company.get().sido) P.sidos.add(Company.get().sido);   // 지역 기본 = 우리 시·도 (2026-09-28 — 비어 있으면 '필수'인데 아무것도 안 골라져 있었음)
+  if(!P.sidos.size && Company.get().sido) P.sidos.add(Company.get().sido);   // 지역 기본 = 우리 시·도 (2026-09-28, 비어 있으면 '필수'인데 아무것도 안 골라져 있었음)
   buildChips($('pSidoChips'), SIDOS, P.sidos, () => { LS.set('pSidos', [...P.sidos]); renderSggChips(); },
     (s) => Data.hasScsbid(s) ? '' : '데이터 없음');
   buildChips($('pLicChips'), LICENSES, P.lics, () => LS.set('pLics', [...P.lics]));
@@ -2229,7 +2229,7 @@ async function runPredict(){
   let rows = filterRecords(recs, o);
   const notes = [];
   if(o.rng && rows.length < MIN_SAMPLE){ rows = filterRecords(recs, {...o, rng: null}); notes.push('예가범위 일치 표본 부족 → 예가범위 조건 제외'); }
-  $('matchCount').textContent = `참고 분포 ${fmtNum(rows.length)}건(고급 조건으로 거른 과거 낙찰)${notes.length ? ' · ' + notes.join(' · ') : ''} — 추천 금액은 전국 비슷한 규모 공고 곡선으로 계산`;
+  $('matchCount').textContent = `참고 분포 ${fmtNum(rows.length)}건(고급 조건으로 거른 과거 낙찰)${notes.length ? ' · ' + notes.join(' · ') : ''}, 추천 금액은 전국 비슷한 규모 공고 곡선으로 계산`;
   const pred = predictFrom(rows);
   const homeSido = P.notice?.sido || (sidos.length === 1 ? sidos[0] : null);
   // 곡선은 넓은 표본으로: 선택 지역 최근 24개월 + 예가범위 같음(30건↑). 면허·금액으로 쪼개면 우연한 봉우리가 생긴다(설계 문서 3-4)
@@ -2239,7 +2239,7 @@ async function runPredict(){
   const wc = pred ? winCurve(curveRows, {sido: homeSido, opening}) : null;
   // 이 공고의 예상 참가업체 수: 입력값 → 비슷한 과거 공고 중앙값
   const ec = numOf($('inCnt')) ? {n: numOf($('inCnt')), k: 0} : expectedCnt(recs.filter(r => (r.date || '') >= monthsAgo(24)), P.notice || {lic: [...P.lics], base: o.base});
-  P.last = pred ? {pred, rows, wc, ec, broad: curveRows} : null;   // broad = 하한 미달 확률용 넓은 표본(지역 최근 24개월·같은 예가범위) — 사정율은 기관·면허·금액으로 예측 안 되므로 좁힐 이유가 없다
+  P.last = pred ? {pred, rows, wc, ec, broad: curveRows} : null;   // broad = 하한 미달 확률용 넓은 표본(지역 최근 24개월·같은 예가범위), 사정율은 기관·면허·금액으로 예측 안 되므로 좁힐 이유가 없다
   if(!pred || rows.length < 3){
     out.innerHTML = `<div class="card"><div class="empty">조건에 맞는 과거 데이터가 너무 적습니다 (${rows.length}건). 조건을 넓혀 보세요.${missing.length ? `<br>데이터 없는 지역: ${esc(missing.join(', '))}` : ''}</div></div>`;
     return;
@@ -2266,19 +2266,19 @@ async function runPredict(){
     const V = Model.m?.validation, T = V?.total, seg = rec.nExp ? valSegment(rec.nExp) : null;
     const net = numOf($('cNet')) || P.notice?.net || 0;
     const recAmt = amtAt(rec.x);
-    const level = !rec.nExp ? '' : rec.nExp < 20 ? '<b style="color:var(--ok)">경쟁 적음 — 유리</b>' : rec.nExp < 80 ? '보통' : '<b style="color:var(--warn)">경쟁 많음</b>';
+    const level = !rec.nExp ? '' : rec.nExp < 20 ? '<b style="color:var(--ok)">경쟁 적음, 유리</b>' : rec.nExp < 80 ? '보통' : '<b style="color:var(--warn)">경쟁 많음</b>';
     const check = [
       rec.nExp ? `<li class="ok"><b>경쟁 규모</b>: 예상 참가 <b>~${fmtNum(rec.nExp)}곳</b>${rec.byInput ? '(직접 입력)' : ''} → ${level}${seg ? ` · 이런 공고의 역검증 낙찰률 <b>${(seg.near / seg.n * 100).toFixed(1)}%</b> (${fmtNum(seg.n)}건)` : ''}</li>` : '',
       `<li class="ok"><b>추천 위치</b>: ${rec.src === 'model' ? '경쟁 규모가 비슷한 전국 과거 공고에서 가장 자주 1순위였던 투찰 사정률' : '이 지역 과거 공고에서 가장 자주 1순위였던 투찰 사정률'} <b>${pct(rec.x, 3)}</b>${T?.n ? ` · 새 달 역검증 ${fmtNum(T.n)}건에서 <b>${fmtNum(T.near)}건</b> 낙찰 (평균 사정율 방식 ${fmtNum(T.mean)}건 · 공정 기대 ${fmtNum(Math.round(T.rand))}건)` : ''}</li>`,
-      rec.sb != null ? `<li class="ok"><b>하한 미달은 정상</b>: 비슷한 과거 공고에서 이 값은 <b>${Math.round(rec.sb * 100)}%</b>가 낙찰하한가 미달이었습니다. 미달이 잦아도 1순위가 될 확률은 위 예상 낙찰확률 그대로입니다 — 하한 이상에 넣어도 1순위가 아니면 똑같이 떨어지고, 사정율보다 한참 높게 넣는 값(예: 100.5~100.8%)은 역검증에서 공정 기대보다 13~27% 덜 낙찰됐습니다.</li>` : '',
+      rec.sb != null ? `<li class="ok"><b>하한 미달은 정상</b>: 비슷한 과거 공고에서 이 값은 <b>${Math.round(rec.sb * 100)}%</b>가 낙찰하한가 미달이었습니다. 미달이 잦아도 1순위가 될 확률은 위 예상 낙찰확률 그대로입니다, 하한 이상에 넣어도 1순위가 아니면 똑같이 떨어지고, 사정율보다 한참 높게 넣는 값(예: 100.5~100.8%)은 역검증에서 공정 기대보다 13~27% 덜 낙찰됐습니다.</li>` : '',
       `<li class="ok"><b>금액</b>: ${recAmt ? `<b>${won(recAmt)}</b>을 ` : ''}원 단위까지 그대로. 안전 범위 ${recAmt ? `${won(amtAt(rec.lo))} ~ ${won(amtAt(rec.hi))}` : `${pct(rec.lo, 3)} ~ ${pct(rec.hi, 3)}`} 안이면 확률 비슷</li>`,
       !base ? `<li class="warn"><b>기초금액</b>을 넣어야 추천 금액이 계산됩니다</li>` : '',
       !rec.rngKnown && rec.src === 'model' ? `<li class="warn"><b>예가범위</b>를 모르면 ±3% 기준으로 계산합니다. 공고문에서 확인해 ② 칸에 고르세요</li>` : '',
-      net && recAmt ? (recAmt < net * 0.98 ? `<li class="bad"><b>순공사원가 98% 미만</b> (${won(Math.ceil(net * 0.98))}) — 입찰 무효 위험, 금액을 올리세요</li>` : `<li class="ok"><b>순공사원가 98% 이상</b> 확인</li>`) : '',
+      net && recAmt ? (recAmt < net * 0.98 ? `<li class="bad"><b>순공사원가 98% 미만</b> (${won(Math.ceil(net * 0.98))}), 입찰 무효 위험, 금액을 올리세요</li>` : `<li class="ok"><b>순공사원가 98% 이상</b> 확인</li>`) : '',
       `<li class="ok"><b>기록</b>: ☆ 관심공고에 저장 → 넣은 금액을 적어 두면 개찰 뒤 판정과 다음 보정값</li>`,
     ].filter(Boolean).join('');
     hero = `<div class="card hero">
-      <div class="hero-top"><span class="hero-tag">🎯 추천 투찰</span>${rec.area ? `<span class="badge ok">${esc(areaText(rec.area))}</span>` : valBadge()}</div>
+      <div class="hero-top"><span class="hero-tag">추천 투찰</span>${rec.area ? `<span class="badge ok">${esc(areaText(rec.area))}</span>` : valBadge()}</div>
       <div class="hero-main">
         <div>
           <div class="hero-label">추천 투찰금액</div>
@@ -2292,11 +2292,11 @@ async function runPredict(){
           <div class="stat"><div class="t">평균 사정율로 넣으면</div><div class="v">${(rec.at(meanX) * 100).toFixed(2)}%</div></div>
         </div>
       </div>
-      <h3>✅ 추천 체크</h3>
+      <h3>추천 체크</h3>
       <ul class="checklist">${check}</ul>
       <div class="meta-line">${esc(rec.note)} · 참고용이며 낙찰을 보장하지 않습니다.</div>
-      <div class="btn-row" style="margin-top:10px;">${P.notice && recAmt ? `<button class="btn sm reg" data-reg-amt="${recAmt}" data-reg-sr="${rec.x}" type="button">📝 추천가로 투찰 등록</button>` : ''}<button class="btn sm line" data-use-sr="${rec.x}" type="button">계산기에 적용</button></div>
-      ${P.notice ? '' : '<div class="meta-line ops">공고 목록에서 "💰 투찰금액 분석"으로 들어오면 여기서 바로 내 투찰에 등록할 수 있습니다.</div>'}
+      <div class="btn-row" style="margin-top:10px;">${P.notice && recAmt ? `<button class="btn sm reg" data-reg-amt="${recAmt}" data-reg-sr="${rec.x}" type="button">추천가로 투찰 등록</button>` : ''}<button class="btn sm line" data-use-sr="${rec.x}" type="button">계산기에 적용</button></div>
+      ${P.notice ? '' : '<div class="meta-line ops">공고 목록에서 "투찰금액 분석"으로 들어오면 여기서 바로 내 투찰에 등록할 수 있습니다.</div>'}
     </div>`;
 
     // ---- 2) 곡선 + 후보
@@ -2309,10 +2309,10 @@ async function runPredict(){
     pickInfo = (x, given) => {
       const amt = given || (base ? amtAt(x) : null);
       const sPool = curveRows.filter(r => r.sr != null);
-      const below = sPool.length ? sPool.filter(r => r.sr > x).length / sPool.length : null;   // 실제 사정율이 이 값보다 높으면 하한 미달 — 넓은 표본으로
+      const below = sPool.length ? sPool.filter(r => r.sr > x).length / sPool.length : null;   // 실제 사정율이 이 값보다 높으면 하한 미달, 넓은 표본으로
       const vsRec = Math.abs(x - rec.x) > 1e-9 && rec.at(rec.x) ? rec.at(x) / rec.at(rec.x) : null;
       return `${given ? `입력 금액 <b>${won(given)}</b> → ` : ''}<b>${given ? '투찰 사정률' : '선택'} ${pct(x, 3)}</b> · 과거 낙찰확률 ${(rec.at(x) * 100).toFixed(2)}%${rec.random ? ` (공정 기대 ×${(rec.at(x) / rec.random).toFixed(2)})` : ''}${vsRec ? ` · 추천의 ${Math.round(vsRec * 100)}%` : ''}${x < rec.view[0] || x > rec.view[1] ? ' · <span class="faint">그래프 범위 밖이라 선은 안 보임</span>' : ''}${!given && amt ? ` · 투찰금액 <b>${won(amt)}</b>` : ''}${below != null ? `<br><span class="faint">하한 미달 확률 ${(below * 100).toFixed(0)}% (실제 사정율이 이 값보다 높았던 비율, ${esc(homeSido || '')} 최근 24개월 ${sampleText(sPool.length)})</span>` : ''}
-        <div class="btn-row" style="margin-top:8px;">${P.notice && amt ? `<button class="btn sm reg" data-reg-amt="${amt}" data-reg-sr="${x}" type="button">📝 이 금액으로 투찰 등록</button>` : ''}<button class="btn sm line" data-use-sr="${x}" type="button">계산기로</button></div>`;
+        <div class="btn-row" style="margin-top:8px;">${P.notice && amt ? `<button class="btn sm reg" data-reg-amt="${amt}" data-reg-sr="${x}" type="button">이 금액으로 투찰 등록</button>` : ''}<button class="btn sm line" data-use-sr="${x}" type="button">계산기로</button></div>`;
     };
     curveCard = `<div class="card">
       <h2>투찰 사정률별 과거 낙찰확률</h2>
@@ -2337,7 +2337,7 @@ async function runPredict(){
     // ---- 3) 금액·숫자 팁
     const cal = LS.get('myCal', null);
     tips = `<div class="card">
-      <h2>💡 어떤 금액·숫자를 넣을까</h2>
+      <h2>어떤 금액·숫자를 넣을까</h2>
       <ul class="tips">
         <li><b>금액</b>: 추천 금액을 <b>원 단위까지 그대로</b> 넣으세요. 만원·천원 단위로 반올림하면 투찰 사정률이 옮겨가 확률 구간을 벗어날 수 있습니다${base ? ` (이 공고에서 1만원 ≈ 사정률 ${(1e4 / (floor / 100) / base * 100).toFixed(4)}%p)` : ''}.</li>
         <li><b>범위</b>: 안전 범위 안이면 과거 확률이 비슷했습니다. 다른 사람과 같은 금액(동가)을 피하려면 범위 안에서 끝자리를 조금 바꿔도 됩니다.</li>
@@ -2346,7 +2346,7 @@ async function runPredict(){
       </ul>
     </div>`;
   }else{
-    hero = `<div class="card"><h2>🎯 추천 투찰</h2><div class="empty">추천을 계산할 과거 데이터가 부족합니다. 조건을 넓혀 보세요.</div></div>`;
+    hero = `<div class="card"><h2>추천 투찰</h2><div class="empty">추천을 계산할 과거 데이터가 부족합니다. 조건을 넓혀 보세요.</div></div>`;
   }
 
   // ---- 4) 참고: 사정율 분포 (기존 평균 방식)
@@ -2411,7 +2411,7 @@ async function runPredict(){
     const raw = amt && base ? ((amt - (a || 0)) / (floor / 100) + (a || 0)) / base * 100 : null;
     $('probeSr').textContent = raw != null ? pct(raw, 3) : '';
     $('probeInfo').innerHTML = !amt ? '넣으면 투찰 사정률·과거 낙찰확률'
-      : x == null ? `<span style="color:var(--target)">범위 밖 — ${raw < 100 ? '반드시 하한 미달, 자릿수 확인' : '낙찰 가능성 거의 없음'}</span>`
+      : x == null ? `<span style="color:var(--target)">범위 밖, ${raw < 100 ? '반드시 하한 미달, 자릿수 확인' : '낙찰 가능성 거의 없음'}</span>`
       : `과거 낙찰확률 ${(rec.at(x) * 100).toFixed(2)}%${rec.random ? ` · ×${(rec.at(x) / rec.random).toFixed(2)}` : ''}${rec.at(rec.x) ? ` · 추천의 ${Math.round(rec.at(x) / rec.at(rec.x) * 100)}%` : ''}`;
     $('probeApply').disabled = $('probeCalc').disabled = x == null;
     return {amt, x};
@@ -2467,8 +2467,8 @@ function renderCalc(){
   const warns = [];
   const xm = c.manual ? bidToSr(c.manual, c.base, c.a, c.floor) : null;   // 직접 넣은 금액(더비스 제시가 등)의 투찰 사정률
   const xRaw = c.manual && c.base ? ((c.manual - (c.a || 0)) / (c.floor / 100) + (c.a || 0)) / c.base * 100 : null;   // 90~110 밖이어도 보여 줄 값
-  if(c.manual && xm == null && xRaw != null) warns.push(`직접 입력 ${won(c.manual)}은 투찰 사정률 ${xRaw.toFixed(3)}% — 사정율이 나올 수 있는 범위(예가범위 ±2~3%) 밖이라 ${xRaw < 100 ? '반드시 낙찰하한가 미달입니다. 금액 자릿수를 확인하세요' : '낙찰 가능성이 거의 없습니다'}`);
-  if(c.net && c.final < c.net * 0.98) warns.push(`투찰금액이 순공사원가 × 98% (${won(Math.ceil(c.net*0.98))}) 미만입니다 — 입찰 무효 위험`);
+  if(c.manual && xm == null && xRaw != null) warns.push(`직접 입력 ${won(c.manual)}은 투찰 사정률 ${xRaw.toFixed(3)}%, 사정율이 나올 수 있는 범위(예가범위 ±2~3%) 밖이라 ${xRaw < 100 ? '반드시 낙찰하한가 미달입니다. 금액 자릿수를 확인하세요' : '낙찰 가능성이 거의 없습니다'}`);
+  if(c.net && c.final < c.net * 0.98) warns.push(`투찰금액이 순공사원가 × 98% (${won(Math.ceil(c.net*0.98))}) 미만입니다, 입찰 무효 위험`);
   const rng = $('pRng').value ? $('pRng').value.split(',').map(Number) : P.notice?.rng;
   const info = [];
   if(rng && rng[0] != null && rng[1] != null && (c.sr < 100 + rng[0] || c.sr > 100 + rng[1])) info.push(`적용 사정율이 공고 예가범위(${100+rng[0]}~${100+rng[1]}%) 밖입니다.`);
@@ -2479,7 +2479,7 @@ function renderCalc(){
   if(xm != null && P.last?.rec){
     const pool = (P.last.broad || P.last.rows || []).filter(q => q.sr != null);
     const r = P.last.rec, below = pool.length ? pool.filter(q => q.sr > xm).length / pool.length : null;
-    info.unshift(`<b>직접 입력 ${won(c.manual)}</b> → 투찰 사정률 <b>${xm.toFixed(3)}%</b> · 과거 낙찰확률 <b>${(r.at(xm) * 100).toFixed(2)}%</b>${r.at(r.x) ? ` (추천 ${pct(r.x, 3)}의 ${Math.round(r.at(xm) / r.at(r.x) * 100)}%)` : ''}${below != null ? ` · 하한 미달 확률 ${(below * 100).toFixed(0)}%` : ''} — 위 그래프에 초록 선`);
+    info.unshift(`<b>직접 입력 ${won(c.manual)}</b> → 투찰 사정률 <b>${xm.toFixed(3)}%</b> · 과거 낙찰확률 <b>${(r.at(xm) * 100).toFixed(2)}%</b>${r.at(r.x) ? ` (추천 ${pct(r.x, 3)}의 ${Math.round(r.at(xm) / r.at(r.x) * 100)}%)` : ''}${below != null ? ` · 하한 미달 확률 ${(below * 100).toFixed(0)}%` : ''}, 위 그래프에 초록 선`);
     P.markCurve?.(xm, c.manual);
   }else if(xm != null){
     info.unshift(`<b>직접 입력 ${won(c.manual)}</b> → 투찰 사정률 <b>${xm.toFixed(3)}%</b>`);
@@ -2487,7 +2487,7 @@ function renderCalc(){
   const pool = (P.last?.broad || P.last?.rows || []).filter(q => q.sr != null);
   if(pool.length){
     const above = pool.filter(r => r.sr > c.sr).length / pool.length;
-    info.push(`과거 분포상 실제 사정율이 적용값보다 높을 확률 ${(above*100).toFixed(1)}% — 이 경우 이 금액은 실제 낙찰하한가에 못 미칩니다. (${sampleText(pool.length)})`);
+    info.push(`과거 분포상 실제 사정율이 적용값보다 높을 확률 ${(above*100).toFixed(1)}%, 이 경우 이 금액은 실제 낙찰하한가에 못 미칩니다. (${sampleText(pool.length)})`);
   }
   out.innerHTML = `<div class="stat-grid">
       <div class="stat"><div class="t">예정가격</div><div class="v">${won(c.plan)}</div></div>
@@ -2495,10 +2495,10 @@ function renderCalc(){
       ${c.manual ? `<div class="stat"><div class="t">직접 입력 금액의 투찰 사정률</div><div class="v"${xm == null ? ' style="color:var(--target);"' : ''}>${xRaw != null ? xRaw.toFixed(3) + '%' : '-'}</div></div>` : ''}
       ${c.net ? `<div class="stat"><div class="t">순공사원가 × 98%</div><div class="v">${won(Math.ceil(c.net*0.98))}</div></div>` : ''}
     </div>
-    ${warns.map(w => `<div class="alert danger">⚠️ ${esc(w)}</div>`).join('')}
+    ${warns.map(w => `<div class="alert danger">${esc(w)}</div>`).join('')}
     ${info.map(w => `<div class="alert info">${w}</div>`).join('')}
     <div class="meta-line">낙찰하한율 ${c.floor}% · A값 ${won(c.a)} · 참고용이며 낙찰을 보장하지 않습니다.</div>
-    <div class="btn-row" style="margin-top:10px;">${xm != null && Math.abs(xm - c.sr) > 5e-5 ? `<button class="btn line" id="calcApplyManual" type="button">직접 입력 금액을 계산에 적용 (사정율 ${xm.toFixed(4)}%)</button>` : ''}${P.notice ? `<button class="btn reg" id="calcReg" type="button">📝 ${won(c.final)}으로 투찰 등록</button>` : ''}</div>`;
+    <div class="btn-row" style="margin-top:10px;">${xm != null && Math.abs(xm - c.sr) > 5e-5 ? `<button class="btn line" id="calcApplyManual" type="button">직접 입력 금액을 계산에 적용 (사정율 ${xm.toFixed(4)}%)</button>` : ''}${P.notice ? `<button class="btn reg" id="calcReg" type="button">${won(c.final)}으로 투찰 등록</button>` : ''}</div>`;
   $('calcReg')?.addEventListener('click', () => registerBid(P.notice, c.final, xm ?? c.sr, c.manual ? '직접' : '계산기'));
   // 직접 넣은 금액을 적용 사정율로 되돌려 넣는다 → 예정가격·투찰금액·과거 낙찰확률 줄이 모두 그 금액 기준 (2026-09-27 요청)
   $('calcApplyManual')?.addEventListener('click', () => { $('cRate').value = xm.toFixed(4); renderCalc(); });
@@ -2623,7 +2623,7 @@ async function fetchOpeningResult(w){
   const plan = P2.map(it => numF(pickF(it, 'plnprc', 'plnPrc'))).find(Boolean) || null;
   const base = P2.map(it => numF(pickF(it, 'bssamt', 'bsisAmt', 'bssAmt'))).find(Boolean) || w.base || null;
   if(!R.length && !plan) return null;
-  // 예정가격 조회(복수예가 상세)가 순위보다 늦게 올라올 때가 있다(2026-09-28 삼척 농촌지도기반조성 — 개찰 뒤에도 '결과 대기') → 1순위 투찰률(= 금액 ÷ 예정가격)로 되돌림
+  // 예정가격 조회(복수예가 상세)가 순위보다 늦게 올라올 때가 있다(2026-09-28 삼척 농촌지도기반조성, 개찰 뒤에도 '결과 대기') → 1순위 투찰률(= 금액 ÷ 예정가격)로 되돌림
   let planEst = false;
   if(!plan){ const t = R.find(x => x.rank > 0 && x.rate > 0); if(t){ plan = Math.round(t.amt / (t.rate / 100)); planEst = true; } }
   const biz = String(Company.get().biz || '').replace(/\D/g, '');
@@ -2669,7 +2669,7 @@ let watchMode = LS.get('watchMode', 'watch');   // 'watch' 관심(개찰 전) | 
 const isJoined = (w) => !!(w.joined || w.myBid || w.res?.mine);
 const isDone = (w) => !!(w.res?.n || opened(w));   // 개찰 끝남 → '개찰 결과'로
 
-// ---------- 과거 투찰 이력 (더비스 '투찰 이력' 엑셀을 이 기기로 가져옴 — 저장소·서버에는 안 올라감)
+// ---------- 과거 투찰 이력 (더비스 '투찰 이력' 엑셀을 이 기기로 가져옴, 저장소·서버에는 안 올라감)
 // 행: [개찰일시, 공고명, 지역, 면허, 발주처, 기초금액, 투찰금액, 사정율, 투찰 사정률, 순위(음수=하한 미달 중 순위), 참가수, 예정가격]
 const History = {
   get(){ return LS.get('history', null); },
@@ -2697,16 +2697,16 @@ const History = {
   clear(){ LS.set('history', null); },
 };
 
-// ---------- 🏢 업체 검색: data/corps.json(전국 낙찰·개찰 상세·국방 색인) + 개찰 상세로 업체별 투찰 이력·습관
+// ---------- 업체 검색: data/corps.json(전국 낙찰·개찰 상세·국방 색인) + 개찰 상세로 업체별 투찰 이력·습관
 /** 개찰 상세를 폰에서 읽을 시·도 = 우리 업체 시·도(없으면 강원). 개찰 상세는 전국(관심 면허)으로 모으지만 17개 시·도 파일을 다 받으면 무거움 */
 const homeDetailSidos = () => [Company.get().sido || '강원'].filter(s => Data.hasDetail(s));
 const Corp = {idx: null, q: '', sel: null};
-let exitAt = 0;   // 뒤로 두 번 눌러 종료 — 첫 번째 누른 시각
-// 업체 목록 필터(2026-09-27 요청): 소재지(주소, 없으면 시·군 제한 공고 투찰로 추정) × 주로 투찰한 면허 × 정렬 — 기본 = 우리 시·군 · 우리 면허 = 경쟁사
+let exitAt = 0;   // 뒤로 두 번 눌러 종료, 첫 번째 누른 시각
+// 업체 목록 필터(2026-09-27 요청): 소재지(주소, 없으면 시·군 제한 공고 투찰로 추정) × 주로 투찰한 면허 × 정렬, 기본 = 우리 시·군 · 우리 면허 = 경쟁사
 const corpF = () => { const co = Company.get(); return Object.assign({sido: co.sido || '', sgg: co.sgg || '', lic: 'mine', sort: 'dn'}, LS.get('corpF2', {})); };
 const D2B_LIST_URL = 'https://www.d2b.go.kr/mainBidAnnounceList.do';
-// ⭐ 관심 업체 새 낙찰 알림(2026-09-28 요청 — 업체 탭을 경쟁사 낙찰 모니터링에 많이 씀). corpw 파일의 낙찰 이력 중 이 기기·계정에서 아직 안 본 것.
-// bp.corpSeen {사업자번호: [본 낙찰 id…]} — 관심 업체로 처음 넣을 때는 지금 있는 것 모두 본 것으로(옛 낙찰로 알림 폭탄 방지).
+// 관심 업체 새 낙찰 알림(2026-09-28 요청, 업체 탭을 경쟁사 낙찰 모니터링에 많이 씀). corpw 파일의 낙찰 이력 중 이 기기·계정에서 아직 안 본 것.
+// bp.corpSeen {사업자번호: [본 낙찰 id…]}, 관심 업체로 처음 넣을 때는 지금 있는 것 모두 본 것으로(옛 낙찰로 알림 폭탄 방지).
 const winKey = (w) => w[7] || `${w[0]}|${w[1]}`;
 const CorpNew = {list: [], busy: null,
   async load(biz){ try{ return (await Data.fetchJson(`corpw/${biz.slice(0, 3)}.json`))[biz] || []; }catch(e){ return []; } },
@@ -2736,7 +2736,7 @@ const CorpNew = {list: [], busy: null,
     await this.compute();
   },
 };
-/** 낙찰 이력 기간별 요약 — 최근 1·3·12개월·전체 × 공사·물품·국방 건수와 낙찰금액 합 */
+/** 낙찰 이력 기간별 요약, 최근 1·3·12개월·전체 × 공사·물품·국방 건수와 낙찰금액 합 */
 function winSummary(wl){
   const now = Date.now(), per = [['최근 1개월', 1], ['최근 3개월', 3], ['최근 1년', 12], ['전체', 0]];
   const kinds = ['공사', '물품', '국방'];
@@ -2790,12 +2790,12 @@ async function renderCorpSearch(){
   $('cfSido').value = F.sido; $('cfSgg').value = sggs.includes(F.sgg) ? F.sgg : ''; $('cfLic').value = F.lic; $('cfSort').value = F.sort;
   if(!$('cfLic').value) $('cfLic').value = 'all';
   $('bidsCorp').querySelector('.corp-filter').hidden = !!Corp.sel;
-  info.innerHTML = `업체 ${fmtNum(idx.items.length)}곳 — 전국 낙찰자(공사·물품·국방) + 강원 개찰 상세(전체 투찰) + 국방 상위 투찰. 대표자로도 찾을 수 있습니다.<span class="ops"> 소재지 = 주소(낙찰한 업체), 없으면 시·군 제한 공고에 투찰한 곳으로 추정. 면허 = 주로 투찰한 공고의 면허(추정). 투찰·1순위 = 수집된 개찰 상세(강원은 전부, 다른 시·도는 관심 면허 공고만) 기준이라 강원 밖 업체는 적게 나옵니다.</span>`;
+  info.innerHTML = `업체 ${fmtNum(idx.items.length)}곳, 전국 낙찰자(공사·물품·국방) + 강원 개찰 상세(전체 투찰) + 국방 상위 투찰. 대표자로도 찾을 수 있습니다.<span class="ops"> 소재지 = 주소(낙찰한 업체), 없으면 시·군 제한 공고에 투찰한 곳으로 추정. 면허 = 주로 투찰한 공고의 면허(추정). 투찰·1순위 = 수집된 개찰 상세(강원은 전부, 다른 시·도는 관심 면허 공고만) 기준이라 강원 밖 업체는 적게 나옵니다.</span>`;
   if(Corp.sel) return renderCorpProfile(Corp.sel);
   const watch = LS.get('corpWatch', []);
   const q = Corp.q.replace(/[\s-]/g, '');
   const row = (c) => `<button type="button" class="corp-row" data-corp="${esc(c.biz)}">
-      <div><b>${esc(c.nm)}</b>${watch.includes(c.biz) ? ' ⭐' : ''}<small>${bizFmt(c.biz)}${c.ceo ? ' · 대표 ' + esc(c.ceo) : ''}${c.home ? ' · ' + esc(c.home.replace('|', ' ')) + (c.adr ? '' : '(추정)') : c.ws.length ? ' · 낙찰 지역 ' + esc(c.ws.join('·')) : ''}</small>${c.lics.length ? `<small class="corp-lics">${c.lics.map(l => esc(LIC_SHORT[l] || l)).join(' · ')}</small>` : ''}</div>
+      <div><b>${esc(c.nm)}</b>${watch.includes(c.biz) ? ' ★' : ''}<small>${bizFmt(c.biz)}${c.ceo ? ' · 대표 ' + esc(c.ceo) : ''}${c.home ? ' · ' + esc(c.home.replace('|', ' ')) + (c.adr ? '' : '(추정)') : c.ws.length ? ' · 낙찰 지역 ' + esc(c.ws.join('·')) : ''}</small>${c.lics.length ? `<small class="corp-lics">${c.lics.map(l => esc(LIC_SHORT[l] || l)).join(' · ')}</small>` : ''}</div>
       <div class="corp-nums"><span>투찰 <b>${fmtNum(c.dn)}</b>${c.d1 ? ` · 1순위 ${fmtNum(c.d1)}` : ''}</span><span>낙찰 전국 <b>${fmtNum(c.wins)}</b>${c.gw ? ` · 강원 공사 ${fmtNum(c.gw)}` : ''}</span></div></button>`;
   if(!q){
     const me = String(Company.get().biz || '');
@@ -2810,11 +2810,11 @@ async function renderCorpSearch(){
     const lv = $('cfLic').value, label = `${area ? esc(area.replace('|', ' ').trim()) : '전체 지역'} · ${lv === 'mine' ? '우리 면허' : lv === 'all' ? '전체 면허' : esc(LIC_SHORT[lv] || lv)}`;
     const nw = await CorpNew.compute();
     const nmOf = (b) => idx.items.find(c => c.biz === b)?.nm || b;
-    const newHtml = nw.length ? `<h3 class="corp-h">🔔 관심 업체 새 낙찰 ${fmtNum(nw.length)}건 <button type="button" class="btn sm line" id="corpSeenAll">모두 확인</button></h3>
+    const newHtml = nw.length ? `<h3 class="corp-h">관심 업체 새 낙찰 ${fmtNum(nw.length)}건 <button type="button" class="btn sm line" id="corpSeenAll">모두 확인</button></h3>
       <div class="rc-list">${nw.slice(0, 30).map(({biz, w}) => `<button type="button" class="rc win corp-new" data-corp="${esc(biz)}"><div class="rc-nm"><span class="fin-badge">새 낙찰</span> ${esc(nmOf(biz))}</div>
         <div class="rc-sub">${esc(w[0])} · ${esc(w[4])} · ${esc(w[1])}</div><div class="rc-foot"><span class="rc-rank win">${esc(w[3] || '')}</span><span class="rc-amt">${w[2] ? won(w[2]) : '-'}</span></div></button>`).join('')}</div>` : '';
     out.innerHTML = newHtml + (mine ? `<h3 class="corp-h">우리 업체</h3>${row(mine)}` : '')
-      + (w.length ? `<h3 class="corp-h">⭐ 관심 업체</h3>${w.map(row).join('')}` : '')
+      + (w.length ? `<h3 class="corp-h">관심 업체</h3>${w.map(row).join('')}` : '')
       + `<h3 class="corp-h">${label} ${fmtNum(list.length)}곳${list.length > 50 ? ' (위 50곳)' : ''}</h3>`
       + (list.length ? list.slice(0, 50).map(row).join('') : '<div class="card empty">조건에 맞는 업체가 없습니다.</div>');
     $('corpSeenAll') && ($('corpSeenAll').onclick = async () => { await CorpNew.markSeen(LS.get('corpWatch', [])); renderCorpSearch(); });
@@ -2845,7 +2845,7 @@ async function renderCorpProfile(biz){
         fin: rec.winBiz === biz});   // 최종 낙찰 = 낙찰 목록의 낙찰자(1순위 포기·적격 탈락으로 2순위 이하가 된 경우 포함)
     }
   }
-  // 3년보다 옛 강원(압축 — 상위 30곳 밖이면 전원 목록의 투찰률로 금액 복원)
+  // 3년보다 옛 강원(압축, 상위 30곳 밖이면 전원 목록의 투찰률로 금액 복원)
   for(const sido of homeDetailSidos()){
     let oo; try{ oo = await Data.loadOpeningOld(sido); }catch(e){ continue; }
     for(const [id, b] of oo.bids){
@@ -2880,8 +2880,8 @@ async function renderCorpProfile(biz){
   const cut20 = wl.length === 20 && c.wins > 20;   // 강원에서 낙찰한 적 없는 업체는 최근 20건만 받아 둠
   out.innerHTML = `<button class="corp-back" id="corpBack" type="button">← 업체 목록으로</button><div class="card corp-prof">
       <div class="corp-top"><div><h2 style="margin:0;">${esc(c.nm)}</h2><div class="meta-line" style="margin:2px 0 0;">${bizFmt(biz)}${c.ceo ? ` · 대표 <b>${esc(c.ceo)}</b>` : ''}</div>
-        ${c.adr ? `<div class="meta-line" style="margin:2px 0 0;">📍 ${esc(c.adr)}</div>` : ''}${c.tel ? `<div class="meta-line" style="margin:2px 0 0;">☎ <a href="tel:${esc(c.tel)}">${esc(c.tel)}</a></div>` : ''}</div>
-        <button class="btn sm ${on ? 'reg' : 'line'}" id="corpStar" type="button">${on ? '⭐ 관심 업체' : '☆ 관심 업체로'}</button></div>
+        ${c.adr ? `<div class="meta-line" style="margin:2px 0 0;">${esc(c.adr)}</div>` : ''}${c.tel ? `<div class="meta-line" style="margin:2px 0 0;"><a href="tel:${esc(c.tel)}">${esc(c.tel)}</a></div>` : ''}</div>
+        <button class="btn sm ${on ? 'reg' : 'line'}" id="corpStar" type="button">${on ? '관심 업체' : '☆ 관심 업체로'}</button></div>
       <div class="res-sum" style="margin-top:12px;">
         <div><span>전국 낙찰</span><b>${fmtNum(c.wins)}</b></div>
         <div><span>강원 투찰</span><b>${fmtNum(rows.length)}</b></div>
@@ -2891,15 +2891,15 @@ async function renderCorpProfile(biz){
         <div><span>하한 미달</span><b class="below">${valid.length ? Math.round(below / valid.length * 100) : 0}%</b></div>
       </div>
       <div class="meta-line">${c.last ? `마지막 낙찰 ${esc(c.last)} · ` : ''}${c.ws.length ? `주로 ${esc(c.ws.join('·'))} 낙찰 · ` : ''}${c.mn ? `국방 투찰 ${fmtNum(c.mn)}건${c.m1 ? ` · 국방 1순위 ${fmtNum(c.m1)}건` : ''} · ` : ''}${c.adr ? '' : '대표자·주소는 낙찰한 적이 있어야 조달청 데이터에 나옵니다'}</div>
-      ${valid.length >= 5 ? `<h3>투찰 습관 — 실제 사정율보다 얼마나 높게/낮게 쓰나 (강원 ${fmtNum(valid.length)}건)</h3>
+      ${valid.length >= 5 ? `<h3>투찰 습관, 실제 사정율보다 얼마나 높게/낮게 쓰나 (강원 ${fmtNum(valid.length)}건)</h3>
         ${histogram(valid.map(r => Math.max(-2.5, Math.min(2.5, r.d))), {min: -2.5, max: 2.5, step: 0.1, lines: [{x: 0, color: 'var(--target)', label: '실제 사정율'}]})}
         <div class="meta-line">가운데(절반) <b>${q(ds, .25) >= 0 ? '+' : ''}${q(ds, .25).toFixed(2)} ~ ${q(ds, .75) >= 0 ? '+' : ''}${q(ds, .75).toFixed(2)}%p</b> · 투찰 사정률 자체는 보통 <b>${q(xs, .25).toFixed(2)} ~ ${q(xs, .75).toFixed(2)}%</b>. 0보다 왼쪽(−)은 하한 미달, 오른쪽이 멀수록 1위보다 높게 쓴 것.</div>` : '<div class="meta-line">투찰 습관을 볼 만큼 강원 투찰 기록이 많지 않습니다(5건 미만).</div>'}
       ${orgs.length ? `<div class="corp-tags"><b>자주 넣는 발주처</b> ${orgs.map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join('')}</div>` : ''}
       ${lics.length ? `<div class="corp-tags"><b>공고 면허</b> ${lics.map(([k, n]) => `<span class="tag">${esc(k)} ${n}</span>`).join('')}</div>` : ''}
     </div>
-    ${wl.length ? `<h3 class="corp-h">📈 낙찰 요약${cut20 ? ' <small class="faint">(최근 20건 기준 — 강원 낙찰이 없는 업체)</small>' : ''}</h3>${winSummary(wl)}
+    ${wl.length ? `<h3 class="corp-h">낙찰 요약${cut20 ? ' <small class="faint">(최근 20건 기준, 강원 낙찰이 없는 업체)</small>' : ''}</h3>${winSummary(wl)}
       <div class="meta-line ops">공사·물품 = 나라장터 낙찰(3년, 강원은 그보다 옛날도), 국방 = 국방전자조달. 전국 낙찰 ${fmtNum(c.wins)}건은 3년 기준.</div>` : ''}
-    ${wl.length ? `<h3 class="corp-h">🏆 최종 낙찰 이력 (${cut20 ? '최근 ' : ''}${fmtNum(wl.length)}건 · 공사·물품·국방)</h3><div class="rc-list">${wl.map((w, i) => `<div class="rc win"${i >= 20 ? ' data-more-win hidden' : ''}>
+    ${wl.length ? `<h3 class="corp-h">최종 낙찰 이력 (${cut20 ? '최근 ' : ''}${fmtNum(wl.length)}건 · 공사·물품·국방)</h3><div class="rc-list">${wl.map((w, i) => `<div class="rc win"${i >= 20 ? ' data-more-win hidden' : ''}>
         <div class="rc-nm"><span class="fin-badge">최종낙찰</span> ${esc(w[1])}</div><div class="rc-sub">${esc(w[0])} · ${esc(w[3])}${w[6] ? ' · ' + esc(w[6]) : ''}</div>
         <div class="rc-grid"><div><span>기초금액</span><b>${w[10] ? eok(w[10]) : '-'}</b></div><div><span>사정율</span><b>${w[9] ? (+w[9]).toFixed(3) : '-'}</b></div><div><span>낙찰률</span><b>${w[8] ? (+w[8]).toFixed(3) : '-'}</b></div></div>
         <div class="rc-foot"><span class="rc-rank win">${esc(w[4])}${w[5] ? ` · ${fmtNum(w[5])}곳 참가` : ''}</span><span class="rc-amt">${w[2] ? won(w[2]) : '-'}</span></div>
@@ -2909,7 +2909,7 @@ async function renderCorpProfile(biz){
       const cls = r.rank === 1 || r.fin ? 'win' : r.d != null && r.d < 0 ? 'below' : 'high';
       return `<div class="rc ${cls}"${i >= 30 ? ' data-more-bid hidden' : ''}><div class="rc-nm">${esc(r.nm)}</div><div class="rc-sub">${esc(r.date || '')} · ${esc(r.org)}</div>
         <div class="rc-grid"><div><span>사정율</span><b>${r.S ? r.S.toFixed(3) : '-'}</b></div><div><span>투찰률</span><b>${r.x != null ? r.x.toFixed(3) : '-'}</b></div><div><span>차이</span><b>${r.d != null ? (r.d >= 0 ? '+' : '') + r.d.toFixed(3) : '-'}</b></div></div>
-        <div class="rc-foot"><span class="rc-rank ${cls}"><b>${r.rank ? fmtNum(r.rank) : '-'}</b> / ${fmtNum(r.n)}</span><span class="rc-amt">${r.amt ? won(r.amt) : '-'}</span><span class="rc-v ${cls}">${r.fin ? '🏆 최종 낙찰' : r.rank === 1 ? (r.old ? '1순위' : '1순위(낙찰 안 됨)') : r.d != null && r.d < 0 ? '하한 미달' : ''}</span></div></div>`;
+        <div class="rc-foot"><span class="rc-rank ${cls}"><b>${r.rank ? fmtNum(r.rank) : '-'}</b> / ${fmtNum(r.n)}</span><span class="rc-amt">${r.amt ? won(r.amt) : '-'}</span><span class="rc-v ${cls}">${r.fin ? '최종 낙찰' : r.rank === 1 ? (r.old ? '1순위' : '1순위(낙찰 안 됨)') : r.d != null && r.d < 0 ? '하한 미달' : ''}</span></div></div>`;
     }).join('')}</div>${rows.length > 30 ? `<div class="more"><button class="btn sm line" id="bidMoreC" type="button">더 보기 (${fmtNum(rows.length - 30)}건 남음)</button></div>` : ''}` : ''}`;
   // 최종 낙찰 카드 펼치기: 개찰 순위 상위 10곳(강원 개찰 상세·국방) + 공고 원문
   out.querySelectorAll('[data-win]').forEach(det => det.addEventListener('toggle', async () => {
@@ -2952,9 +2952,9 @@ async function renderCorpProfile(biz){
   window.scrollTo(0, 0);
 }
 
-// ---------- 🧪 모의 투찰: 수집기(scripts/paper.py)가 강원 공사 공고마다 마감 전 추천 투찰가를 기록하고 개찰 뒤 채점한 data/paper.json
+// ---------- 모의 투찰: 수집기(scripts/paper.py)가 강원 공사 공고마다 마감 전 추천 투찰가를 기록하고 개찰 뒤 채점한 data/paper.json
 const Paper = {area: LS.get('paperArea', 'sgg'), kind: '공사', src: 'all', shown: 60};
-const paperKindSeg = () => `<div class="chip-group" id="paperKind" style="margin:0 0 10px;">${[['공사', '🏗 공사'], ['물품', '📦 물품']].map(([k, t]) => `<button type="button" class="chip ${Paper.kind === k ? 'selected' : ''}" data-k="${k}">${t}</button>`).join('')}</div>`;
+const paperKindSeg = () => `<div class="chip-group" id="paperKind" style="margin:0 0 10px;">${[['공사', '공사'], ['물품', '물품']].map(([k, t]) => `<button type="button" class="chip ${Paper.kind === k ? 'selected' : ''}" data-k="${k}">${t}</button>`).join('')}</div>`;
 const bindPaperKind = () => { $('paperKind').onclick = (e) => { const k = e.target.closest('[data-k]')?.dataset.k; if(!k || k === Paper.kind) return; Paper.kind = k; Paper.shown = 60; renderPaper(); }; };
 async function renderPaper(){
   const el = $('paperBody');
@@ -2974,7 +2974,7 @@ async function renderPaper(){
   const card = (it) => {
     const r = it.res;
     const st = !r ? (parseKst(it.close) && parseKst(it.close) < now ? {cls: '', t: '개찰 대기'} : {cls: 'wait', t: `마감 ${String(it.close || '').slice(5, 16).replace('-', '/')}`})
-      : r.win ? {cls: 'win', t: '🏆 낙찰'} : r.below ? {cls: 'below', t: '하한 미달'} : {cls: 'high', t: r.rank ? `${fmtNum(r.rank)}순위` : '1위보다 높음'};
+      : r.win ? {cls: 'win', t: '낙찰'} : r.below ? {cls: 'below', t: '하한 미달'} : {cls: 'high', t: r.rank ? `${fmtNum(r.rank)}순위` : '1위보다 높음'};
     return `<div class="rc ${st.cls}">
       <div class="rc-nm">${esc(it.nm)}</div>
       <div class="rc-sub">${esc(String(it.open || '').slice(0, 16))} 개찰 · ${esc(it.org || '')}${it.sgg ? ' · ' + esc(it.sgg) : ''}</div>
@@ -2982,7 +2982,7 @@ async function renderPaper(){
       <div class="rc-grid">
         <div><span>추천 투찰률</span><b>${it.x.toFixed(3)}</b></div>
         <div><span>실제 사정율</span><b>${r?.S ? r.S.toFixed(3) : '-'}</b></div>
-        <div><span>평균 방식</span><b>${it.xm ? it.xm.toFixed(3) : '-'}${r && r.mwin != null ? (r.mwin ? ' 🏆' : '') : ''}</b></div>
+        <div><span>평균 방식</span><b>${it.xm ? it.xm.toFixed(3) : '-'}${r && r.mwin != null ? (r.mwin ? ' <small class="ok-mark">1위</small>' : '') : ''}</b></div>
       </div>
       ${r ? `<div class="rc-grid paper-cmp">
         <div><span>추천 투찰가</span><b>${won(it.bid)}</b></div>
@@ -2995,7 +2995,7 @@ async function renderPaper(){
         <div><span>예상 대비</span><b>${r.cnt && it.n ? (r.cnt >= it.n ? '+' : '') + fmtNum(r.cnt - it.n) + '곳' : '-'}</b></div>
       </div>` : ''}
       <div class="rc-foot"><span class="rc-rank ${st.cls}">${r ? `<b>${r.win ? 1 : r.rank ? fmtNum(r.rank) : r.below ? '미달' : '-'}</b> / ${r.cnt ? fmtNum(r.cnt) : '-'}` : '<b>대기</b>'}</span><span class="rc-amt"><small class="faint">추천가</small> ${won(it.bid)}</span><span class="rc-v ${st.cls}">${st.t}</span></div>
-      ${r?.winner ? `<div class="rc-sub" style="margin-top:4px;">실제 1위 ${esc(r.winner)}${r.amt ? ` ${won(r.amt)}` : ''}${r.win ? ' — 추천가가 더 낮아 앞섬' : ''}${r.src === 'list' ? ' · 순위는 개찰 상세 수집 뒤' : ''}</div>` : ''}
+      ${r?.winner ? `<div class="rc-sub" style="margin-top:4px;">실제 1위 ${esc(r.winner)}${r.amt ? ` ${won(r.amt)}` : ''}${r.win ? ', 추천가가 더 낮아 앞섬' : ''}${r.src === 'list' ? ' · 순위는 개찰 상세 수집 뒤' : ''}</div>` : ''}
     </div>`;
   };
   let html = '', last = null;
@@ -3004,22 +3004,22 @@ async function renderPaper(){
   const doneSorted = [...done].sort((a, b) => (b.res.win || 0) - (a.res.win || 0) || String(b.open || '').localeCompare(String(a.open || '')));   // 1순위 한 것 맨 위(2026-09-29 요청)
   const ord = [...doneSorted, ...wait.filter(it => parseKst(it.close) && parseKst(it.close) < now), ...wait.filter(it => !(parseKst(it.close) && parseKst(it.close) < now)).sort((a, b) => (a.close || '').localeCompare(b.close || ''))].slice(0, Paper.shown);
   for(const it of ord){
-    const g = it.res ? (it.res.win ? '🏆 추천값 낙찰' : `개찰 ${dayLabel(String(it.open || '').slice(0, 10))}`) : (parseKst(it.close) && parseKst(it.close) < now ? '개찰 기다리는 중' : '마감 전 (추천 투찰가 기록 중)');
+    const g = it.res ? (it.res.win ? '추천값 낙찰' : `개찰 ${dayLabel(String(it.open || '').slice(0, 10))}`) : (parseKst(it.close) && parseKst(it.close) < now ? '개찰 기다리는 중' : '마감 전 (추천 투찰가 기록 중)');
     if(g !== last){ last = g; html += `<div class="day-sep">${esc(g)}</div>`; }
     html += card(it);
   }
   el.innerHTML = paperKindSeg() + `<div class="card">
-      <h2>🧪 모의 투찰 — 추천값으로 넣었다면?</h2>
+      <h2>모의 투찰, 추천값으로 넣었다면?</h2>
       <p class="sub">${esc(d.sido)} 공사 공고마다 <b>마감 전에 앱의 추천 투찰가를 자동으로 기록</b>해 두고, 개찰되면 실제 결과로 채점합니다(실제 투찰은 하지 않음). 수집할 때마다(하루 5번) 갱신 · 마지막 ${esc(String(d.updated_at || '').slice(5, 16).replace('T', ' '))}</p>
-      <div class="chip-group" id="paperArea" style="margin:8px 0 12px;">${areas.map(([k, t]) => `<button type="button" class="chip ${Paper.area === k ? 'selected' : ''}" data-a="${k}">📍 ${esc(t)}</button>`).join('')}</div>
+      <div class="chip-group" id="paperArea" style="margin:8px 0 12px;">${areas.map(([k, t]) => `<button type="button" class="chip ${Paper.area === k ? 'selected' : ''}" data-a="${k}">${esc(t)}</button>`).join('')}</div>
       <div class="res-sum">
         <div><span>채점</span><b>${fmtNum(done.length)}</b></div>
-        <div class="${nWin ? 'win' : ''}"><span>🏆 추천값 낙찰</span><b>${fmtNum(nWin)}</b></div>
+        <div class="${nWin ? 'win' : ''}"><span>추천값 낙찰</span><b>${fmtNum(nWin)}</b></div>
         <div><span>평균 사정율로 넣었다면</span><b>${fmtNum(nM)}</b></div>
         <div><span>평균 업체(공정 기대)</span><b>${fmtNum(fair, 2)}</b></div>
         <div><span>하한 미달</span><b class="below">${done.length ? Math.round(nBelow / done.length * 100) : 0}%</b></div>
       </div>
-      <div class="meta-line">기록 ${fmtNum(all.length)}건 · 마감 전 ${fmtNum(wait.length - closed)} · 개찰 대기 ${fmtNum(closed)}<span class="ops">. 추천값 낙찰이 "평균 업체"보다 많으면 우위가 있는 것 — 건수가 적을 땐 운이 크게 작용하니 ${MIN_SAMPLE}건 이상 모인 뒤 판단하세요</span>${done.length < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}.</div>
+      <div class="meta-line">기록 ${fmtNum(all.length)}건 · 마감 전 ${fmtNum(wait.length - closed)} · 개찰 대기 ${fmtNum(closed)}<span class="ops">. 추천값 낙찰이 "평균 업체"보다 많으면 우위가 있는 것, 건수가 적을 땐 운이 크게 작용하니 ${MIN_SAMPLE}건 이상 모인 뒤 판단하세요</span>${done.length < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}.</div>
     </div>
     ${html ? `<div class="rc-list">${html}</div>` : '<div class="card empty">이 지역 기록이 아직 없습니다.</div>'}
     ${list.length > Paper.shown ? `<div class="more"><button class="btn sm line" id="paperMore" type="button">더 보기</button></div>` : ''}`;
@@ -3028,7 +3028,7 @@ async function renderPaper(){
   $('paperMore') && ($('paperMore').onclick = () => keepY(() => { Paper.shown += 100; return renderPaper(); }));
 }
 
-/** 📦 물품 모의 투찰(data/paper_thng.json, scripts/paper_thng.py): 나라장터·국방 물품 공고마다 마감 전 추천 투찰가 기록 → 개찰 뒤 채점 */
+/** 물품 모의 투찰(data/paper_thng.json, scripts/paper_thng.py): 나라장터·국방 물품 공고마다 마감 전 추천 투찰가 기록 → 개찰 뒤 채점 */
 async function renderPaperThng(el){
   let d;
   try{ d = await Data.fetchJson('paper_thng.json', false); }catch(e){ el.innerHTML = paperKindSeg() + '<div class="card empty">아직 물품 모의 투찰 기록이 없습니다. 다음 자동 수집 뒤에 생깁니다.</div>'; bindPaperKind(); return; }
@@ -3041,16 +3041,16 @@ async function renderPaperThng(el){
   const card = (it) => {
     const r = it.res;
     const st = !r ? (closedP(it) ? {cls: '', t: '개찰 대기'} : {cls: 'wait', t: `마감 ${String(it.close || '').slice(5, 16).replace('-', '/')}`})
-      : r.win ? {cls: 'win', t: '🏆 1순위'} : r.below ? {cls: 'below', t: '하한 미달'} : {cls: 'high', t: '1위보다 높음'};
+      : r.win ? {cls: 'win', t: '1순위'} : r.below ? {cls: 'below', t: '하한 미달'} : {cls: 'high', t: '1위보다 높음'};
     const unit = it.base * it.floor / 1e4;
     return `<div class="rc ${st.cls}">
       <div class="rc-nm">${esc(it.nm)}</div>
       <div class="rc-sub">${esc(String(it.open || '').slice(0, 16))} 개찰 · ${esc(it.org || '')}</div>
-      <div class="rc-line"><span class="rc-tags">${it.src === '국방' ? '<span class="tag d2b">🎖 국방</span>' : '<span class="tag">나라장터</span>'}<span class="tag goods">📦 물품</span></span>${rcBase(it.base, r?.S && it.floor ? bidAmount(it.base, r.S, 0, it.floor) : null)}</div>
+      <div class="rc-line"><span class="rc-tags">${it.src === '국방' ? '<span class="tag d2b">국방</span>' : '<span class="tag">나라장터</span>'}<span class="tag goods">물품</span></span>${rcBase(it.base, r?.S && it.floor ? bidAmount(it.base, r.S, 0, it.floor) : null)}</div>
       <div class="rc-grid">
         <div><span>추천 투찰 사정률</span><b>${it.x.toFixed(2)}</b></div>
         <div><span>실제 사정율</span><b>${r?.S ? r.S.toFixed(3) : '-'}</b></div>
-        <div><span>${it.xs ? `${it.xs.toFixed(1)}였다면` : '하한율'}</span><b>${it.xs ? (r ? (r.wins ? '🏆 1순위' : '-') : won(it.bids)) : it.floor + '%'}</b></div>
+        <div><span>${it.xs ? `${it.xs.toFixed(1)}였다면` : '하한율'}</span><b>${it.xs ? (r ? (r.wins ? '1순위' : '-') : won(it.bids)) : it.floor + '%'}</b></div>
       </div>
       ${r ? `<div class="rc-grid paper-cmp">
         <div><span>추천 투찰가</span><b>${won(it.bid)}</b></div>
@@ -3058,30 +3058,30 @@ async function renderPaperThng(el){
         <div><span>차이 (추천 − 실제 1위)</span><b class="${r.amt ? (it.bid < r.amt ? (r.below ? 'below' : 'win-t') : 'high-t') : ''}">${r.amt ? (it.bid >= r.amt ? '+' : '−') + won(Math.abs(it.bid - r.amt)) : '-'}</b></div>
       </div>` : ''}
       <div class="rc-foot"><span class="rc-rank ${st.cls}">${r ? `<b>${r.win ? 1 : r.below ? '미달' : '-'}</b> / ${r.cnt ? fmtNum(r.cnt) : '-'}곳` : '<b>대기</b>'}</span><span class="rc-amt"><small class="faint">추천가</small> ${won(it.bid)}</span><span class="rc-v ${st.cls}">${st.t}</span></div>
-      ${r?.winner ? `<div class="rc-sub" style="margin-top:4px;">실제 낙찰 ${esc(r.winner)}${r.amt ? ` ${won(r.amt)}` : ''}${r.win ? ' — 추천가가 더 낮아 앞섬' : ''}</div>` : ''}
+      ${r?.winner ? `<div class="rc-sub" style="margin-top:4px;">실제 낙찰 ${esc(r.winner)}${r.amt ? ` ${won(r.amt)}` : ''}${r.win ? ', 추천가가 더 낮아 앞섬' : ''}</div>` : ''}
     </div>`;
   };
   const doneSorted = [...done].sort((a, b) => (b.res.win || 0) - (a.res.win || 0) || String(b.open || '').localeCompare(String(a.open || '')));
   const ord = [...doneSorted, ...wait.filter(closedP), ...wait.filter(it => !closedP(it)).sort((a, b) => (a.close || '').localeCompare(b.close || ''))];
   let html = '', last = null;
   for(const it of ord.slice(0, Paper.shown)){
-    const g = it.res ? (it.res.win ? '🏆 추천값 1순위' : `개찰 ${dayLabel(String(it.open || '').slice(0, 10))}`) : (closedP(it) ? '개찰 기다리는 중' : '마감 전 (추천 투찰가 기록 중)');
+    const g = it.res ? (it.res.win ? '추천값 1순위' : `개찰 ${dayLabel(String(it.open || '').slice(0, 10))}`) : (closedP(it) ? '개찰 기다리는 중' : '마감 전 (추천 투찰가 기록 중)');
     if(g !== last){ last = g; html += `<div class="day-sep">${esc(g)}</div>`; }
     html += card(it);
   }
-  const srcs = [['all', '전체'], ['나라장터', '나라장터'], ['국방', '🎖 국방']];
+  const srcs = [['all', '전체'], ['나라장터', '나라장터'], ['국방', '국방']];
   el.innerHTML = paperKindSeg() + `<div class="card">
-      <h2>🧪 물품 모의 투찰 — 추천 사정률로 넣었다면?</h2>
+      <h2>물품 모의 투찰, 추천 사정률로 넣었다면?</h2>
       <p class="sub">나라장터·국방 물품 공고마다 <b>마감 전에 앱의 추천 투찰가를 기록</b>해 두고(마감 뒤엔 고정), 개찰되면 1순위였는지 채점합니다. 나라장터는 참가 50곳 미만용 ${esc(String(d.items.find(i => i.xs)?.xs ?? 101))}도 같이 채점. 1순위 기준(적격심사 탈락·포기는 반영 안 됨) · 마지막 ${esc(String(d.updated_at || '').slice(5, 16).replace('T', ' '))}</p>
       <div class="chip-group" id="paperSrc" style="margin:8px 0 12px;">${srcs.map(([k, t]) => `<button type="button" class="chip ${Paper.src === k ? 'selected' : ''}" data-s="${k}">${esc(t)}</button>`).join('')}</div>
       <div class="res-sum">
         <div><span>채점</span><b>${fmtNum(done.length)}</b></div>
-        <div class="${nWin ? 'win' : ''}"><span>🏆 추천값 1순위</span><b>${fmtNum(nWin)}</b></div>
+        <div class="${nWin ? 'win' : ''}"><span>추천값 1순위</span><b>${fmtNum(nWin)}</b></div>
         ${hasS ? `<div><span>101.0이었다면</span><b>${fmtNum(nS)}</b></div>` : ''}
         <div><span>평균 업체(공정 기대)</span><b>${fmtNum(fair, 2)}</b></div>
         <div><span>하한 미달</span><b class="below">${done.length ? Math.round(nBelow / done.length * 100) : 0}%</b></div>
       </div>
-      <div class="meta-line">기록 ${fmtNum(all.length)}건 · 마감 전 ${fmtNum(wait.filter(it => !closedP(it)).length)} · 개찰 대기 ${fmtNum(wait.filter(closedP).length)}<span class="ops">. 참가 수백~수천 곳 공고가 많아 1순위가 드뭅니다 — "평균 업체"와 비교하세요</span>${done.length < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}.</div>
+      <div class="meta-line">기록 ${fmtNum(all.length)}건 · 마감 전 ${fmtNum(wait.filter(it => !closedP(it)).length)} · 개찰 대기 ${fmtNum(wait.filter(closedP).length)}<span class="ops">. 참가 수백~수천 곳 공고가 많아 1순위가 드뭅니다, "평균 업체"와 비교하세요</span>${done.length < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}.</div>
     </div>
     ${html ? `<div class="rc-list">${html}</div>` : '<div class="card empty">기록이 아직 없습니다.</div>'}
     ${ord.length > Paper.shown ? `<div class="more"><button class="btn sm line" id="paperMore" type="button">더 보기</button></div>` : ''}`;
@@ -3090,7 +3090,7 @@ async function renderPaperThng(el){
   $('paperMore') && ($('paperMore').onclick = () => keepY(() => { Paper.shown += 100; return renderPaper(); }));
 }
 
-// ---------- 🏁 개찰 결과 (더비스식 한 줄 카드): 앱 기록 + 개찰 상세 자동 찾기 + 가져온 엑셀 이력을 한 목록으로
+// ---------- 개찰 결과 (더비스식 한 줄 카드): 앱 기록 + 개찰 상세 자동 찾기 + 가져온 엑셀 이력을 한 목록으로
 const Res = {kind: LS.get('resKind', 'all'), period: LS.get('resPeriod', 1), top: false, shown: 50};
 const normNm = (s) => String(s || '').replace(/[\s()\[\]·,.\-_'"]/g, '');
 /** 개찰 결과 한 목록: 앱 기록(관심·투찰·개찰 상세 자동 찾기) + 가져온 엑셀 이력 → 같은 모양의 행 */
@@ -3105,9 +3105,9 @@ function buildResultRows(appItems){
     const op = res ? {base: r.base, plan: r.plan, r: res.xs.map((amt, i) => [i + 1, 0, amt])} : r0 ? Data.opening[w.sido]?.bids.get(r0.id) : null;
     const mine = r && r.base && r.plan ? judgeBid(w.myBid, r, op) : null;
     if(mine) judged.push(mine);
-    // 조달청 공식 판정(비고 '낙찰하한선 미달')이 있으면 그걸 따른다 — 하한율·A값이 빠진 공고는 계산 판정이 틀려 '1순위'로 잘못 셌다(2026-09-27, 금석건설 3건)
+    // 조달청 공식 판정(비고 '낙찰하한선 미달')이 있으면 그걸 따른다, 하한율·A값이 빠진 공고는 계산 판정이 틀려 '1순위'로 잘못 셌다(2026-09-27, 금석건설 3건)
     const offBelow = /미달/.test(w.res?.mine?.note || '');
-    const offOk = !!w.res?.mine?.note && !offBelow;   // 공식 판정 '정상' — 하한율이 빠진 공고(기본 87.745 로 계산)에서 계산이 '하한 미달'로 틀리던 것(2026-09-28 점검)
+    const offOk = !!w.res?.mine?.note && !offBelow;   // 공식 판정 '정상', 하한율이 빠진 공고(기본 87.745 로 계산)에서 계산이 '하한 미달'로 틀리던 것(2026-09-28 점검)
     const noFloor = !(w.floor || r0?.floor || r?.floor);
     const other = (w.kind && w.kind !== '공사') || w.src === '국방';   // 물품·국방은 적격·규격 탈락이 많아 계산 순위 대신 조달청 순위만
     const rank = w.res?.mine?.rank || (offBelow || other ? null : mine?.rank) || null;
@@ -3130,7 +3130,7 @@ function buildResultRows(appItems){
       line: !noFloor && r?.base && r?.plan ? Math.ceil((r.plan - (w.a ?? r.a ?? 0)) * (w.floor || r.floor) / 100 + (w.a ?? r.a ?? 0)) : null,   // 낙찰하한가 = (예정가격 − A값) × 하한율 + A값 (2026-10-01)
       date, base: r?.base || w.base, amt: w.myBid, S: r?.base && r?.plan ? r.plan / r.base * 100 : null, x: noFloor ? null : mine?.x ?? (w.myBid && r?.base ? bidToSr(w.myBid, r.base, w.a ?? r.a, w.floor || r.floor) : null),   // 하한율 모르면 투찰률도 모름(진단 '제외'로)   // 승리 구간이 1%p 넘게 벌어진 공고(참가 적음)는 judgeBid 가 null 이라 진단에서 빠졌음(2026-09-28, 1순위 1건 누락)
       rank: offBelow || (mine?.cls === 'below' && !offOk) ? -1 : rank, n: r?.cnt || w.res?.n || null, kind: w.kind || '공사', src2: w.src, winner: r?.win, winAmt: r?.amt, app,
-      cls: fin || rank === 1 ? 'win' : offBelow ? 'below' : offOk && mine?.cls === 'below' ? 'high' : mine?.cls || '', label: fin ? '🏆 최종 낙찰' : rank === 1 ? '🏆 1순위' : offBelow ? '하한 미달' : offOk && mine?.cls === 'below' ? '1위보다 높음' : mine?.label?.replace(' (1순위)', '') || (r ? '금액 기록 없음' : '결과 대기'), fin};
+      cls: fin || rank === 1 ? 'win' : offBelow ? 'below' : offOk && mine?.cls === 'below' ? 'high' : mine?.cls || '', label: fin ? '최종 낙찰' : rank === 1 ? '1순위' : offBelow ? '하한 미달' : offOk && mine?.cls === 'below' ? '1위보다 높음' : mine?.label?.replace(' (1순위)', '') || (r ? '금액 기록 없음' : '결과 대기'), fin};
   });
   LS.set('myCal', calibrate(judged));
   // 가져온 엑셀 이력 (앱 기록과 같은 공고(이름·개찰일)는 앱 쪽만)
@@ -3149,11 +3149,11 @@ const ResHidden = {
   get(){ return new Set(LS.get('resHidden', [])); },
   set(key, on){ const s = this.get(); on ? s.add(key) : s.delete(key); LS.set('resHidden', [...s]); },
 };
-/** 개찰 결과·모의 투찰 카드 오른쪽 위: 기초금액 + 그 아래 낙찰하한가(개찰 뒤, 2026-10-01 — 1위가 되려면 하한가와 1위 금액 사이) */
+/** 개찰 결과·모의 투찰 카드 오른쪽 위: 기초금액 + 그 아래 낙찰하한가(개찰 뒤, 2026-10-01, 1위가 되려면 하한가와 1위 금액 사이) */
 function rcBase(base, line){
   return `<b class="rc-base">${won(base)}${line ? `<small class="rc-floor">하한가 ${won(line)}</small>` : ''}</b>`;
 }
-/** 개찰 결과 카드의 '차이 (… − 1순위)' 칸 — 모의 투찰과 같은 색(1순위보다 낮음 = 초록, 하한 미달 = 빨강, 높음 = 회색) */
+/** 개찰 결과 카드의 '차이 (… − 1순위)' 칸, 모의 투찰과 같은 색(1순위보다 낮음 = 초록, 하한 미달 = 빨강, 높음 = 회색) */
 function rcDiff(amt, win, cls){
   if(!amt || !win) return '<b>-</b>';
   const c = cls === 'below' ? 'below' : amt <= win ? 'win-t' : 'high-t';
@@ -3170,7 +3170,7 @@ async function renderResults(el, appItems, pseudo, head){
   let list = byKind(Res.kind);
   if(Res.top) list = list.filter(x => x.rank === 1 || x.fin);
   const isTop = (x) => x.rank === 1 || x.fin;
-  const isApp = (x) => !isTop(x) && x.app?.cls === 'win';   // 앱 추천가였다면 1순위 — 우리 1순위 다음에 (2026-09-27 요청)
+  const isApp = (x) => !isTop(x) && x.app?.cls === 'win';   // 앱 추천가였다면 1순위, 우리 1순위 다음에 (2026-09-27 요청)
   const grp = (x) => isTop(x) ? 2 : isApp(x) ? 1 : 0;
   list.sort((a, b) => (grp(b) - grp(a)) || b.date.localeCompare(a.date));   // 1순위·최종 낙찰 → 앱 추천가였다면 1순위 → 최근 개찰순
   // 요약
@@ -3182,22 +3182,22 @@ async function renderResults(el, appItems, pseudo, head){
       <div class="seg res-kind" id="resKind">${kinds.map(([k, t]) => `<button type="button" data-k="${k}" class="${Res.kind === k ? 'on' : ''}">${t} <span class="cnt">${fmtNum(byKind(k).length)}</span></button>`).join('')}</div>
       <div class="res-row2">
         <select id="resPeriod" class="sort-select" aria-label="기간">${[[1, '1개월'], [3, '3개월'], [6, '6개월'], [12, '12개월'], [0, '전체 기간']].map(([v, t]) => `<option value="${v}"${+Res.period === v ? ' selected' : ''}>${t}</option>`).join('')}</select>
-        <button type="button" class="btn sm ${Res.top ? 'reg' : 'line'}" id="resTop">🏆 1순위만</button>
+        <button type="button" class="btn sm ${Res.top ? 'reg' : 'line'}" id="resTop">1순위만</button>
       </div>
     </div>
     <div class="res-sum">
       <div><span>건수</span><b>${fmtNum(list.length)}</b></div>
-      <div class="${nWin ? 'win' : ''}"><span>🏆 1순위·최종 낙찰</span><b>${fmtNum(nWin)}</b></div>
+      <div class="${nWin ? 'win' : ''}"><span>1순위·최종 낙찰</span><b>${fmtNum(nWin)}</b></div>
       <div><span>평균 업체였다면</span><b>${fmtNum(fair, 1)}</b></div>
       <div><span>하한 미달</span><b class="below">${pctOf(below)}%</b></div>
       <div><span>1위보다 높음</span><b>${pctOf(high)}%</b></div>
-      ${list.some(x => x.app) ? `<div class="${list.some(x => x.app?.cls === 'win') ? 'win' : ''}"><span>📱 앱 추천가였다면 1순위</span><b>${fmtNum(list.filter(x => x.app?.cls === 'win').length)} <small>/ ${fmtNum(list.filter(x => x.app).length)}</small></b></div>` : ''}
+      ${list.some(x => x.app) ? `<div class="${list.some(x => x.app?.cls === 'win') ? 'win' : ''}"><span>앱 추천가였다면 1순위</span><b>${fmtNum(list.filter(x => x.app?.cls === 'win').length)} <small>/ ${fmtNum(list.filter(x => x.app).length)}</small></b></div>` : ''}
     </div>`;
   // 카드 (개찰일별로 묶음)
   let html = '', last = null;
   for(const x of list.slice(0, Res.shown)){
     const d = isTop(x) ? 'top' : isApp(x) ? 'app' : x.date.slice(0, 10);
-    if(d !== last){ last = d; html += `<div class="day-sep">${d === 'top' ? '🏆 1순위·최종 낙찰' : d === 'app' ? '📱 앱 추천가였다면 1순위' : d ? dayLabel(d) : '개찰일 미상'}</div>`; }
+    if(d !== last){ last = d; html += `<div class="day-sep">${d === 'top' ? '1순위·최종 낙찰' : d === 'app' ? '앱 추천가였다면 1순위' : d ? dayLabel(d) : '개찰일 미상'}</div>`; }
     const rk = x.rank == null ? '-' : x.rank < 0 ? '미달' : fmtNum(x.rank);
     const ratio = x.amt && x.base ? x.amt / x.base * 100 : null;
     const more = x.src === 'app' ? `<details class="rc-more"><summary>자세히 · 금액 고치기</summary>
@@ -3213,10 +3213,10 @@ async function renderResults(el, appItems, pseudo, head){
         <div class="meta-line ops">기록 = 내가 넣은 금액을 고쳐 저장 · 다시 조회 = 조달청 개찰 결과를 새로 받아 순위·금액을 조달청 값으로 · 목록에서 빼기 = 맨 아래 '뺀 목록'으로 옮김(진단·요약에서도 빠짐, 언제든 되돌리기)</div>
       </details>` : `<details class="rc-more"><summary>자세히</summary><div class="mybid-row"><button class="btn sm line" data-res-hide="${esc(x.key)}" type="button">목록에서 빼기</button></div></details>`;
     html += `<div class="rc ${x.cls}">
-      <div class="rc-nm">${x.src === 'app' && rcPoints(x) ? `<button type="button" class="rc-title" data-rc-plot="${esc(x.key)}" title="업체들 투찰 위치 그래프">${esc(x.nm)} <span class="rc-plot-ico">📊 업체 투찰 위치</span></button>` : esc(x.nm)} ${x.src === 'app' ? sdTag(x.w) : ''}</div>
-      <div class="rc-sub">${esc(x.date.slice(11, 16) ? x.date.slice(0, 16) + ' 개찰' : x.date.slice(0, 10))} · ${esc(x.org || '')}${x.src === 'app' && resLink(x.w) ? ` · <a href="${esc(resLink(x.w))}" target="_blank" rel="noopener" class="rc-link">${x.w.src === '국방' ? '국방전자조달' : '나라장터'}에서 보기 ↗</a>${x.w.src !== '국방' && x.w.no ? ` <button type="button" class="copy-btn" data-copy-text="${esc(x.w.no)}" data-copy-msg="공고번호 복사됨 — 나라장터 입찰 → 개찰결과분류조회의 '입찰공고번호' 칸에 붙여 넣고 검색" title="나라장터 개찰결과분류조회에 붙여 넣을 공고번호">📋 공고번호</button>` : ''}` : ''}</div>
+      <div class="rc-nm">${x.src === 'app' && rcPoints(x) ? `<button type="button" class="rc-title" data-rc-plot="${esc(x.key)}" title="업체들 투찰 위치 그래프">${esc(x.nm)} <span class="rc-plot-ico">업체 투찰 위치</span></button>` : esc(x.nm)} ${x.src === 'app' ? sdTag(x.w) : ''}</div>
+      <div class="rc-sub">${esc(x.date.slice(11, 16) ? x.date.slice(0, 16) + ' 개찰' : x.date.slice(0, 10))} · ${esc(x.org || '')}${x.src === 'app' && resLink(x.w) ? ` · <a href="${esc(resLink(x.w))}" target="_blank" rel="noopener" class="rc-link">${x.w.src === '국방' ? '국방전자조달' : '나라장터'}에서 보기 ↗</a>${x.w.src !== '국방' && x.w.no ? ` <button type="button" class="copy-btn" data-copy-text="${esc(x.w.no)}" data-copy-msg="공고번호 복사됨, 나라장터 입찰 → 개찰결과분류조회의 '입찰공고번호' 칸에 붙여 넣고 검색" title="나라장터 개찰결과분류조회에 붙여 넣을 공고번호">공고번호</button>` : ''}` : ''}</div>
       <div class="rc-plot" data-rc-plot-box="${esc(x.key)}" hidden></div>
-      <div class="rc-line"><span class="rc-tags">${x.rgn ? `<span class="tag">${esc(x.rgn)}</span>` : ''}${x.lic ? `<span class="tag">${esc(x.lic.split('|').join('·'))}</span>` : ''}<span class="tag">${esc(x.kind)}</span>${x.w?.src === '국방' ? '<span class="tag">🎖 국방</span>' : ''}</span>${x.base ? rcBase(x.base, x.line) : ''}</div>
+      <div class="rc-line"><span class="rc-tags">${x.rgn ? `<span class="tag">${esc(x.rgn)}</span>` : ''}${x.lic ? `<span class="tag">${esc(x.lic.split('|').join('·'))}</span>` : ''}<span class="tag">${esc(x.kind)}</span>${x.w?.src === '국방' ? '<span class="tag">국방</span>' : ''}</span>${x.base ? rcBase(x.base, x.line) : ''}</div>
       <div class="rc-grid">
         <div><span>추천 투찰률</span><b>${x.app?.x != null ? x.app.x.toFixed(3) : '-'}</b></div>
         <div><span>실제 사정율</span><b>${x.S ? x.S.toFixed(3) : '비공개'}</b></div>
@@ -3232,13 +3232,13 @@ async function renderResults(el, appItems, pseudo, head){
       </div>` : `<div class="rc-grid"><div><span>기초대비</span><b>${ratio ? ratio.toFixed(3) : '-'}</b></div></div>`}
       ${x.src === 'app' ? sdAlert(x.w, x.rank === 1 || x.fin, x.date) : ''}
       <div class="rc-foot"><span class="rc-rank ${x.cls}"><b>${rk}${x.rank > 0 ? '위' : ''}</b> / ${x.n ? fmtNum(x.n) + '곳' : '-'}</span><span class="rc-amt">${x.amt ? '<small class="faint">내 투찰</small> ' + won(x.amt) + (x.w?.res?.mine?.est && x.amt === x.w.res.mine.amt ? '<small class="faint" title="투찰률 × 예정가격으로 계산한 금액"> (추정)</small>' : '') : '금액 기록 없음'}</span><span class="rc-v ${x.cls}">${esc(x.label)}</span></div>
-      ${x.app ? `<div class="rc-app ${x.app.cls}">📱 추천 투찰가였다면 → <b>${x.app.cls === 'win' ? '🏆 1순위' : x.app.cls === 'below' ? '하한 미달' : x.app.rank ? fmtNum(x.app.rank) + '위' : '1위보다 높음'}</b>${x.app.now ? '<span class="ops"> (개찰 전 추천 기록이 없어 지금 모델로 계산 — 참고용)</span>' : ''}</div>` : ''}
+      ${x.app ? `<div class="rc-app ${x.app.cls}">추천 투찰가였다면 → <b>${x.app.cls === 'win' ? '1순위' : x.app.cls === 'below' ? '하한 미달' : x.app.rank ? fmtNum(x.app.rank) + '위' : '1위보다 높음'}</b>${x.app.now ? '<span class="ops"> (개찰 전 추천 기록이 없어 지금 모델로 계산, 참고용)</span>' : ''}</div>` : ''}
       ${more}
     </div>`;
   }
   el.innerHTML = head + ctrl + (html ? `<div class="rc-list">${html}</div>` : '<div class="empty">조건에 맞는 개찰 결과가 없습니다.</div>')
     + (list.length > Res.shown ? `<div class="more"><button class="btn sm line" id="resMore" type="button">더 보기 (${fmtNum(list.length - Res.shown)}건 남음)</button></div>` : '')
-    + (hiddenRows.length ? `<details class="res-bin"><summary>🗑 뺀 목록 ${fmtNum(hiddenRows.length)}건</summary>
+    + (hiddenRows.length ? `<details class="res-bin"><summary>뺀 목록 ${fmtNum(hiddenRows.length)}건</summary>
         ${hiddenRows.map(x => `<div class="res-bin-row"><span>${esc(x.nm)}<small>${esc((x.date || '').slice(0, 10))}${x.label ? ' · ' + esc(x.label) : ''}</small></span><button class="btn sm line" data-res-unhide="${esc(x.key)}" type="button">되돌리기</button></div>`).join('')}</details>` : '')
     + renderHistory();
   bindWatch(el, pseudo);
@@ -3247,18 +3247,18 @@ async function renderResults(el, appItems, pseudo, head){
     const box = el.querySelector(`[data-rc-plot-box="${CSS.escape(b.dataset.rcPlot)}"]`), x = byKey.get(b.dataset.rcPlot);
     if(!box || !x) return;
     const ico = b.querySelector('.rc-plot-ico');
-    if(!box.hidden){ box.hidden = true; if(ico) ico.textContent = '📊 업체 투찰 위치'; return; }
+    if(!box.hidden){ box.hidden = true; if(ico) ico.textContent = '업체 투찰 위치'; return; }
     if(x.w?.src && !MineX.d){ box.hidden = false; box.innerHTML = loadingHtml('전원 투찰 금액 불러오는 중…'); await MineX.load(); }
     box.innerHTML = rcPlot(x); box.hidden = false; if(ico) ico.textContent = '▲ 그래프 접기';
   });
-  el.querySelectorAll('[data-res-hide]').forEach(b => b.onclick = () => { ResHidden.set(b.dataset.resHide, true); toast('뺀 목록으로 옮겼습니다 — 맨 아래에서 되돌릴 수 있어요', 2600); keepY(renderWatch); });
+  el.querySelectorAll('[data-res-hide]').forEach(b => b.onclick = () => { ResHidden.set(b.dataset.resHide, true); toast('뺀 목록으로 옮겼습니다, 맨 아래에서 되돌릴 수 있어요', 2600); keepY(renderWatch); });
   el.querySelectorAll('[data-res-unhide]').forEach(b => b.onclick = () => { ResHidden.set(b.dataset.resUnhide, false); toast('되돌렸습니다'); keepY(renderWatch); });
   $('resKind').onclick = (e) => { const k = e.target.closest('[data-k]')?.dataset.k; if(!k) return; Res.kind = k; LS.set('resKind', k); Res.shown = 50; renderWatch(); };
   $('resPeriod').onchange = () => { Res.period = +$('resPeriod').value; LS.set('resPeriod', Res.period); Res.shown = 50; renderWatch(); };
   $('resTop').onclick = () => { Res.top = !Res.top; renderWatch(); };
   $('resMore') && ($('resMore').onclick = () => keepY(() => { Res.shown += 100; return renderWatch(); }));
 }
-/** 개찰 결과 공고 원문 링크 — 나라장터 공고 상세(개찰결과 탭이 있음), 국방은 국방전자조달 목록 */
+/** 개찰 결과 공고 원문 링크, 나라장터 공고 상세(개찰결과 탭이 있음), 국방은 국방전자조달 목록 */
 function resLink(w){
   if(!w) return '';
   if(w.src === '국방') return D2B_LIST_URL;
@@ -3266,7 +3266,7 @@ function resLink(w){
   if(!/^R\d/.test(w.no || '')) return '';
   return `https://www.g2b.go.kr/link/PNPE027_01/single/?bidPbancNo=${encodeURIComponent(w.no)}&bidPbancOrd=${encodeURIComponent(w.ord || '000')}`;
 }
-/** 개찰 결과 한 건의 업체 투찰 위치(투찰 사정률) — 조달청 조회·개찰 상세는 전원, 국방·물품·다른 시·도 자동 찾기는 상위 10곳 + 우리 */
+/** 개찰 결과 한 건의 업체 투찰 위치(투찰 사정률), 조달청 조회·개찰 상세는 전원, 국방·물품·다른 시·도 자동 찾기는 상위 10곳 + 우리 */
 // 우리가 넣은 국방·물품·다른 시·도 공고의 전원 투찰률(scripts/my_bids.py → mine_x.json, 그래프 열 때만 읽음)
 const MineX = {d: null, async load(){
   if(this.d) return this.d;
@@ -3308,13 +3308,13 @@ function rcPlot(x){
   const N = x.n || p.xs.length;
   return histogram(p.xs, {min, max, step, lines, h: 150, color: 'var(--text-faint)', label: (v) => v.toFixed(2), unit: '곳'})
     + `<div class="meta-line">가로 = 투찰 사정률(금액을 사정율 단위로 되돌린 값), 막대 = 그 자리에 넣은 업체 수. 빨간 선 왼쪽은 낙찰하한가 아래(무효).</div>`
-    + `<div class="meta-line">${p.full ? `${fmtNum(p.xs.length)}곳 전원` : `상위 ${fmtNum(p.xs.length)}곳만(이 공고는 전원 금액을 아직 못 받음 — 다음 수집 때 채워짐)`} · 하한 미달 ${fmtNum(below)}곳`
+    + `<div class="meta-line">${p.full ? `${fmtNum(p.xs.length)}곳 전원` : `상위 ${fmtNum(p.xs.length)}곳만(이 공고는 전원 금액을 아직 못 받음, 다음 수집 때 채워짐)`} · 하한 미달 ${fmtNum(below)}곳`
     + (my != null ? ` · <b>내 투찰은 ${my < p.S ? `실제 사정율보다 ${(p.S - my).toFixed(3)}%p 아래(하한 미달)` : `유효 투찰 중 나보다 낮은 곳 ${fmtNum(lowerValid)}곳`}</b>` : '') + ` · 참가 ${fmtNum(N)}곳</div>`;
 }
-// ---------- 🩺 내 투찰 진단: 내 개찰 결과(앱 기록·개찰 상세 자동·가져온 엑셀)로 투찰 위치 습관을 보고, 같은 공고에서 앱 추천가와 비교해 조언
-// 조언은 차이가 통계적으로 뚜렷할 때만(p < 0.05, 표본 20건↑) 내고, 아니면 '잡음 범위'라고 말한다 — 공고 고르기는 권하지 않는다(사용자는 참가 가능한 공고에 다 넣음)
+// ---------- 내 투찰 진단: 내 개찰 결과(앱 기록·개찰 상세 자동·가져온 엑셀)로 투찰 위치 습관을 보고, 같은 공고에서 앱 추천가와 비교해 조언
+// 조언은 차이가 통계적으로 뚜렷할 때만(p < 0.05, 표본 20건↑) 내고, 아니면 '잡음 범위'라고 말한다, 공고 고르기는 권하지 않는다(사용자는 참가 가능한 공고에 다 넣음)
 const Diag = {period: LS.get('diagPeriod', 0), kind: LS.get('diagKind', '공사')};   // 공사·물품은 투찰 전략이 달라 따로 본다(2026-09-28 요청)
-/** 포아송 95% 구간(Wilson–Hilferty 근사) */
+/** 포아송 95% 구간(Wilson-Hilferty 근사) */
 function poisCI(k){
   const z = 1.96, lo = k === 0 ? 0 : k * Math.pow(1 - 1 / (9 * k) - z / (3 * Math.sqrt(k)), 3), k1 = k + 1;
   return [lo, k1 * Math.pow(1 - 1 / (9 * k1) + z / (3 * Math.sqrt(k1)), 3)];
@@ -3328,11 +3328,11 @@ async function renderDiag(el, appItems, pseudo, head){
   const inCut = all.filter(x => !cut || x.date.slice(0, 10) >= cut);
   const usable = inCut.filter(x => x.S && x.x != null && x.n);
   const kindOf = (x) => x.kind === '공사' ? '공사' : x.kind === '물품' ? '물품' : '기타';
-  const dKinds = [['공사', '🏗 공사'], ['물품', '📦 물품'], ['all', '전체']];
+  const dKinds = [['공사', '공사'], ['물품', '물품'], ['all', '전체']];
   const rows = Diag.kind === 'all' ? usable : usable.filter(x => kindOf(x) === Diag.kind);
   const kindAll = Diag.kind === 'all' ? inCut : inCut.filter(x => kindOf(x) === Diag.kind);
   const nOut = kindAll.length - rows.length;   // 개찰 결과 목록과 건수가 다른 이유를 보이게
-  const outWins = kindAll.filter(x => (x.rank === 1 || x.fin) && !(x.S && x.x != null && x.n)).length;   // 기초금액 없는 1인 수의 견적 등 — 1순위지만 위치 계산 불가
+  const outWins = kindAll.filter(x => (x.rank === 1 || x.fin) && !(x.S && x.x != null && x.n)).length;   // 기초금액 없는 1인 수의 견적 등, 1순위지만 위치 계산 불가
   const kindSeg = `<div class="seg res-kind" id="diagKind">${dKinds.map(([k, t]) => `<button type="button" data-k="${k}" class="${Diag.kind === k ? 'on' : ''}">${t} <span class="cnt">${fmtNum(k === 'all' ? usable.length : usable.filter(x => kindOf(x) === k).length)}</span></button>`).join('')}</div>`;
   const periodSel = `<select id="diagPeriod" class="sort-select" aria-label="기간">${[[0, '전체 기간'], [12, '최근 12개월'], [6, '최근 6개월'], [3, '최근 3개월']].map(([v, t]) => `<option value="${v}"${+Diag.period === v ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
   const src = {app: all.filter(x => x.src === 'app' && !x.w?.auto).length, auto: all.filter(x => x.w?.auto).length, hist: all.filter(x => x.src === 'hist').length};
@@ -3359,21 +3359,21 @@ async function renderDiag(el, appItems, pseudo, head){
     const med = (a) => a.length ? quantile(a, .5) : null;
     // 조언 (뚜렷한 것만)
     const tips = [];
-    if(N < 30) tips.push(['warn', `<b>참고 부족</b> — 개찰 결과 ${fmtNum(N)}건. 아래는 방향만 참고하세요(30건 이상이면 더 믿을 만합니다).`]);
+    if(N < 30) tips.push(['warn', `<b>참고 부족</b>, 개찰 결과 ${fmtNum(N)}건. 아래는 방향만 참고하세요(30건 이상이면 더 믿을 만합니다).`]);
     if(pr.length >= 20 && pB < 0.05 && mB > aB) tips.push(['bad', `<b>하한 미달이 앱 추천보다 많습니다.</b> 같은 ${fmtNum(pr.length)}건에서 내 투찰은 ${pc(mB, pr.length)}%(${fmtNum(mB)}건)가 낙찰하한가 아래로 무효, 앱 추천가였다면 ${pc(aB, pr.length)}%(${fmtNum(aB)}건). 투찰 위치가 낮은 편이라 <b>앱 추천가대로 넣으면 무효가 줄어듭니다.</b>`]);
-    else if(pr.length >= 20 && pB < 0.05 && mB < aB) tips.push(['info', `하한 미달은 앱 추천보다 적습니다(내 ${pc(mB, pr.length)}% vs 앱 ${pc(aB, pr.length)}%, 같은 ${fmtNum(pr.length)}건) — 대신 높게 넣어 '1위보다 높음'이 ${pc(pr.filter(x => x.cls === 'high').length, pr.length)}%입니다.`]);
+    else if(pr.length >= 20 && pB < 0.05 && mB < aB) tips.push(['info', `하한 미달은 앱 추천보다 적습니다(내 ${pc(mB, pr.length)}% vs 앱 ${pc(aB, pr.length)}%, 같은 ${fmtNum(pr.length)}건), 대신 높게 넣어 '1위보다 높음'이 ${pc(pr.filter(x => x.cls === 'high').length, pr.length)}%입니다.`]);
     else if(pr.length >= 20) tips.push(['ok', `하한 미달 비율은 앱 추천과 뚜렷한 차이가 없습니다(내 ${pc(mB, pr.length)}% vs 앱 ${pc(aB, pr.length)}%, 같은 ${fmtNum(pr.length)}건 · 잡음 범위).`]);
-    if(pr.length && aB / pr.length >= 0.4) tips.push(['info', `앱 추천가도 하한 미달이 ${pc(aB, pr.length)}%입니다 — 앱 추천은 <b>무효를 줄이는 위치가 아니라 1순위 확률이 가장 높은 위치</b>라서, 참가 업체가 많은 공고일수록 낮게 잡혀 하한 미달이 원래 많습니다. 하한 미달 자체보다 1순위 수로 판단하세요.`]);
+    if(pr.length && aB / pr.length >= 0.4) tips.push(['info', `앱 추천가도 하한 미달이 ${pc(aB, pr.length)}%입니다, 앱 추천은 <b>무효를 줄이는 위치가 아니라 1순위 확률이 가장 높은 위치</b>라서, 참가 업체가 많은 공고일수록 낮게 잡혀 하한 미달이 원래 많습니다. 하한 미달 자체보다 1순위 수로 판단하세요.`]);
     if(pr.length >= 20){
       const txt = `같은 ${fmtNum(pr.length)}건에서 1순위: 내 투찰 <b>${fmtNum(mW)}건</b> · 앱 추천가였다면 <b>${fmtNum(aW)}건</b>`;
-      tips.push(pW < 0.05 ? [aW > mW ? 'bad' : 'ok', `${txt} — 뚜렷한 차이입니다${aW > mW ? '. <b>앱 추천가를 그대로 쓰는 편이 유리했습니다.</b>' : '. 지금 방식이 앱보다 나았습니다.'}`]
-        : ['info', `${txt} — 이 정도 차이는 <b>운의 범위</b>입니다(엇갈린 공고 ${fmtNum(bW + cW)}건). 1순위 몇 건으로는 어느 쪽이 낫다고 말할 수 없습니다.`]);
+      tips.push(pW < 0.05 ? [aW > mW ? 'bad' : 'ok', `${txt}, 뚜렷한 차이입니다${aW > mW ? '. <b>앱 추천가를 그대로 쓰는 편이 유리했습니다.</b>' : '. 지금 방식이 앱보다 나았습니다.'}`]
+        : ['info', `${txt}, 이 정도 차이는 <b>운의 범위</b>입니다(엇갈린 공고 ${fmtNum(bW + cW)}건). 1순위 몇 건으로는 어느 쪽이 낫다고 말할 수 없습니다.`]);
       if(med(appXs) != null && med(myXsP) != null && Math.abs(med(myXsP) - med(appXs)) >= 0.1)
-        tips.push(['info', `내 투찰 사정률 중앙값 ${med(myXsP).toFixed(3)}% · 앱 추천 중앙값 ${med(appXs).toFixed(3)}% — 앱보다 <b>${Math.abs(med(myXsP) - med(appXs)).toFixed(2)}%p ${med(myXsP) < med(appXs) ? '낮게' : '높게'}</b> 넣는 편입니다.`]);
+        tips.push(['info', `내 투찰 사정률 중앙값 ${med(myXsP).toFixed(3)}% · 앱 추천 중앙값 ${med(appXs).toFixed(3)}%, 앱보다 <b>${Math.abs(med(myXsP) - med(appXs)).toFixed(2)}%p ${med(myXsP) < med(appXs) ? '낮게' : '높게'}</b> 넣는 편입니다.`]);
     }else if(pr.length) tips.push(['info', `앱 추천가와 같은 공고로 비교할 수 있는 결과가 ${fmtNum(pr.length)}건뿐이라(20건 미만) 비교 조언은 아직 안 합니다.`]);
     tips.push(k / E >= 1 && lo / E > 1 ? ['ok', `전체 1순위 ${fmtNum(k)}건은 평균 업체였을 때 기대(${fmtNum(E, 1)}건)보다 뚜렷하게 많습니다.`]
-      : hi / E < 1 ? ['bad', `전체 1순위 ${fmtNum(k)}건은 평균 업체였을 때 기대(${fmtNum(E, 1)}건)보다 뚜렷하게 적습니다 — 투찰 위치(금액)를 점검하세요.`]
-      : ['info', `전체 1순위 ${fmtNum(k)}건 · 평균 업체였을 때 기대 ${fmtNum(E, 1)}건 — 평균과 구별되지 않는 수준입니다(참가가 많은 공고는 누구든 1순위가 드뭅니다).`]);
+      : hi / E < 1 ? ['bad', `전체 1순위 ${fmtNum(k)}건은 평균 업체였을 때 기대(${fmtNum(E, 1)}건)보다 뚜렷하게 적습니다, 투찰 위치(금액)를 점검하세요.`]
+      : ['info', `전체 1순위 ${fmtNum(k)}건 · 평균 업체였을 때 기대 ${fmtNum(E, 1)}건, 평균과 구별되지 않는 수준입니다(참가가 많은 공고는 누구든 1순위가 드뭅니다).`]);
     const hist = histogram(d.filter(v => v > -3 && v < 3), {min: -3, max: 3, step: 0.1, lines: [{x: 0, color: 'var(--target)', label: '실제 사정율'}], label: (v) => (v > 0 ? '+' : '') + v.toFixed(1)});
     // 업무별
     const kinds = [...new Set(rows.map(x => x.kind))];
@@ -3381,12 +3381,12 @@ async function renderDiag(el, appItems, pseudo, head){
       return `<tr><td>${esc(kd || '-')}</td><td class="num">${fmtNum(r.length)}</td><td class="num">${fmtNum(kk)}</td><td class="num">${fmtNum(e, 1)}</td><td class="num">${pc(r.filter(x => x.cls === 'below').length, r.length)}%</td></tr>`; }).join('');
     body = `<div class="res-sum">
         <div><span>진단 건수</span><b>${fmtNum(N)}</b>${nOut ? `<small class="faint" title="예정가격·내 투찰금액·참가 수 중 하나를 몰라 계산에서 뺀 건">제외 ${fmtNum(nOut)}건</small>` : ''}</div>
-        <div class="${k ? 'win' : ''}"><span>🏆 1순위</span><b>${fmtNum(k)}</b>${outWins ? `<small class="faint" title="기초금액·예정가격이 없어(1인 수의 견적 등) 위치 계산에서 뺀 1순위">+ 제외된 1순위 ${fmtNum(outWins)}건</small>` : ''}</div>
+        <div class="${k ? 'win' : ''}"><span>1순위</span><b>${fmtNum(k)}</b>${outWins ? `<small class="faint" title="기초금액·예정가격이 없어(1인 수의 견적 등) 위치 계산에서 뺀 1순위">+ 제외된 1순위 ${fmtNum(outWins)}건</small>` : ''}</div>
         <div><span>평균 업체 기대</span><b>${fmtNum(E, 1)}</b></div>
         <div><span>하한 미달</span><b class="below">${pc(below, N)}%</b></div>
         <div><span>1위보다 높음</span><b>${pc(high, N)}%</b></div>
       </div>
-      <h3>🩺 조언</h3>
+      <h3>조언</h3>
       <ul class="diag-tips">${tips.map(([c, t]) => `<li class="${c}">${t}</li>`).join('')}</ul>
       <h3>내 투찰 위치 (내 투찰 사정률 − 실제 사정율)</h3>
       ${hist}
@@ -3394,24 +3394,24 @@ async function renderDiag(el, appItems, pseudo, head){
       <div class="meta-line">내 투찰 사정률 중앙값 ${med(xs).toFixed(3)}% (가운데 절반 ${quantile(xs, .25).toFixed(3)}~${quantile(xs, .75).toFixed(3)}%)</div>
       ${kinds.length > 1 ? `<h3>업무별</h3>
       <div class="table-wrap" style="max-height:none;"><table><thead><tr><th>업무</th><th class="num">건수</th><th class="num">1순위</th><th class="num">평균 업체 기대</th><th class="num">하한 미달</th></tr></thead><tbody>${kindRows}</tbody></table></div>` : ''}
-      <p class="meta-line ops">자료: 앱 기록 ${fmtNum(src.app)}건 · 개찰 상세 자동 ${fmtNum(src.auto)}건 · 가져온 엑셀 ${fmtNum(src.hist)}건 (예정가격·투찰률을 아는 것만 진단). 앱 추천가 비교 ${fmtNum(pr.length)}건 중 ${fmtNum(nowCnt)}건은 개찰 전 추천 기록이 없어 지금 모델로 계산 — 그 공고가 모델 학습 기간에 들어 있어 앱에 조금 유리할 수 있습니다. 평균 업체 기대 = Σ 1÷참가 수. 조언은 같은 공고 짝 비교에서 p &lt; 0.05 일 때만.</p>`;
+      <p class="meta-line ops">자료: 앱 기록 ${fmtNum(src.app)}건 · 개찰 상세 자동 ${fmtNum(src.auto)}건 · 가져온 엑셀 ${fmtNum(src.hist)}건 (예정가격·투찰률을 아는 것만 진단). 앱 추천가 비교 ${fmtNum(pr.length)}건 중 ${fmtNum(nowCnt)}건은 개찰 전 추천 기록이 없어 지금 모델로 계산, 그 공고가 모델 학습 기간에 들어 있어 앱에 조금 유리할 수 있습니다. 평균 업체 기대 = Σ 1÷참가 수. 조언은 같은 공고 짝 비교에서 p &lt; 0.05 일 때만.</p>`;
   }
-  // 우리 지역 × 우리 면허 공사 역검증(수집 워크플로가 매일 계산, scripts/company_val.py) — 설정의 우리 업체와 시·도·면허가 맞을 때만
+  // 우리 지역 × 우리 면허 공사 역검증(수집 워크플로가 매일 계산, scripts/company_val.py), 설정의 우리 업체와 시·도·면허가 맞을 때만
   let cvHtml = '';
   try{
     const cv = await Data.fetchJson('company_val.json'), c = Company.get();
     if(Diag.kind !== '물품' && cv?.n && c.sido === cv.sido && (!cv.lics.length || cv.lics.some(l => c.lics.includes(l)))){
       const r = (w) => cv.fair ? w / cv.fair : 0, [lo, hi] = cv.ci.map(v => v / cv.fair);
       const verdict = lo > 1 ? `<b>평균 업체보다 뚜렷하게 많습니다</b> (95% 구간 ×${lo.toFixed(2)}~×${hi.toFixed(2)})`
-        : `평균 업체보다 ${cv.ours >= cv.fair ? '많지만' : '적고'} <b>아직 잡음 범위</b>입니다 (95% 구간 ×${lo.toFixed(2)}~×${hi.toFixed(2)} — 1을 걸침)`;
-      cvHtml = `<h3>📊 ${esc(cv.sido)} × 우리 면허 공사 — 앱 추천가로 넣었다면 (매일 자동 역검증)</h3>
+        : `평균 업체보다 ${cv.ours >= cv.fair ? '많지만' : '적고'} <b>아직 잡음 범위</b>입니다 (95% 구간 ×${lo.toFixed(2)}~×${hi.toFixed(2)}, 1을 걸침)`;
+      cvHtml = `<h3>${esc(cv.sido)} × 우리 면허 공사, 앱 추천가로 넣었다면 (매일 자동 역검증)</h3>
         <p class="sub">${esc(cv.from)}~${esc(cv.to)} ${esc(cv.sido)}의 우리 면허 공사 ${fmtNum(cv.n)}건(참가 중앙값 ${fmtNum(cv.median_N)}곳)에, 각 달 <b>그 이전 자료만으로</b> 정한 추천값을 넣었다고 보고 셌습니다(실전과 같은 조건).</p>
         <div class="table-wrap" style="max-height:none;"><table><thead><tr><th>방식</th><th class="num">1순위</th><th class="num">평균 업체 대비</th></tr></thead><tbody>
-          <tr><td><b>📱 앱 추천가</b></td><td class="num"><b>${fmtNum(cv.ours)}</b></td><td class="num"><b>×${r(cv.ours).toFixed(2)}</b></td></tr>
+          <tr><td><b>앱 추천가</b></td><td class="num"><b>${fmtNum(cv.ours)}</b></td><td class="num"><b>×${r(cv.ours).toFixed(2)}</b></td></tr>
           <tr><td>평균 사정율로 넣기</td><td class="num">${fmtNum(cv.mean)}</td><td class="num">×${r(cv.mean).toFixed(2)}</td></tr>
           <tr><td>평균 업체 기대 Σ1÷(참가+1)</td><td class="num">${fmtNum(cv.fair, 1)}</td><td class="num">×1.00</td></tr>
         </tbody></table></div>
-        <ul class="diag-tips"><li class="${lo > 1 ? 'ok' : 'info'}">앱 추천가 ${fmtNum(cv.ours)}건 vs 평균 업체 기대 ${fmtNum(cv.fair, 1)}건 — ${verdict}. 참고용이며 낙찰을 보장하지 않습니다.</li></ul>
+        <ul class="diag-tips"><li class="${lo > 1 ? 'ok' : 'info'}">앱 추천가 ${fmtNum(cv.ours)}건 vs 평균 업체 기대 ${fmtNum(cv.fair, 1)}건, ${verdict}. 참고용이며 낙찰을 보장하지 않습니다.</li></ul>
         ${cv.seg?.length ? `<div class="table-wrap ops" style="max-height:none;"><table><thead><tr><th>참가 수</th><th class="num">공고</th><th class="num">앱 추천 1순위</th><th class="num">평균 업체 기대</th></tr></thead><tbody>${cv.seg.map(g => `<tr><td>${esc(g.k)}곳</td><td class="num">${fmtNum(g.n)}</td><td class="num">${fmtNum(g.ours)}</td><td class="num">${fmtNum(g.fair, 1)}</td></tr>`).join('')}</tbody></table></div>` : ''}
         <div class="meta-line ops">계산 ${esc((cv.updated_at || '').slice(0, 16).replace('T', ' '))} · ${esc(cv.rule || '')}</div>`;
     }
@@ -3424,13 +3424,13 @@ async function renderDiag(el, appItems, pseudo, head){
 /** 과거 투찰 이력 판정: 1순위 / 하한 미달 / 1위보다 높음 / 예정가격 비공개(나라장터 밖) */
 function histJudge(r){
   if(!r.S) return {cls: '', label: '예정가격 비공개'};
-  if(r.rank === 1) return {cls: 'win', label: '🏆 1순위'};
+  if(r.rank === 1) return {cls: 'win', label: '1순위'};
   if((r.rank != null && r.rank < 0) || (r.x && r.x < r.S)) return {cls: 'below', label: '하한 미달'};
   return {cls: 'high', label: '1위보다 높음'};
 }
 function renderHistory(){
   const all = History.rows(), meta = History.get();
-  const imp = `<label class="btn sm line hist-imp"><input type="file" id="histFile" accept=".xls,.htm,.html" hidden>📥 ${all.length ? '엑셀 다시 가져오기' : '더비스 투찰 이력 엑셀 가져오기'}</label>`;
+  const imp = `<label class="btn sm line hist-imp"><input type="file" id="histFile" accept=".xls,.htm,.html" hidden>${all.length ? '엑셀 다시 가져오기' : '더비스 투찰 이력 엑셀 가져오기'}</label>`;
   if(all.length) return `<div class="card-inner hist"><div class="hist-head"><h3 style="margin:0;">더비스 투찰 이력 <small class="faint">${fmtNum(all.length)}건 · ${esc((meta.at || '').slice(0, 10))} 가져옴 · 위 목록에 합쳐 보임</small></h3>${imp}</div>
     <span class="meta-line" id="histMsg"></span><div class="meta-line"><button class="btn sm ghost" id="histClear" type="button">가져온 이력 지우기</button></div></div>`;
   return `<div class="card-inner hist"><h3 style="margin-top:0;">과거 투찰 이력</h3>
@@ -3489,7 +3489,7 @@ async function findMyBidsInOpening(skipIds){
               mine: {rank: row[0], amt: row[2], biz, name: b.corps[ci][0], note: row[4] || ''}, top, xs: b.r.map(x => x[2])}});
     }
   }
-  // 국방·물품·다른 시·도: 수집기가 우리 행만 뽑아 둔 작은 파일(scripts/my_bids.py — 사업자번호는 안 들어 있음, 2026-09-27)
+  // 국방·물품·다른 시·도: 수집기가 우리 행만 뽑아 둔 작은 파일(scripts/my_bids.py, 사업자번호는 안 들어 있음, 2026-09-27)
   const have = new Set(out.map(w => w.id));
   for(const f of ['mine.json', 'd2b/mine.json']){
     let j; try{ j = await Data.once('mine:' + f, () => Data.fetchJson(f)); }catch(e){ continue; }
@@ -3502,7 +3502,7 @@ async function findMyBidsInOpening(skipIds){
   return out.sort((x, y) => (y.open || '').localeCompare(x.open || '')).slice(0, 2000);   // 예전 200 제한 때문에 개찰 결과·진단이 업체 보기(전체)와 숫자가 달랐음
 }
 
-/** 국방 공고 ID 의 판단번호(국방전자조달 화면의 5자리 번호) — DB-2026-LCM-37805-…, N-2026-SFD-38392-…, FB-DSS-2026-15322-… */
+/** 국방 공고 ID 의 판단번호(국방전자조달 화면의 5자리 번호), DB-2026-LCM-37805-…, N-2026-SFD-38392-…, FB-DSS-2026-15322-… */
 function d2bNum(id){
   const ps = String(id || '').split('-').slice(1), yi = ps.findIndex(p => /^20\d\d$/.test(p));
   return ps.find((p, i) => i !== yi && /^\d{3,6}[A-Z]?$/.test(p)) || '';
@@ -3635,7 +3635,7 @@ async function renderWatch(){
   }catch(e){ console.warn(e); }
   // 개찰 시각이 지난 공고는 조달청에서 결과를 바로 가져온다 (한 번에 최대 5건, 결과 없으면 1시간 뒤 다시)
   if(apiKey()){
-    // 개찰 뒤 이틀 안은 10분마다, 그 뒤엔 1시간마다(개찰이 예정보다 늦거나 조달청 API 반영이 늦을 때 — 예전엔 1시간 기다려 '결과 대기'로 남음). 예정가격을 추정만 했으면 다시
+    // 개찰 뒤 이틀 안은 10분마다, 그 뒤엔 1시간마다(개찰이 예정보다 늦거나 조달청 API 반영이 늦을 때, 예전엔 1시간 기다려 '결과 대기'로 남음). 예정가격을 추정만 했으면 다시
     const gap = (w) => Date.now() - (parseKst(w.open || w.close)?.getTime() || 0) < 2 * 86400000 ? 600000 : 3600000;
     const due = items.filter(w => w.src !== '국방' && opened(w) && (!w.res?.n || (w.res.planEst && gap(w) < 3600000)) && (!w.resTried || Date.now() - Date.parse(w.resTried) > gap(w))).slice(0, 5);
     if(due.length){
@@ -3664,10 +3664,10 @@ async function renderWatch(){
   const seenSet = new Set(seen), nNewRes = resIds.filter(id => !seenSet.has(id)).length;
   if(resultMode && nNewRes) LS.set('resSeen', [...new Set([...seen, ...resIds])].slice(-3000));
   const modeSeg = `<div class="seg mode-seg three" id="wMode">
-      <button data-v="watch" class="${watchMode === 'watch' ? 'on' : ''}" type="button">⭐ 관심 <span class="cnt">${fmtNum(lists.watch.length)}</span></button>
-      <button data-v="joined" class="${joinedMode ? 'on' : ''}" type="button">📝 투찰 중 <span class="cnt">${fmtNum(lists.joined.length)}</span></button>
-      <button data-v="result" class="${resultMode ? 'on' : ''}" type="button">🏁 개찰 결과 <span class="cnt">${fmtNum(lists.result.length + nHist)}</span>${nNewRes && !resultMode ? `<span class="new-res" title="새로 들어온 개찰 결과">${nNewRes > 99 ? '99+' : nNewRes}</span>` : ''}</button>
-      <button data-v="diag" class="${watchMode === 'diag' ? 'on' : ''}" type="button">🩺 진단</button>
+      <button data-v="watch" class="${watchMode === 'watch' ? 'on' : ''}" type="button">관심 <span class="cnt">${fmtNum(lists.watch.length)}</span></button>
+      <button data-v="joined" class="${joinedMode ? 'on' : ''}" type="button">투찰 중 <span class="cnt">${fmtNum(lists.joined.length)}</span></button>
+      <button data-v="result" class="${resultMode ? 'on' : ''}" type="button">개찰 결과 <span class="cnt">${fmtNum(lists.result.length + nHist)}</span>${nNewRes && !resultMode ? `<span class="new-res" title="새로 들어온 개찰 결과">${nNewRes > 99 ? '99+' : nNewRes}</span>` : ''}</button>
+      <button data-v="diag" class="${watchMode === 'diag' ? 'on' : ''}" type="button">진단</button>
     </div>`;
   const hasBiz = !!Company.get().biz;
   const joinForm = watchMode !== 'diag' ? `<div class="join-add">
@@ -3675,7 +3675,7 @@ async function renderWatch(){
       <button class="btn sm" id="joinAdd" type="button">${watchMode === 'watch' ? '관심 공고 추가' : '참여 공고 추가'}</button>
       <span class="meta-line" id="joinMsg" style="margin:0;"></span>
     </div>
-    ${watchMode === 'watch' ? '' : `<div class="meta-line ops" style="margin:0 0 12px;">${joinedMode ? '넣은 공고를 공고번호로 추가하거나, 관심에서 "참여 표시"를 누르세요. 개찰 시각이 지나면 <b>🏁 개찰 결과</b>로 옮겨지고 조달청에서 순위·금액을 바로 가져옵니다.'
+    ${watchMode === 'watch' ? '' : `<div class="meta-line ops" style="margin:0 0 12px;">${joinedMode ? '넣은 공고를 공고번호로 추가하거나, 관심에서 "참여 표시"를 누르세요. 개찰 시각이 지나면 <b>개찰 결과</b>로 옮겨지고 조달청에서 순위·금액을 바로 가져옵니다.'
       : hasBiz ? `수집된 개찰 결과(강원 공사 전부 · 다른 시·도는 관심 면허 공사 · 강원 물품 · 국방)에서 우리 투찰을 자동으로 찾습니다(${fmtNum(auto.length)}건, 하루 몇 번 수집 때 갱신). 방금 개찰한 공고는 관심·투찰 등록해 두면 개찰 직후 조달청에서 바로 조회합니다. 그 밖은 공고번호로 추가하거나 맨 아래에서 더비스 투찰 이력 엑셀을 가져오세요.`
       : '설정 → 우리 업체에 <b>사업자번호</b>를 넣으면 수집된 개찰 상세에서 우리 순위·금액을 자동으로 찾습니다.'}</div>`}` : '';
   if(resultMode) return renderResults(el, list, pseudo, modeSeg + joinForm);
@@ -3719,7 +3719,7 @@ async function renderWatch(){
           <div class="stat"><div class="t">예정가격</div><div class="v" style="font-size:14px;">${won(r.plan)}</div></div>
         </div>
         <div class="meta-line">개찰 ${esc(r.date || '')}${res ? (w.auto ? ' · 수집된 개찰 상세' : ' · 조달청 실시간 조회') : ' · 수집 데이터'}</div>
-        ${mine ? `<div class="verdict ${mine.cls}"><b>내 투찰 ${won(w.myBid)}</b> → ${rank === 1 ? '🏆 1순위' : mine.label}${rank && rank !== 1 ? ` · ${fmtNum(rank)}순위` : ''} · ${mine.gapText} <span class="faint">(투찰 사정률 ${mine.x.toFixed(3)}%)</span></div>` : ''}
+        ${mine ? `<div class="verdict ${mine.cls}"><b>내 투찰 ${won(w.myBid)}</b> → ${rank === 1 ? '1순위' : mine.label}${rank && rank !== 1 ? ` · ${fmtNum(rank)}순위` : ''} · ${mine.gapText} <span class="faint">(투찰 사정률 ${mine.x.toFixed(3)}%)</span></div>` : ''}
         ${rec ? `<div class="verdict ${rec.cls} soft">앱 추천 ${won(w.pred.bid)} → ${rec.label} · ${rec.gapText}</div>` : ''}
         ${res?.top?.length ? `<details class="ranks"><summary>개찰 순위 상위 ${res.top.length}곳 보기</summary><div class="table-wrap" style="max-height:none;margin-top:6px;"><table>
           <thead><tr><th>순위</th><th>업체</th><th class="num">투찰금액</th><th class="num">투찰률</th><th>비고</th></tr></thead>
@@ -3727,7 +3727,7 @@ async function renderWatch(){
     }else{
       const st = opened(w) ? (apiKey() ? '개찰 시각이 지났지만 아직 결과가 올라오지 않았습니다' : '개찰됨 · 설정에서 서비스키를 넣으면 결과를 바로 조회합니다') : `개찰 전${w.open ? ' · 개찰 ' + esc(w.open.slice(5, 16).replace('-', '/')) : ''}`;
       const cp = w.myBid || w.pred?.bid;
-      body = `<div class="meta-line">${st} · 앱 추천 ${w.pred?.bid ? won(w.pred.bid) : '없음'}${cp ? ` <button type="button" class="copy-btn" data-copy="${cp}">📋 ${w.myBid ? '내 투찰금액' : '추천가'} 복사</button>` : ''}</div>`;
+      body = `<div class="meta-line">${st} · 앱 추천 ${w.pred?.bid ? won(w.pred.bid) : '없음'}${cp ? ` <button type="button" class="copy-btn" data-copy="${cp}">${w.myBid ? '내 투찰금액' : '추천가'} 복사</button>` : ''}</div>`;
     }
     const star = w.auto
       ? `<button class="btn sm ghost" data-join-save="${esc(w.id)}" type="button">＋ 저장</button>`
@@ -3744,7 +3744,7 @@ async function renderWatch(){
         <input type="text" class="money" inputmode="numeric" autocomplete="off" data-mybid-in="${esc(w.id)}" value="${moneyText(w.myBid)}" placeholder="${w.pred?.bid ? moneyText(w.pred.bid) : '원 단위'}">
         ${resultMode || w.auto ? `<button class="btn sm ghost" data-mybid-save="${esc(w.id)}" type="button">기록</button>`
           : isJoined(w) ? `<button class="btn sm ghost" data-mybid-save="${esc(w.id)}" type="button">금액 고치기</button><button class="btn sm line" data-unjoin="${esc(w.id)}" type="button">↩ 관심으로 되돌리기</button>`
-          : `<button class="btn sm reg" data-joined="${esc(w.id)}" type="button">📝 투찰 완료</button>`}
+          : `<button class="btn sm reg" data-joined="${esc(w.id)}" type="button">투찰 완료</button>`}
         ${opened(w) && apiKey() && w.src !== '국방' ? `<button class="btn sm line" data-res-fetch="${esc(w.id)}" type="button">개찰 결과 조회</button>` : ''}
       </div>
       ${resultMode && w.myBid && r ? '</details>' : ''}
@@ -3758,7 +3758,7 @@ async function renderWatch(){
   const head = resultMode ? `<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr));">
       <div class="kpi" style="cursor:default;"><span class="t">개찰 결과</span><span class="v">${fmtNum(list.length)}</span></div>
       <div class="kpi" style="cursor:default;"><span class="t">내 투찰 기록</span><span class="v">${fmtNum(nBid)}</span></div>
-      <div class="kpi ${nFirst ? 'on' : ''}" style="cursor:default;"><span class="t">🏆 1순위</span><span class="v">${fmtNum(nFirst)}</span></div>
+      <div class="kpi ${nFirst ? 'on' : ''}" style="cursor:default;"><span class="t">1순위</span><span class="v">${fmtNum(nFirst)}</span></div>
       <div class="kpi" style="cursor:default;"><span class="t">평균 순위</span><span class="v">${ranks.length ? fmtNum(stats(ranks).mean, 1) + '위' : '-'}</span></div>
     </div>` : '';
   const summary = cal && resultMode ? `<div class="card-inner my-score">
@@ -3771,7 +3771,7 @@ async function renderWatch(){
       </div>
       <div class="meta-line">내 투찰 사정률을 ${cal.shift >= 0 ? '+' : ''}${cal.shift.toFixed(3)}%p 옮겼다면 낙찰권이 ${cal.wins}건 → ${cal.best}건이었습니다. ${cnt('high') > cnt('below') ? '대체로 1위보다 높게 쓰는 편입니다.' : cnt('below') > cnt('high') ? '대체로 하한 미달이 많은 편입니다.' : ''} 표본이 적을수록 우연일 수 있습니다.</div>
     </div>` : '';
-  el.innerHTML = (flashId ? '<div class="alert ok-alert">📝 내 투찰에 등록했습니다. 나라장터에 실제로 넣은 금액이 다르면 아래 칸을 고쳐 "기록"을 누르세요.</div>' : '')
+  el.innerHTML = (flashId ? '<div class="alert ok-alert">내 투찰에 등록했습니다. 나라장터에 실제로 넣은 금액이 다르면 아래 칸을 고쳐 "기록"을 누르세요.</div>' : '')
     + modeSeg + joinForm + head + summary + `<div class="bid-list" style="margin-top:0;">${cards.join('')}</div>` + (resultMode ? renderHistory() : '');
   bindWatch(el, pseudo);
   if(flashId){ el.querySelector('.bid.flash')?.scrollIntoView({behavior: 'smooth', block: 'center'}); flashId = null; }
@@ -3790,7 +3790,7 @@ function bindWatch(el, pseudo){
     try{
       const toWatch = watchMode === 'watch';
       const w = await addJoinedByNo($('joinNo').value, !toWatch);
-      msg.textContent = w.pending ? '번호만 저장했습니다 — 국방 공개수의 진행 공고는 아직 받지 못해, 개찰 결과가 수집되면(하루 몇 번) 공고명·순위가 채워집니다'
+      msg.textContent = w.pending ? '번호만 저장했습니다, 국방 공개수의 진행 공고는 아직 받지 못해, 개찰 결과가 수집되면(하루 몇 번) 공고명·순위가 채워집니다'
         : w.notFound ? `추가됨 · 공고 정보를 찾지 못했습니다${apiKey() ? ' (번호 확인)' : ' · 서비스키를 넣으면 조달청에서 찾습니다'}`
         : w.res ? '추가됨 · 개찰 결과를 가져왔습니다' : toWatch ? `추가됨 · ${w.nm}` : `추가됨 · ${w.nm}${w.src === '국방' || !apiKey() ? '' : ' · 개찰되면 결과를 조회합니다'}`;
       if(w.res && toWatch){ watchMode = 'result'; LS.set('watchMode', watchMode); }
@@ -3828,7 +3828,7 @@ function bindWatch(el, pseudo){
     await WatchStore.save({...rest, savedAt: new Date().toISOString()});
     renderWatch();
   }));
-  // 관심 → 투찰 중: '📝 투찰 완료' (금액을 비우면 저장 때의 추천가로 기록)
+  // 관심 → 투찰 중: '투찰 완료' (금액을 비우면 저장 때의 추천가로 기록)
   el.querySelectorAll('[data-joined]').forEach(btn => btn.addEventListener('click', async () => {
     const id = btn.dataset.joined, w = await getW(id); if(!w) return;
     const amt = numOf(el.querySelector(`[data-mybid-in="${CSS.escape(id)}"]`)) || w.pred?.bid || null;
@@ -3979,7 +3979,7 @@ async function renderStats(){
       <div class="meta-line">개찰 순위 ${sampleText(nRank)}</div>
       <div id="corpDetail"></div>
     </div>`;
-  // 표 줄을 누르면 아래 분포만 그 업체로 바꾼다(업체 탭으로 넘어가지 않음 — 2026-09-27). 업체 탭은 분포 아래 '업체 보기' 링크로
+  // 표 줄을 누르면 아래 분포만 그 업체로 바꾼다(업체 탭으로 넘어가지 않음, 2026-09-27). 업체 탭은 분포 아래 '업체 보기' 링크로
   el.querySelectorAll('tr[data-sc]').forEach(tr => tr.addEventListener('click', () => {
     const c = top[+tr.dataset.sc];
     el.querySelectorAll('tr[data-sc]').forEach(t => t.classList.toggle('hl-row', t === tr));
@@ -4022,7 +4022,7 @@ async function renderSettings(){
   $('themeSeg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === theme));
 }
 
-/** 설정 '수집 현황'(2026-09-30 사용자: 지금 뭘 받고 있고 얼마나 남았는지 공사·물품·국방별로) —
+/** 설정 '수집 현황'(2026-09-30 사용자: 지금 뭘 받고 있고 얼마나 남았는지 공사·물품·국방별로) , 
  *  지금 도는 수집 = GitHub Actions 공개 API(설정 화면 열 때 2~3회), 나머지는 meta.json·d2b/meta.json·goods.json */
 const STEP_NAMES = {공고: '공사 진행중 공고', 최근낙찰: '공사 최근 낙찰', 공고문: '공고문(사전단속)', 상세: '공사 개찰 상세', 물품최근: '물품 진행중 공고·최근 낙찰',
   빈달: '빈 달 다시', 물품과거: '물품 과거 낙찰', 물품상세: '물품 개찰 순위', 물품곡선: '물품 추첨 곡선', 지역보강: '참가지역 보강', A값보강: 'A값 보강',
@@ -4091,7 +4091,7 @@ async function renderCollectStatus(){
         parts.push(`<b>${esc(j.name === 'd2b' ? '국방' : '나라장터')}</b>: ${esc(st?.name || '준비 중')}${mins != null ? ` (${mins >= 60 ? `${Math.floor(mins / 60)}시간 ${mins % 60}분` : `${mins}분`}째)` : ''}`);
       }
     }
-    live.innerHTML = `🔄 지금 수집 중 — ${parts.join(' · ') || '준비 중'}${wait.length ? ` · 대기 ${wait.length}건` : ''}`;
+    live.innerHTML = `지금 수집 중, ${parts.join(' · ') || '준비 중'}${wait.length ? ` · 대기 ${wait.length}건` : ''}`;
   }catch(e){ live.textContent = '지금 도는 수집은 확인하지 못했습니다(GitHub 연결).'; }
 }
 
@@ -4113,7 +4113,7 @@ function renderValidation(){
       <thead><tr><th>시험 달</th><th class="num">공고</th><th class="num">추천값 낙찰</th><th class="num">평균 사정율 낙찰</th><th class="num">공정 기대</th></tr></thead>
       <tbody>${V.months.map(m => `<tr><td>${esc(m.m)}</td><td class="num">${fmtNum(m.n)}</td><td class="num"><b>${m.near}</b></td><td class="num">${m.mean}</td><td class="num">${fmtNum(m.rand, 1)}</td></tr>`).join('')}</tbody>
     </table></div>
-    <h3>예상 참가 규모별 — 공고 고르기 효과</h3>
+    <h3>예상 참가 규모별, 공고 고르기 효과</h3>
     <div class="table-wrap" style="max-height:none;"><table>
       <thead><tr><th>예상 참가</th><th class="num">공고</th><th class="num">추천값 낙찰률</th><th class="num">평균 사정율 낙찰률</th><th class="num">평균 업체</th></tr></thead>
       <tbody>${V.segments.map(s => `<tr><td>${s.k[0]}~${s.k[1] ?? ''}곳</td><td class="num">${fmtNum(s.n)}</td><td class="num"><b>${rate(s.near, s.n)}</b></td><td class="num">${rate(s.mean, s.n)}</td><td class="num">${rate(s.rand, s.n)}</td></tr>`).join('')}</tbody>
@@ -4296,8 +4296,8 @@ async function runBacktest(){
     <td class="num">${(l.rate*100).toFixed(1)}건</td><td class="num">${l.below != null ? (l.below*100).toFixed(1) + '%' : '-'}</td></tr>`;
   out.innerHTML = `
     <div class="alert ${adopt ? 'ok' : 'warn'}">${adopt
-      ? `✅ <b>우위 있음</b> — 곡선 추천값이 무작위보다 ${bestC.lift.toFixed(2)}배(신뢰구간 하한 ${bestC.liftLo.toFixed(2)}배) 자주 낙찰권이었습니다. 추천값으로 사용합니다.`
-      : `⚠️ <b>뚜렷한 우위 없음</b> — ${bestC.n < 2000 ? `시험 공고가 ${fmtNum(bestC.n)}건으로 2,000건 미만입니다. ` : ''}${bestC.liftLo != null ? `무작위 대비 배수 신뢰구간 하한 ${bestC.liftLo.toFixed(2)} ${bestC.liftLo > 1 ? '> 1' : '≤ 1'}. ` : ''}추천값은 참고로만 보세요.`}</div>
+      ? `<b>우위 있음</b>, 곡선 추천값이 무작위보다 ${bestC.lift.toFixed(2)}배(신뢰구간 하한 ${bestC.liftLo.toFixed(2)}배) 자주 낙찰권이었습니다. 추천값으로 사용합니다.`
+      : `<b>뚜렷한 우위 없음</b>, ${bestC.n < 2000 ? `시험 공고가 ${fmtNum(bestC.n)}건으로 2,000건 미만입니다. ` : ''}${bestC.liftLo != null ? `무작위 대비 배수 신뢰구간 하한 ${bestC.liftLo.toFixed(2)} ${bestC.liftLo > 1 ? '> 1' : '≤ 1'}. ` : ''}추천값은 참고로만 보세요.`}</div>
     <div class="table-wrap" style="max-height:none; margin-top:10px;"><table>
       <thead><tr><th>전략</th><th class="num">성공률</th><th class="num">95% 신뢰구간</th><th class="num">무작위 대비</th><th class="num">100건당 낙찰</th><th class="num">하한 미달</th></tr></thead>
       <tbody>
@@ -4417,7 +4417,7 @@ async function init(){
     if(g){ if(g.dataset.goto === 'watch' && currentTab === 'home'){ watchMode = 'joined'; LS.set('watchMode', watchMode); } switchTab(g.dataset.goto); }
   });
 
-  // 금액 복사(나라장터 투찰 화면에 붙여넣기 — 쉼표 없는 숫자)
+  // 금액 복사(나라장터 투찰 화면에 붙여넣기, 쉼표 없는 숫자)
   document.addEventListener('click', async (e) => {
     const t = e.target.closest('[data-copy-text]');
     if(t){ e.preventDefault(); e.stopPropagation(); const v = t.dataset.copyText;
@@ -4449,8 +4449,8 @@ async function init(){
   initPredict();
   initStats();
   initSettings();
-  // 앱을 열면 언제나 우리 공고부터 (주소에 #watch 등이 남아 있어도 — 홈 화면 바로가기·북마크가 마지막 탭 주소로 저장되는 일이 있음)
-  // 단, 당겨서 새로고침(reload)이면 보던 탭의 첫 화면으로 (2026-09-27 요청) — 분석은 금액 분석, 업체는 목록, 내 투찰은 하단 탭으로 처음 들어올 때와 같이
+  // 앱을 열면 언제나 우리 공고부터 (주소에 #watch 등이 남아 있어도, 홈 화면 바로가기·북마크가 마지막 탭 주소로 저장되는 일이 있음)
+  // 단, 당겨서 새로고침(reload)이면 보던 탭의 첫 화면으로 (2026-09-27 요청), 분석은 금액 분석, 업체는 목록, 내 투찰은 하단 탭으로 처음 들어올 때와 같이
   const reload = performance.getEntriesByType?.('navigation')?.[0]?.type === 'reload';
   let rtab = location.hash.slice(1).split('/')[0];
   if(ANA_TABS.includes(rtab)) rtab = 'predict';
