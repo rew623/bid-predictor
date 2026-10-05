@@ -1115,12 +1115,12 @@ function bidCard(b, today, opts = {}){
   const done = {amt: res?.amt || b.openRes?.win?.amt || null, rec: qp?.bid ? recIfBid(b, qp.bid, res) : null};
   // 한눈에: 지역·수의·정정·참가 가능 여부만. 면허·예가·하한·사정률 같은 세부는 '자세히'로
   const tags = [
+    eligTag(b),   // 참가 가능·불가를 맨 앞에(2026-10-05 가시성)
     `<span class="tag loc">${esc([b.sido, b.sgg].filter(Boolean).join(' ') || (b.src === '국방' ? (b.rgn?.length ? b.rgn.join('·') + ' 제한' : '전국') : '지역 미상'))}</span>`,
     b.sui ? '<span class="tag warn" title="수의계약(견적) — 추천값은 경쟁입찰 과거 공고 기준">수의</span>' : '',
     b.corr ? '<span class="tag warn" title="정정공고 — 바뀐 내용을 원문에서 확인">정정</span>' : '',
     sdTag(b),
     ...licShortTags(b),
-    eligTag(b),
   ].join('');
   const moreTags = [b.rng ? `<span class="tag">예가 ${esc(rngText(b.rng))}</span>` : '', b.floor ? `<span class="tag">하한 ${b.floor}%</span>` : ''].join('');
   let pred = '', more = '';
@@ -1433,13 +1433,15 @@ async function renderMine(){
   const areaF = areas.find(a => a[0] === Mine.area)[2];
   const inArea = rows.filter(b => !hidden.has(b.id));
   $('mineArea').innerHTML = areas.length > 1 ? areas.map(([k, label, f]) => `<button type="button" class="chip ${Mine.area === k ? 'selected' : ''}" data-area="${k}">${k === 'd2b' ? '' : '📍 '}${esc(label)}<span class="cnt">${inArea.filter(f).length}</span></button>`).join('') : '';
+  if(Mine.kind !== '물품' && Mine.area !== 'd2b') $('mineKind').insertAdjacentHTML('beforeend', `<button type="button" class="chip ${Mine.licOpen || Mine.chip !== 'all' ? 'selected' : ''}" data-licopen="1">면허별 ${Mine.licOpen || Mine.chip !== 'all' ? '▴' : '▾'}</button>`);
   const visible = inArea.filter(areaF);
   const defs = mineChipDefs(c);
   if(!defs.some(d => d.k === Mine.chip)) Mine.chip = 'all';
   const chipF0 = defs.find(d => d.k === Mine.chip).f;
   const chipF = (b) => b.kind === '물품' || b.src === '국방' ? Mine.chip === 'all' : chipF0(b);
   const nHidden = rows.filter(b => hidden.has(b.id)).length;
-  $('mineChips').hidden = Mine.kind === '물품' || Mine.area === 'd2b';
+  const licOpen = Mine.licOpen || Mine.chip !== 'all' || Mine.showHidden;   // 면허 줄은 접어 둠(2026-10-05 가시성) — '면허별' 칩으로 펼침
+  $('mineChips').hidden = Mine.kind === '물품' || Mine.area === 'd2b' || !licOpen;
   $('mineChips').innerHTML = defs.map(d => `<button type="button" class="chip ${Mine.chip === d.k && !Mine.showHidden ? 'selected' : ''}" data-chip="${esc(d.k)}">${esc(d.label)}<span class="cnt">${visible.filter(d.f).length}</span></button>`).join('')
     + (nHidden ? `<button type="button" class="chip ${Mine.showHidden ? 'selected' : ''}" data-showhidden="1">뺀 공고<span class="cnt">${nHidden}</span></button>` : '');
   const shown = Mine.showHidden ? rows.filter(b => hidden.has(b.id)) : visible.filter(chipF);
@@ -1498,6 +1500,7 @@ function initMine(){
   $('mineSort').value = LS.get('mineSort', 'close');
   $('mineSort').addEventListener('change', () => { LS.set('mineSort', $('mineSort').value); renderMine(); });
   $('mineKind').addEventListener('click', (e) => {
+    if(e.target.closest('[data-licopen]')){ Mine.licOpen = !(Mine.licOpen || Mine.chip !== 'all'); if(!Mine.licOpen){ Mine.chip = 'all'; Mine.showHidden = false; } renderMine(); return; }
     const t = e.target.closest('[data-kind]');
     if(!t) return;
     Mine.kind = t.dataset.kind; LS.set('mineKind', Mine.kind); Mine.shown = 60;
@@ -2985,8 +2988,8 @@ async function renderPaper(){
         <div><span>평균 방식</span><b>${it.xm ? it.xm.toFixed(3) : '-'}${r && r.mwin != null ? (r.mwin ? ' 🏆' : '') : ''}</b></div>
       </div>
       ${r ? `<div class="rc-grid paper-cmp">
-        <div><span>추천 투찰가</span><b>${won(it.bid)}</b></div>
-        <div><span>실제 1위 금액</span><b>${r.amt ? won(r.amt) : '-'}</b></div>
+        <div class="key"><span>추천 투찰가</span><b>${won(it.bid)}</b></div>
+        <div class="key"><span>실제 1위 금액</span><b>${r.amt ? won(r.amt) : '-'}</b></div>
         <div><span>차이 (추천 − 실제 1위)</span><b class="${r.amt ? (it.bid < r.amt ? (r.below ? 'below' : 'win-t') : 'high-t') : ''}">${r.amt ? (it.bid >= r.amt ? '+' : '−') + won(Math.abs(it.bid - r.amt)) : '-'}</b></div>
       </div>
       <div class="rc-grid paper-cmp ops">
@@ -3053,8 +3056,8 @@ async function renderPaperThng(el){
         <div><span>${it.xs ? `${it.xs.toFixed(1)}였다면` : '하한율'}</span><b>${it.xs ? (r ? (r.wins ? '🏆 1순위' : '-') : won(it.bids)) : it.floor + '%'}</b></div>
       </div>
       ${r ? `<div class="rc-grid paper-cmp">
-        <div><span>추천 투찰가</span><b>${won(it.bid)}</b></div>
-        <div><span>실제 1위 금액</span><b>${r.amt ? won(r.amt) : '-'}</b></div>
+        <div class="key"><span>추천 투찰가</span><b>${won(it.bid)}</b></div>
+        <div class="key"><span>실제 1위 금액</span><b>${r.amt ? won(r.amt) : '-'}</b></div>
         <div><span>차이 (추천 − 실제 1위)</span><b class="${r.amt ? (it.bid < r.amt ? (r.below ? 'below' : 'win-t') : 'high-t') : ''}">${r.amt ? (it.bid >= r.amt ? '+' : '−') + won(Math.abs(it.bid - r.amt)) : '-'}</b></div>
       </div>` : ''}
       <div class="rc-foot"><span class="rc-rank ${st.cls}">${r ? `<b>${r.win ? 1 : r.below ? '미달' : '-'}</b> / ${r.cnt ? fmtNum(r.cnt) : '-'}곳` : '<b>대기</b>'}</span><span class="rc-amt"><small class="faint">추천가</small> ${won(it.bid)}</span><span class="rc-v ${st.cls}">${st.t}</span></div>
@@ -3224,8 +3227,8 @@ async function renderResults(el, appItems, pseudo, head){
       </div>
       ${x.app || x.winAmt ? `<div class="rc-grid paper-cmp">
         <div><span>추천 투찰가</span><b>${x.app ? won(x.app.amt) : '-'}</b></div>
-        <div><span>1순위 금액</span><b>${x.winAmt ? won(x.winAmt) : '-'}</b></div>
-        <div><span>내 투찰가</span><b>${x.amt ? won(x.amt) : '-'}</b></div>
+        <div class="key"><span>1순위 금액</span><b>${x.winAmt ? won(x.winAmt) : '-'}</b></div>
+        <div class="key"><span>내 투찰가</span><b>${x.amt ? won(x.amt) : '-'}</b></div>
         <div><span>차이 (추천 − 1순위)</span>${rcDiff(x.app?.amt, x.winAmt, x.app?.cls)}</div>
         <div><span>차이 (내 투찰 − 1순위)</span>${rcDiff(x.amt, x.winAmt, x.cls)}</div>
         <div><span>기초대비</span><b>${ratio ? ratio.toFixed(3) : '-'}</b></div>

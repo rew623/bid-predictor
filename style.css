@@ -889,3 +889,11 @@ main{overflow-x:hidden;}
 :root[data-theme="dark"] .btn:not(.ghost):not(.line):not(.reg){background:#3566D6;}
 
 .g-small{grid-column:1 / -1; font-size:12px; color:var(--text-sub); margin-top:2px;}   /* 물품: 참가 50곳 미만 예상 공고 위치(간단 모드에서도 보임) */
+
+/* 가시성(2026-10-05): 카드에서 판단에 필요한 것만 진하게 */
+.bcard .b-tags .tag:not(.okc):not(.bad):not(.warn):not(.goods):not(.d2b):not(.loc){background:transparent; color:var(--text-faint);}
+.bcard .b-tags .tag.okc, .bcard .b-tags .tag.bad{font-size:12.5px; font-weight:700; padding:3px 10px;}
+.rc-grid > div.key{background:var(--primary-soft);}
+.rc-grid > div.key b{font-size:16px; color:var(--primary-dark);}
+.rc-v{font-size:13.5px; padding:3px 10px; border-radius:999px; background:var(--surface); border:1px solid var(--border);}
+.rc-v.win{background:var(--ok-soft); border-color:transparent;} .rc-v.below{background:var(--target-soft); border-color:transparent;}
