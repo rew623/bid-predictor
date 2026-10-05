@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 444,
-   "date": "20261005",
-   "scsbid": 178
+   "bid": 45,
+   "date": "20261006",
+   "scsbid": 21
   }
  },
  "backfill": {
@@ -27,7 +27,7 @@
   "filled": 46496
  },
  "counts": {
-  "bids": 1948,
+  "bids": 1947,
   "opening": {
    "강원": 28456,
    "경기": 5017,
@@ -69,14 +69,14 @@
   "scsbid": {
    "강원": 28514,
    "경기": 46230,
-   "경남": 41175,
+   "경남": 41178,
    "경북": 47838,
    "광주": 5336,
    "기타": 710,
    "대구": 9311,
    "대전": 5760,
    "부산": 12275,
-   "서울": 25951,
+   "서울": 25952,
    "세종": 2119,
    "울산": 7096,
    "인천": 10602,
@@ -84,11 +84,11 @@
    "전북": 27167,
    "제주": 6129,
    "충남": 34578,
-   "충북": 26038
+   "충북": 26039
   },
-  "scsbid_total": 373452,
+  "scsbid_total": 373457,
   "thng": {
-   "강원": 5234,
+   "강원": 5235,
    "경기": 12343,
    "경남": 7353,
    "경북": 8519,
@@ -96,7 +96,7 @@
    "기타": 47502,
    "대구": 6973,
    "대전": 2679,
-   "부산": 4494,
+   "부산": 4495,
    "서울": 13431,
    "세종": 709,
    "울산": 6651,
@@ -104,10 +104,10 @@
    "전남": 6791,
    "전북": 4535,
    "제주": 1925,
-   "충남": 5518,
+   "충남": 5519,
    "충북": 8918
   },
-  "thng_total": 150731
+  "thng_total": 150734
  },
  "detail": {
   "eta_days": 0,
@@ -742,90 +742,33 @@
   "done": true
  },
  "last_run": {
-  "at": "2026-10-05T20:47:50+09:00",
+  "at": "2026-10-06T02:21:40+09:00",
   "calls": {
-   "bid": 444,
-   "date": "20261005",
-   "scsbid": 178
+   "bid": 45,
+   "date": "20261006",
+   "scsbid": 21
   },
-  "errors": [
-   "물품최근: ApiError: NET: getScsbidListSttusThng: HTTPSConnectionPool(host='apis.data.go.kr', port=443): Max retries exceeded with url: /1230000/ScsbidInfoService/getScsbidListSttusThng?serviceKey=***&type=json&inqryDiv=1&inqryBgnDt=202608262036&inqryEndDt=202610052036&pageNo=1&numOfRows=100 (Caused by ConnectTimeoutError(<HTTPSConnection(host='apis.data.go.kr', port=443) at 0x7f65bbc4e5a0>, 'Connection to apis.data.go.kr timed out. (connect timeout=15)'))"
-  ],
-  "minutes": 11.8,
+  "errors": [],
+  "minutes": 14.0,
   "steps": [
+   [
+    "공고",
+    0.6,
+    "ok"
+   ],
+   [
+    "최근낙찰",
+    1.4,
+    "ok"
+   ],
    [
     "공고문",
     0.0,
     "ok"
    ],
    [
-    "상세",
-    0.0,
-    "ok"
-   ],
-   [
     "물품최근",
-    11.4,
-    "오류"
-   ],
-   [
-    "빈달",
-    0.0,
-    "ok"
-   ],
-   [
-    "물품과거",
-    0.0,
-    "ok"
-   ],
-   [
-    "물품상세",
-    0.0,
-    "ok"
-   ],
-   [
-    "물품곡선",
-    0.0,
-    "ok"
-   ],
-   [
-    "지역보강",
-    0.0,
-    "ok"
-   ],
-   [
-    "A값보강",
-    0.0,
-    "ok"
-   ],
-   [
-    "과거낙찰",
-    0.0,
-    "ok"
-   ],
-   [
-    "상세",
-    0.0,
-    "ok"
-   ],
-   [
-    "과거낙찰",
-    0.0,
-    "ok"
-   ],
-   [
-    "옛낙찰",
-    0.0,
-    "ok"
-   ],
-   [
-    "옛상세",
-    0.0,
-    "ok"
-   ],
-   [
-    "업체정보",
-    0.0,
+    11.6,
     "ok"
    ]
   ]
@@ -833,12 +776,12 @@
  "lim_scan": true,
  "mf_scan": true,
  "model": {
-  "rows": 192339,
-  "updated_at": "2026-10-05T14:40:01+09:00"
+  "rows": 192344,
+  "updated_at": "2026-10-06T02:21:52+09:00"
  },
  "nego_scan": true,
  "nego_scan2": true,
- "notice_last": "2026-10-05T14:18+09:00",
+ "notice_last": "2026-10-06T02:07+09:00",
  "refill": [],
  "rgn_fill": {
   "cursor": null,
@@ -862,6 +805,6 @@
   }
  },
  "thng_mine_fix": true,
- "updated_at": "2026-10-05T14:40:01+09:00",
+ "updated_at": "2026-10-06T02:21:52+09:00",
  "v": 1
 }
