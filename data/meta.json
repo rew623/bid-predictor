@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 505,
-   "date": "20261008",
-   "scsbid": 392
+   "bid": 14,
+   "date": "20261009",
+   "scsbid": 6
   }
  },
  "backfill": {
@@ -27,7 +27,7 @@
   "filled": 46496
  },
  "counts": {
-  "bids": 1898,
+  "bids": 1909,
   "opening": {
    "강원": 28526,
    "경기": 5040,
@@ -745,89 +745,37 @@
   "done": true
  },
  "last_run": {
-  "at": "2026-10-08T20:36:31+09:00",
+  "at": "2026-10-09T02:23:25+09:00",
   "calls": {
-   "bid": 505,
-   "date": "20261008",
-   "scsbid": 392
+   "bid": 14,
+   "date": "20261009",
+   "scsbid": 6
   },
-  "errors": [],
-  "minutes": 10.0,
+  "errors": [
+   "최근낙찰: ApiError: NET: getScsbidListSttusCnstwk: HTTPSConnectionPool(host='apis.data.go.kr', port=443): Max retries exceeded with url: /1230000/ScsbidInfoService/getScsbidListSttusCnstwk?serviceKey=***&type=json&inqryDiv=1&inqryBgnDt=202608300210&inqryEndDt=202609190210&pageNo=5&numOfRows=999 (Caused by ConnectTimeoutError(<HTTPSConnection(host='apis.data.go.kr', port=443) at 0x7fd922099310>, 'Connection to apis.data.go.kr timed out. (connect timeout=15)'))",
+   "물품최근: ApiError: 12: 해당 오픈API 서비스가 없거나 폐기됨"
+  ],
+  "minutes": 12.6,
   "steps": [
    [
-    "공고문",
-    0.2,
+    "공고",
+    1.0,
     "ok"
    ],
    [
-    "상세",
-    0.3,
+    "최근낙찰",
+    6.7,
+    "오류"
+   ],
+   [
+    "공고문",
+    0.7,
     "ok"
    ],
    [
     "물품최근",
-    8.9,
-    "ok"
-   ],
-   [
-    "빈달",
-    0.0,
-    "ok"
-   ],
-   [
-    "물품과거",
-    0.0,
-    "ok"
-   ],
-   [
-    "물품상세",
-    0.0,
-    "ok"
-   ],
-   [
-    "물품곡선",
-    0.1,
-    "ok"
-   ],
-   [
-    "지역보강",
-    0.0,
-    "ok"
-   ],
-   [
-    "A값보강",
-    0.0,
-    "ok"
-   ],
-   [
-    "과거낙찰",
-    0.0,
-    "ok"
-   ],
-   [
-    "상세",
-    0.0,
-    "ok"
-   ],
-   [
-    "과거낙찰",
-    0.0,
-    "ok"
-   ],
-   [
-    "옛낙찰",
-    0.0,
-    "ok"
-   ],
-   [
-    "옛상세",
-    0.0,
-    "ok"
-   ],
-   [
-    "업체정보",
-    0.0,
-    "ok"
+    3.8,
+    "오류"
    ]
   ]
  },
@@ -839,7 +787,7 @@
  },
  "nego_scan": true,
  "nego_scan2": true,
- "notice_last": "2026-10-08T20:10+09:00",
+ "notice_last": "2026-10-09T02:10+09:00",
  "refill": [],
  "rgn_fill": {
   "cursor": null,
@@ -863,6 +811,6 @@
   }
  },
  "thng_mine_fix": true,
- "updated_at": "2026-10-08T20:36:43+09:00",
+ "updated_at": "2026-10-09T02:23:25+09:00",
  "v": 1
 }
