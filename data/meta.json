@@ -745,14 +745,16 @@
   "done": true
  },
  "last_run": {
-  "at": "2026-10-18T02:35:52+09:00",
+  "at": "2026-10-18T08:49:46+09:00",
   "calls": {
    "bid": 91,
    "date": "20261018",
    "scsbid": 38
   },
-  "errors": [],
-  "minutes": 8.7,
+  "errors": [
+   "물품최근: ApiError: NET: getScsbidListSttusThng: HTTPSConnectionPool(host='apis.data.go.kr', port=443): Max retries exceeded with url: /1230000/ScsbidInfoService/getScsbidListSttusThng?serviceKey=***&type=json&inqryDiv=1&inqryBgnDt=202609080838&inqryEndDt=202610180838&pageNo=1&numOfRows=100 (Caused by ConnectTimeoutError(<HTTPSConnection(host='apis.data.go.kr', port=443) at 0x7f47ae071d60>, 'Connection to apis.data.go.kr timed out. (connect timeout=15)'))"
+  ],
+  "minutes": 11.7,
   "steps": [
    [
     "공고문",
@@ -761,13 +763,13 @@
    ],
    [
     "상세",
-    0.1,
+    0.0,
     "ok"
    ],
    [
     "물품최근",
-    8.1,
-    "ok"
+    11.3,
+    "오류"
    ],
    [
     "빈달",
