@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 315,
+   "bid": 367,
    "date": "20261019",
-   "scsbid": 250
+   "scsbid": 271
   }
  },
  "backfill": {
@@ -27,7 +27,7 @@
   "filled": 46496
  },
  "counts": {
-  "bids": 1948,
+  "bids": 2261,
   "opening": {
    "강원": 28701,
    "경기": 5067,
@@ -67,47 +67,47 @@
    "충북": 5
   },
   "scsbid": {
-   "강원": 28759,
-   "경기": 46757,
-   "경남": 41586,
-   "경북": 48329,
+   "강원": 28775,
+   "경기": 46789,
+   "경남": 41607,
+   "경북": 48351,
    "광주": 5352,
    "기타": 725,
    "대구": 9402,
-   "대전": 5810,
-   "부산": 12392,
-   "서울": 26195,
-   "세종": 2152,
-   "울산": 7148,
-   "인천": 10678,
-   "전남": 36989,
-   "전북": 27444,
-   "제주": 6199,
-   "충남": 34869,
-   "충북": 26303
+   "대전": 5811,
+   "부산": 12395,
+   "서울": 26205,
+   "세종": 2154,
+   "울산": 7155,
+   "인천": 10683,
+   "전남": 37006,
+   "전북": 27450,
+   "제주": 6200,
+   "충남": 34882,
+   "충북": 26321
   },
-  "scsbid_total": 377089,
+  "scsbid_total": 377263,
   "thng": {
-   "강원": 5318,
-   "경기": 12599,
-   "경남": 7475,
-   "경북": 8651,
-   "광주": 3426,
-   "기타": 48462,
+   "강원": 5326,
+   "경기": 12611,
+   "경남": 7481,
+   "경북": 8658,
+   "광주": 3427,
+   "기타": 48493,
    "대구": 7039,
-   "대전": 2722,
-   "부산": 4539,
-   "서울": 13744,
+   "대전": 2723,
+   "부산": 4542,
+   "서울": 13761,
    "세종": 714,
-   "울산": 6721,
-   "인천": 3860,
-   "전남": 6865,
-   "전북": 4598,
+   "울산": 6725,
+   "인천": 3863,
+   "전남": 6870,
+   "전북": 4602,
    "제주": 1959,
-   "충남": 5581,
-   "충북": 9001
+   "충남": 5582,
+   "충북": 9008
   },
-  "thng_total": 153274
+  "thng_total": 153384
  },
  "detail": {
   "eta_days": 0,
@@ -745,50 +745,46 @@
   "done": true
  },
  "last_run": {
-  "at": "2026-10-19T17:51:31+09:00",
+  "at": "2026-10-19T20:42:08+09:00",
   "calls": {
-   "bid": 315,
+   "bid": 367,
    "date": "20261019",
-   "scsbid": 250
+   "scsbid": 271
   },
-  "errors": [
-   "공고: ApiError: NET: getBidPblancListInfoCnstwk: HTTPSConnectionPool(host='apis.data.go.kr', port=443): Max retries exceeded with url: /1230000/BidPublicInfoService04/getBidPblancListInfoCnstwk?serviceKey=***&type=json&inqryDiv=1&inqryBgnDt=202610171727&inqryEndDt=202610191727&pageNo=1&numOfRows=100 (Caused by ConnectTimeoutError(<HTTPSConnection(host='apis.data.go.kr', port=443) at 0x7f6cdc9e31a0>, 'Connection to apis.data.go.kr timed out. (connect timeout=15)'))",
-   "최근낙찰: 한도 소진 (network)",
-   "물품최근: 한도 소진 (network)"
-  ],
-  "minutes": 23.6,
+  "errors": [],
+  "minutes": 19.0,
   "steps": [
    [
     "공고",
-    16.9,
-    "오류"
+    0.9,
+    "ok"
    ],
    [
     "최근낙찰",
-    5.6,
-    "한도"
+    0.9,
+    "ok"
    ],
    [
     "공고문",
-    0.7,
+    8.0,
     "ok"
    ],
    [
     "물품최근",
-    0.0,
-    "한도"
+    8.8,
+    "ok"
    ]
   ]
  },
  "lim_scan": true,
  "mf_scan": true,
  "model": {
-  "rows": 190464,
-  "updated_at": "2026-10-19T14:52:01+09:00"
+  "rows": 190599,
+  "updated_at": "2026-10-19T20:42:20+09:00"
  },
  "nego_scan": true,
  "nego_scan2": true,
- "notice_last": "2026-10-19T14:21+09:00",
+ "notice_last": "2026-10-19T20:23+09:00",
  "refill": [],
  "rgn_fill": {
   "cursor": null,
@@ -812,6 +808,6 @@
   }
  },
  "thng_mine_fix": true,
- "updated_at": "2026-10-19T17:51:31+09:00",
+ "updated_at": "2026-10-19T20:42:20+09:00",
  "v": 1
 }
