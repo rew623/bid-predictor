@@ -27,7 +27,7 @@
   "filled": 46496
  },
  "counts": {
-  "bids": 1932,
+  "bids": 1931,
   "opening": {
    "강원": 28767,
    "경기": 5077,
@@ -144,22 +144,22 @@
   "강원": {
    "done": 28766,
    "failed": 0,
-   "total": 28766
+   "total": 28780
   },
   "경기": {
    "done": 5077,
    "failed": 0,
-   "total": 5077
+   "total": 5080
   },
   "경남": {
    "done": 5904,
    "failed": 0,
-   "total": 5904
+   "total": 5905
   },
   "경북": {
    "done": 4177,
    "failed": 0,
-   "total": 4177
+   "total": 4178
   },
   "광주": {
    "done": 940,
@@ -194,7 +194,7 @@
   "울산": {
    "done": 899,
    "failed": 0,
-   "total": 899
+   "total": 901
   },
   "인천": {
    "done": 1082,
@@ -204,12 +204,12 @@
   "전남": {
    "done": 5354,
    "failed": 0,
-   "total": 5354
+   "total": 5355
   },
   "전북": {
    "done": 3990,
    "failed": 0,
-   "total": 3990
+   "total": 3996
   },
   "제주": {
    "done": 662,
@@ -219,12 +219,12 @@
   "충남": {
    "done": 4901,
    "failed": 0,
-   "total": 4901
+   "total": 4904
   },
   "충북": {
    "done": 2588,
    "failed": 0,
-   "total": 2588
+   "total": 2589
   }
  },
  "doc_scan": true,
@@ -745,38 +745,95 @@
   "done": true
  },
  "last_run": {
-  "at": "2026-10-21T14:50:03+09:00",
+  "at": "2026-10-21T16:29:21+09:00",
   "calls": {
    "bid": 250,
    "date": "20261021",
    "scsbid": 90
   },
   "errors": [
-   "공고: ApiError: NET: getBidPblancListInfoCnstwk: HTTPSConnectionPool(host='apis.data.go.kr', port=443): Max retries exceeded with url: /1230000/BidPublicInfoService04/getBidPblancListInfoCnstwk?serviceKey=***&type=json&inqryDiv=1&inqryBgnDt=202610191419&inqryEndDt=202610211419&pageNo=1&numOfRows=100 (Caused by ConnectTimeoutError(<HTTPSConnection(host='apis.data.go.kr', port=443) at 0x7f30555b4170>, 'Connection to apis.data.go.kr timed out. (connect timeout=15)'))",
-   "최근낙찰: 한도 소진 (network)",
-   "물품최근: 한도 소진 (network)"
+   "상세: 한도 소진 (network)",
+   "물품최근: 한도 소진 (network)",
+   "물품상세: 한도 소진 (network)",
+   "물품곡선: 한도 소진 (network)",
+   "상세: 한도 소진 (network)"
   ],
-  "minutes": 30.9,
+  "minutes": 96.9,
   "steps": [
    [
-    "공고",
-    16.8,
-    "오류"
-   ],
-   [
-    "최근낙찰",
-    5.6,
-    "한도"
-   ],
-   [
     "공고문",
-    8.0,
+    26.0,
     "ok"
+   ],
+   [
+    "상세",
+    70.4,
+    "한도"
    ],
    [
     "물품최근",
     0.0,
     "한도"
+   ],
+   [
+    "빈달",
+    0.0,
+    "ok"
+   ],
+   [
+    "물품과거",
+    0.0,
+    "ok"
+   ],
+   [
+    "물품상세",
+    0.0,
+    "한도"
+   ],
+   [
+    "물품곡선",
+    0.0,
+    "한도"
+   ],
+   [
+    "지역보강",
+    0.0,
+    "ok"
+   ],
+   [
+    "A값보강",
+    0.0,
+    "ok"
+   ],
+   [
+    "과거낙찰",
+    0.0,
+    "ok"
+   ],
+   [
+    "상세",
+    0.0,
+    "한도"
+   ],
+   [
+    "과거낙찰",
+    0.0,
+    "ok"
+   ],
+   [
+    "옛낙찰",
+    0.0,
+    "ok"
+   ],
+   [
+    "옛상세",
+    0.0,
+    "ok"
+   ],
+   [
+    "업체정보",
+    0.0,
+    "ok"
    ]
   ]
  },
@@ -802,16 +859,16 @@
  "thng_curve": {
   "done": 9422,
   "months": 12,
-  "total": 9422
+  "total": 9437
  },
  "thng_detail": {
   "강원": {
    "done": 2655,
    "failed": 0,
-   "total": 2655
+   "total": 2659
   }
  },
  "thng_mine_fix": true,
- "updated_at": "2026-10-21T14:50:03+09:00",
+ "updated_at": "2026-10-21T16:29:21+09:00",
  "v": 1
 }
