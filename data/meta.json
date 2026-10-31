@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 2,
+   "bid": 4,
    "date": "20261101",
-   "scsbid": 6
+   "scsbid": 12
   }
  },
  "backfill": {
@@ -745,16 +745,16 @@
   "done": true
  },
  "last_run": {
-  "at": "2026-11-01T00:59:53+09:00",
+  "at": "2026-11-01T05:25:45+09:00",
   "calls": {
-   "bid": 2,
+   "bid": 4,
    "date": "20261101",
-   "scsbid": 6
+   "scsbid": 12
   },
   "errors": [
    "물품최근: ApiError: 12: 해당 오픈API 서비스가 없거나 폐기됨"
   ],
-  "minutes": 0.4,
+  "minutes": 0.3,
   "steps": [
    [
     "공고문",
