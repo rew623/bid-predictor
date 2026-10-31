@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 8,
+   "bid": 10,
    "date": "20261031",
-   "scsbid": 22
+   "scsbid": 26
   }
  },
  "backfill": {
@@ -745,18 +745,18 @@
   "done": true
  },
  "last_run": {
-  "at": "2026-10-31T19:01:59+09:00",
+  "at": "2026-10-31T19:40:14+09:00",
   "calls": {
-   "bid": 8,
+   "bid": 10,
    "date": "20261031",
-   "scsbid": 22
+   "scsbid": 26
   },
   "errors": [
    "공고: ApiError: 12: 해당 오픈API 서비스가 없거나 폐기됨",
    "최근낙찰: ApiError: 12: 해당 오픈API 서비스가 없거나 폐기됨",
    "물품최근: ApiError: 12: 해당 오픈API 서비스가 없거나 폐기됨"
   ],
-  "minutes": 0.4,
+  "minutes": 0.5,
   "steps": [
    [
     "공고",
@@ -784,7 +784,7 @@
  "mf_scan": true,
  "model": {
   "rows": 190280,
-  "updated_at": "2026-10-31T11:01:02+09:00"
+  "updated_at": "2026-10-31T19:40:27+09:00"
  },
  "nego_scan": true,
  "nego_scan2": true,
@@ -812,6 +812,6 @@
   }
  },
  "thng_mine_fix": true,
- "updated_at": "2026-10-31T11:01:02+09:00",
+ "updated_at": "2026-10-31T19:40:27+09:00",
  "v": 1
 }
