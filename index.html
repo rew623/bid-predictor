@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>로또 번호 분석</title>
+<meta name="theme-color" content="#2F6FED">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">🎱 로또 번호 분석</div>
+  <div class="sub-top" id="dataInfo">데이터 불러오는 중…</div>
+</header>
+<nav class="tabs" id="tabs">
+  <button data-v="pick" class="on" type="button">🎲 번호 뽑기</button>
+  <button data-v="last" type="button">🏁 이번 회차</button>
+  <button data-v="stats" type="button">📊 번호 통계</button>
+  <button data-v="pattern" type="button">🧩 패턴</button>
+  <button data-v="test" type="button">🧪 역검증</button>
+  <button data-v="mine" type="button">🔍 내 번호</button>
+</nav>
+<main id="main"></main>
+<footer class="foot">당첨번호 출처: 동행복권(공개 미러 smok95/lotto). 로또는 매 회 독립 추첨이라 어떤 분석도 당첨 확률을 바꾸지 못합니다. 참고·재미용이며 당첨을 보장하지 않습니다.</footer>
+<script src="app.js"></script>
+</body>
+</html>

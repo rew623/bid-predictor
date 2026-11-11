@@ -1,0 +1,2 @@
+{"name": "로또 번호 분석", "short_name": "로또분석", "start_url": "./", "display": "standalone", "background_color": "#F4F6FA", "theme_color": "#2F6FED",
+ "icons": [{"src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}]}
