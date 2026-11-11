@@ -897,3 +897,4 @@ main{overflow-x:hidden;}
 .rc-grid > div.key b{font-size:16px; color:var(--primary-dark);}
 .rc-v{font-size:13.5px; padding:3px 10px; border-radius:999px; background:var(--surface); border:1px solid var(--border);}
 .rc-v.win{background:var(--ok-soft); border-color:transparent;} .rc-v.below{background:var(--target-soft); border-color:transparent;}
+.pv-note{display:block; font-size:11px; color:var(--warn); margin-top:2px;}

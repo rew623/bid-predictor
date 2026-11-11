@@ -1128,7 +1128,7 @@ function bidCard(b, today, opts = {}){
     pred = `<div class="b-pred">
         <div class="pv hl big"><span>추천 투찰가${qp.bid ? ` <button type="button" class="copy-btn" data-copy="${qp.bid}" title="나라장터에 붙여넣기">📋 복사</button>` : ''}</span><b>${qp.bid ? won(qp.bid) : b.live && b.kind === '공사' && !b.bsisTried && apiKey() ? '<span class="faint">불러오는 중…</span>' : opened(b) ? '기초금액 없음' : '기초금액 공개 후'}</b></div>
         ${qp.bestSr != null ? `<div class="pv"><span>낙찰확률</span><b>${(qp.winP * 100).toFixed(2)}%${qp.lift ? ` <small class="lift">×${qp.lift.toFixed(1)}</small>` : ''}</b></div>` : ''}
-        ${qp.cnt ? `<div class="pv"><span>예상 참가</span><b>~${fmtNum(qp.cnt)}곳</b></div>` : ''}
+        ${qp.cnt ? `<div class="pv"><span>예상 참가</span><b>~${fmtNum(qp.cnt)}곳</b>${qp.cnt < 20 ? '<small class="pv-note" title="전국 역검증: 예상 참가 20곳 미만은 추천값이 평균 업체와 비슷(×1.02)">추천 우위 없는 규모</small>' : ''}</div>` : ''}
         ${done.amt ? `<div class="pv"><span>낙찰가</span><b>${won(done.amt)}</b></div>` : ''}
         ${done.rec ? `<div class="pv if-rec ${done.rec.cls}"><span>추천가였다면</span><b>${done.rec.text}</b></div>` : ''}
       </div>${qp.area ? `<div class="b-area">🎯 ${esc(qp.area.label)} 전용 추천</div>` : ''}`;
@@ -2973,6 +2973,8 @@ async function renderPaper(){
   const closed = wait.filter(it => parseKst(it.close) && parseKst(it.close) < now).length;
   const nWin = done.filter(it => it.res.win).length, nM = done.filter(it => it.res.mwin).length;
   const fair = done.reduce((t, it) => t + (it.res.cnt ? 1 / (it.res.cnt + 1) : 0), 0);
+  const bigD = done.filter(it => (it.n || 0) >= 20);   // 예상 참가 20곳 이상 — 20곳 미만은 추천값 우위 없음(전국 역검증)
+  const bigW = bigD.filter(it => it.res.win).length, bigF = bigD.reduce((t, it) => t + (it.res.cnt ? 1 / (it.res.cnt + 1) : 0), 0);
   const nBelow = done.filter(it => it.res.below).length;
   const card = (it) => {
     const r = it.res;
@@ -3022,6 +3024,7 @@ async function renderPaper(){
         <div><span>평균 업체(공정 기대)</span><b>${fmtNum(fair, 2)}</b></div>
         <div><span>하한 미달</span><b class="below">${done.length ? Math.round(nBelow / done.length * 100) : 0}%</b></div>
       </div>
+      <div class="meta-line">예상 참가 20곳 이상만: 채점 ${fmtNum(bigD.length)} · 낙찰 <b>${fmtNum(bigW)}</b> / 공정 기대 ${fmtNum(bigF, 2)}${bigD.length < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}</div>
       <div class="meta-line">기록 ${fmtNum(all.length)}건 · 마감 전 ${fmtNum(wait.length - closed)} · 개찰 대기 ${fmtNum(closed)}<span class="ops">. 추천값 낙찰이 "평균 업체"보다 많으면 우위가 있는 것 — 건수가 적을 땐 운이 크게 작용하니 ${MIN_SAMPLE}건 이상 모인 뒤 판단하세요</span>${done.length < MIN_SAMPLE ? ' <span class="badge warn">참고 부족</span>' : ''}.</div>
     </div>
     ${html ? `<div class="rc-list">${html}</div>` : '<div class="card empty">이 지역 기록이 아직 없습니다.</div>'}
@@ -4104,24 +4107,29 @@ function renderValidation(){
   if(!V?.total?.n) return '<div class="empty">아직 역검증 결과가 없습니다. 데이터가 두 달 이상 쌓이면 수집 때 자동으로 계산됩니다.</div>';
   const T = V.total, rate = (k, n) => n ? (k / n * 100).toFixed(2) + '%' : '-';
   const d = T.mean ? (T.near / T.mean - 1) * 100 : 0;
+  // 예상 참가 20곳 미만은 모델 우위가 없다(2026-11-11 확인 ×1.02) → 20곳 이상을 따로 보인다
+  const small = (V.segments || []).find(s => s.k[0] === 0 && s.k[1] === 20);
+  const rest = (V.segments || []).filter(s => s !== small);
+  const big = rest.length ? rest.reduce((a, s) => ({n: a.n + s.n, near: a.near + s.near, rand: a.rand + s.rand}), {n: 0, near: 0, rand: 0}) : null;
   return `<div class="stat-grid">
       <div class="stat hl"><div class="t">추천값(비슷한 경쟁 규모)</div><div class="v">${fmtNum(T.near)}건 · ${rate(T.near, T.n)}</div></div>
       <div class="stat"><div class="t">평균 사정율로 넣었다면</div><div class="v">${fmtNum(T.mean)}건 · ${rate(T.mean, T.n)}</div></div>
       <div class="stat"><div class="t">공정 기대 (1÷(참가+1))</div><div class="v">${fmtNum(T.rand, 1)}건</div></div>
       <div class="stat"><div class="t">추천값 vs 평균 사정율</div><div class="v" style="color:${d > 0 ? 'var(--ok)' : 'var(--warn)'}">${d >= 0 ? '+' : ''}${d.toFixed(1)}%</div></div>
     </div>
+    ${big ? `<div class="meta-line"><b>예상 참가 20곳 이상만</b>: 추천값 ${fmtNum(big.near)}건 / 공정 기대 ${fmtNum(big.rand, 1)}건 = <b>×${(big.near / big.rand).toFixed(2)}</b> (${fmtNum(big.n)}건) · 20곳 미만 ${small ? `×${(small.near / small.rand).toFixed(2)}, 추천값 우위 없음(누가 넣어도 1위 확률이 높은 규모)` : '-'}</div>` : ''}
     <div class="meta-line">시험 공고 ${fmtNum(T.n)}건 · 추천값 95% 신뢰구간 ${(T.near_ci[0]*100).toFixed(2)}~${(T.near_ci[1]*100).toFixed(2)}% · 하한 미달 추천값 ${(T.below_near*100).toFixed(0)}% / 평균 ${(T.below_mean*100).toFixed(0)}% · ${esc(V.rule)}</div>
     <h3>달별</h3>
     <div class="table-wrap" style="max-height:none;"><table>
       <thead><tr><th>시험 달</th><th class="num">공고</th><th class="num">추천값 낙찰</th><th class="num">평균 사정율 낙찰</th><th class="num">공정 기대</th></tr></thead>
       <tbody>${V.months.map(m => `<tr><td>${esc(m.m)}</td><td class="num">${fmtNum(m.n)}</td><td class="num"><b>${m.near}</b></td><td class="num">${m.mean}</td><td class="num">${fmtNum(m.rand, 1)}</td></tr>`).join('')}</tbody>
     </table></div>
-    <h3>예상 참가 규모별 — 공고 고르기 효과</h3>
+    <h3>예상 참가 규모별</h3>
     <div class="table-wrap" style="max-height:none;"><table>
-      <thead><tr><th>예상 참가</th><th class="num">공고</th><th class="num">추천값 낙찰률</th><th class="num">평균 사정율 낙찰률</th><th class="num">평균 업체</th></tr></thead>
-      <tbody>${V.segments.map(s => `<tr><td>${s.k[0]}~${s.k[1] ?? ''}곳</td><td class="num">${fmtNum(s.n)}</td><td class="num"><b>${rate(s.near, s.n)}</b></td><td class="num">${rate(s.mean, s.n)}</td><td class="num">${rate(s.rand, s.n)}</td></tr>`).join('')}</tbody>
+      <thead><tr><th>예상 참가</th><th class="num">공고</th><th class="num">추천값 낙찰률</th><th class="num">평균 사정율 낙찰률</th><th class="num">평균 업체</th><th class="num">공정 대비</th></tr></thead>
+      <tbody>${V.segments.map(s => `<tr><td>${s.k[0]}~${s.k[1] ?? ''}곳</td><td class="num">${fmtNum(s.n)}</td><td class="num"><b>${rate(s.near, s.n)}</b></td><td class="num">${rate(s.mean, s.n)}</td><td class="num">${rate(s.rand, s.n)}</td><td class="num">×${s.rand ? (s.near / s.rand).toFixed(2) : '-'}</td></tr>`).join('')}</tbody>
     </table></div>
-    <div class="meta-line">예상 참가가 적은 공고일수록 낙찰률이 크게 높습니다 → 입찰공고 탭 "낙찰확률 높은 순"으로 공고를 고르세요. 데이터 ${esc(Model.m.data.from)} ~ ${esc(Model.m.data.to)} · 모델 갱신 ${esc(Model.m.updated_at.slice(0, 16).replace('T', ' '))}</div>`;
+    <div class="meta-line">낙찰률은 참가가 적을수록 높지만 누가 넣어도 그렇습니다. 추천값이 나은지는 '공정 대비'(1이면 평균 업체와 같음)로 보세요. 데이터 ${esc(Model.m.data.from)} ~ ${esc(Model.m.data.to)} · 모델 갱신 ${esc(Model.m.updated_at.slice(0, 16).replace('T', ' '))}</div>`;
 }
 
 // ---------- 조달청 대조 점검: 수집 데이터가 조달청과 맞는지 무작위로 골라 다시 조회해 비교
