@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 532,
+   "bid": 615,
    "date": "20261113",
-   "scsbid": 322
+   "scsbid": 365
   }
  },
  "backfill": {
@@ -27,7 +27,7 @@
   "filled": 46496
  },
  "counts": {
-  "bids": 2437,
+  "bids": 2438,
   "opening": {
    "강원": 29361,
    "경기": 5209,
@@ -745,33 +745,33 @@
   "done": true
  },
  "last_run": {
-  "at": "2026-11-13T21:02:47+09:00",
+  "at": "2026-11-13T22:05:03+09:00",
   "calls": {
-   "bid": 532,
+   "bid": 615,
    "date": "20261113",
-   "scsbid": 322
+   "scsbid": 365
   },
   "errors": [],
-  "minutes": 20.1,
+  "minutes": 22.4,
   "steps": [
    [
     "공고",
-    1.3,
+    1.5,
     "ok"
    ],
    [
     "최근낙찰",
-    1.2,
+    1.3,
     "ok"
    ],
    [
     "공고문",
-    8.0,
+    8.1,
     "ok"
    ],
    [
     "물품최근",
-    9.3,
+    11.2,
     "ok"
    ]
   ]
@@ -784,7 +784,7 @@
  },
  "nego_scan": true,
  "nego_scan2": true,
- "notice_last": "2026-11-13T20:42+09:00",
+ "notice_last": "2026-11-13T21:42+09:00",
  "refill": [],
  "rgn_fill": {
   "cursor": null,
@@ -808,6 +808,6 @@
   }
  },
  "thng_mine_fix": true,
- "updated_at": "2026-11-13T21:02:57+09:00",
+ "updated_at": "2026-11-13T22:05:03+09:00",
  "v": 1
 }
