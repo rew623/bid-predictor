@@ -5,9 +5,9 @@
    "scsbid": "https://apis.data.go.kr/1230000/as/ScsbidInfoService"
   },
   "calls": {
-   "bid": 672,
+   "bid": 773,
    "date": "20261122",
-   "scsbid": 251
+   "scsbid": 296
   }
  },
  "backfill": {
@@ -745,14 +745,14 @@
   "done": true
  },
  "last_run": {
-  "at": "2026-11-22T21:15:19+09:00",
+  "at": "2026-11-22T22:03:43+09:00",
   "calls": {
-   "bid": 672,
+   "bid": 773,
    "date": "20261122",
-   "scsbid": 251
+   "scsbid": 296
   },
   "errors": [],
-  "minutes": 7.7,
+  "minutes": 7.9,
   "steps": [
    [
     "공고",
@@ -761,17 +761,17 @@
    ],
    [
     "최근낙찰",
-    0.9,
+    1.0,
     "ok"
    ],
    [
     "공고문",
-    0.2,
+    0.0,
     "ok"
    ],
    [
     "물품최근",
-    5.9,
+    6.2,
     "ok"
    ]
   ]
@@ -784,7 +784,7 @@
  },
  "nego_scan": true,
  "nego_scan2": true,
- "notice_last": "2026-11-22T21:07+09:00",
+ "notice_last": "2026-11-22T21:55+09:00",
  "refill": [],
  "rgn_fill": {
   "cursor": null,
@@ -808,6 +808,6 @@
   }
  },
  "thng_mine_fix": true,
- "updated_at": "2026-11-22T21:15:30+09:00",
+ "updated_at": "2026-11-22T22:03:43+09:00",
  "v": 1
 }
